@@ -13,19 +13,6 @@ function initFirebaseAdmin() {
   return initializeApp({ credential: cert(JSON.parse(raw!)) });
 }
 
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
-  if (!credPath) {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS is missing");
-  }
-
-  const raw = fs.readFileSync(credPath, "utf-8");
-  const serviceAccount = JSON.parse(raw);
-
-  return initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
-
 const app = initFirebaseAdmin();
 export const db = getFirestore(app);
 export const PROPERTIES_COLLECTION = "properties";
