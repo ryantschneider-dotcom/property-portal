@@ -3,15 +3,16 @@ import "server-only";
 import { config as loadDotenv } from "dotenv";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import fs from "node:fs";
 
 loadDotenv({ path: "/data/.openclaw/workspace/scripts/.env" });
 loadDotenv({ path: ".env.local" });
 
 function initFirebaseAdmin() {
-  if (getApps().length) {
-    return getApps()[0]!;
-  }
+  if (getApps().length) return getApps()[0]!;
+  // Read the raw JSON string directly from Vercel's environment variables
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  return initializeApp({ credential: cert(JSON.parse(raw!)) });
+}
 
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
   if (!credPath) {

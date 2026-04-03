@@ -2,13 +2,12 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import fs from "node:fs";
 
 function initFirebaseAdmin() {
   if (getApps().length) return getApps()[0]!;
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
-  const raw = fs.readFileSync(credPath!, "utf-8");
-  return initializeApp({ credential: cert(JSON.parse(raw)) });
+  // Read the raw JSON string directly from Vercel's environment variables
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  return initializeApp({ credential: cert(JSON.parse(raw!)) });
 }
 
 export async function POST(request: Request) {
