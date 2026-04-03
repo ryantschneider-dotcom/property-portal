@@ -5,7 +5,6 @@ import { getAuth } from "firebase-admin/auth";
 
 function initFirebaseAdmin() {
   if (getApps().length) return getApps()[0]!;
-  // Read the raw JSON string directly from Vercel's environment variables
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   return initializeApp({ credential: cert(JSON.parse(raw!)) });
 }
