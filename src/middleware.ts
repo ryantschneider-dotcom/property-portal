@@ -1,27 +1,30 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
-  const session = request.cookies.get("admin_session")?.value;
+export function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
 
-  const isAdminPath = request.nextUrl.pathname.startsWith("/admin");
-  const isAdminApi = request.nextUrl.pathname.startsWith("/api/admin");
-  const isLoginPage = request.nextUrl.pathname === "/admin/login";
-
-  if ((isAdminPath || isAdminApi) && !isLoginPage && !session) {
-    if (isAdminApi) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL("/admin/login", request.url));
+  // The VIP List: Let people access the login page AND the login API
+  if (path === '/admin/login' || path.startsWith('/api/admin/auth')) {
+    return NextResponse.next();
   }
 
-  if (isLoginPage && session) {
-    return NextResponse.redirect(new URL("/admin/properties", request.url));
+  // Check for the secure session cookie
+  const session = request.cookies.get('admin_session');
+
+  // If no cookie and they are trying to load an admin page, send to login
+  if (!session && path.startsWith('/admin')) {
+    return NextResponse.redirect(new URL('/admin/login', request.url));
+  }
+  
+  // If no cookie and they are trying to save/edit a property, block it
+  if (!session && path.startsWith('/api/admin')) {
+    return new NextResponse('Unauthorized', { status: 401 });
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: ['/admin/:path*', '/api/admin/:path*'],
 };
