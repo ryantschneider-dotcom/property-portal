@@ -78,8 +78,14 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
                   <option value="sale-lease">For Sale / Lease</option>
                 </select>
               </Field>
+              <Field label="Lead Broker">
+                <input className={inputClassName()} value={formData.leadBroker} onChange={(e) => update("leadBroker", e.target.value)} />
+              </Field>
               <Field label="Website URL">
                 <input className={inputClassName()} value={formData.websiteUrl} onChange={(e) => update("websiteUrl", e.target.value)} />
+              </Field>
+              <Field label="Sale Title">
+                <input className={inputClassName()} value={formData.saleTitle} onChange={(e) => update("saleTitle", e.target.value)} />
               </Field>
             </div>
           </section>
@@ -111,6 +117,12 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
               <Field label="Longitude">
                 <input className={inputClassName()} value={formData.longitude} onChange={(e) => update("longitude", e.target.value)} />
               </Field>
+              <Field label="Neighborhood">
+                <input className={inputClassName()} value={formData.neighborhood} onChange={(e) => update("neighborhood", e.target.value)} />
+              </Field>
+              <Field label="Corridor / Submarket">
+                <input className={inputClassName()} value={formData.corridor} onChange={(e) => update("corridor", e.target.value)} />
+              </Field>
             </div>
           </section>
 
@@ -137,6 +149,21 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
               </Field>
             </div>
           </section>
+
+          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+            <h2 className="text-2xl font-semibold tracking-tight">Location intelligence</h2>
+            <div className="mt-6 space-y-5">
+              <Field label="Anchor Tenants (one per line)">
+                <textarea className={`${inputClassName()} min-h-28`} value={formData.anchorTenants} onChange={(e) => update("anchorTenants", e.target.value)} />
+              </Field>
+              <Field label="Nearby Restaurants (one per line)">
+                <textarea className={`${inputClassName()} min-h-28`} value={formData.nearbyRestaurants} onChange={(e) => update("nearbyRestaurants", e.target.value)} />
+              </Field>
+              <Field label="Nearby Banks (one per line)">
+                <textarea className={`${inputClassName()} min-h-28`} value={formData.nearbyBanks} onChange={(e) => update("nearbyBanks", e.target.value)} />
+              </Field>
+            </div>
+          </section>
         </div>
 
         <div className="space-y-8 xl:sticky xl:top-6 xl:self-start">
@@ -148,6 +175,22 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
               </Field>
               <Field label="Hidden Price Label">
                 <input className={inputClassName()} value={formData.hiddenPriceLabel} onChange={(e) => update("hiddenPriceLabel", e.target.value)} />
+              </Field>
+              <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+                <input type="checkbox" checked={formData.hideSalePrice} onChange={(e) => update("hideSalePrice", e.target.checked)} />
+                Hide Sale Price
+              </label>
+              <Field label="Listing Price Visibility">
+                <input className={inputClassName()} value={formData.listingPriceVisibility} onChange={(e) => update("listingPriceVisibility", e.target.value)} />
+              </Field>
+              <Field label="Asking Price / Lease Rate per SF">
+                <input className={inputClassName()} value={formData.askingPriceRate} onChange={(e) => update("askingPriceRate", e.target.value)} />
+              </Field>
+              <Field label="Available SF">
+                <input className={inputClassName()} value={formData.availableSf} onChange={(e) => update("availableSf", e.target.value)} />
+              </Field>
+              <Field label="Lease Type">
+                <input className={inputClassName()} value={formData.leaseType} onChange={(e) => update("leaseType", e.target.value)} />
               </Field>
               <Field label="Square Footage">
                 <input className={inputClassName()} value={formData.buildingSizeSf} onChange={(e) => update("buildingSizeSf", e.target.value)} />
@@ -163,6 +206,27 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
               </Field>
               <Field label="Parcel ID">
                 <input className={inputClassName()} value={formData.parcelId} onChange={(e) => update("parcelId", e.target.value)} />
+              </Field>
+              <Field label="Property Type ID">
+                <input className={inputClassName()} value={formData.propertyTypeId} onChange={(e) => update("propertyTypeId", e.target.value)} />
+              </Field>
+              <Field label="Property Subtype ID">
+                <input className={inputClassName()} value={formData.propertySubtypeId} onChange={(e) => update("propertySubtypeId", e.target.value)} />
+              </Field>
+              <Field label="Property Type Label">
+                <input className={inputClassName()} value={formData.propertyTypeLabel} onChange={(e) => update("propertyTypeLabel", e.target.value)} />
+              </Field>
+              <Field label="Parking">
+                <input className={inputClassName()} value={formData.parking} onChange={(e) => update("parking", e.target.value)} />
+              </Field>
+              <Field label="Exterior Construction Type">
+                <input className={inputClassName()} value={formData.exteriorConstructionType} onChange={(e) => update("exteriorConstructionType", e.target.value)} />
+              </Field>
+              <Field label="Property Class">
+                <input className={inputClassName()} value={formData.propertyClass} onChange={(e) => update("propertyClass", e.target.value)} />
+              </Field>
+              <Field label="Assessor Improvements (one per line)">
+                <textarea className={`${inputClassName()} min-h-28`} value={formData.assessorImprovements} onChange={(e) => update("assessorImprovements", e.target.value)} />
               </Field>
             </div>
           </section>
