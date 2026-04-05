@@ -3,6 +3,8 @@ import "server-only";
 import { db } from "@/lib/firestore";
 import type { PropertyCard, PropertyDetail, PropertyMapMarker, TransactionType } from "@/lib/types";
 
+const PROPERTIES_COLLECTION = "properties";
+
 function coalesce<T>(...values: Array<T | null | undefined>): T | null {
   for (const value of values) {
     if (value !== null && value !== undefined && value !== "") {
