@@ -3,11 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
-// 1. Bring in the Firebase tools directly
+// Direct Firebase connection ("Nuclear Option")
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore, collection, getDocs } from "firebase/firestore"; 
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 
-// 2. Set up the database connection right here in the file
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -20,13 +19,11 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
-// 3. The Dashboard Code
 export default function PropertiesDashboard() {
   const [properties, setProperties] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Fetch properties from Firestore
   useEffect(() => {
     async function fetchProperties() {
       try {
@@ -42,10 +39,10 @@ export default function PropertiesDashboard() {
         setLoading(false);
       }
     }
+
     fetchProperties();
   }, []);
 
-  // Search Filter Logic
   const filteredProperties = properties.filter((prop) => {
     const searchLower = searchQuery.toLowerCase();
     return (
@@ -57,13 +54,14 @@ export default function PropertiesDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Header & Search Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Manage Inventory</h1>
-          <p className="text-gray-500 mt-1">PIER Commercial internal listing control center.</p>
+          <p className="text-gray-500 mt-1">
+            PIER Commercial internal listing control center.
+          </p>
         </div>
-        
+
         <div className="w-full md:w-96 flex gap-2">
           <input
             type="text"
@@ -78,19 +76,24 @@ export default function PropertiesDashboard() {
         </div>
       </div>
 
-      {/* Loading State */}
       {loading ? (
-        <div className="text-center py-20 text-gray-500 font-medium">Loading properties...</div>
+        <div className="text-center py-20 text-gray-500 font-medium">
+          Loading properties...
+        </div>
       ) : (
-        /* The New Grid Layout */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProperties.map((property) => (
-            <div key={property.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
-              
-              {/* Thumbnail Image Placeholder */}
+            <div
+              key={property.id}
+              className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
+            >
               <div className="h-48 bg-gray-100 relative border-b border-gray-200">
                 {property.imageUrl ? (
-                  <img src={property.imageUrl} alt={property.title} className="w-full h-full object-cover" />
+                  <img
+                    src={property.imageUrl}
+                    alt={property.title}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="flex items-center justify-center w-full h-full text-gray-400 text-sm">
                     No Image
@@ -101,24 +104,34 @@ export default function PropertiesDashboard() {
                 </div>
               </div>
 
-              {/* Property Details */}
               <div className="p-4 flex-grow flex flex-col">
-                <h3 className="font-bold text-gray-900 line-clamp-2 min-h-[3rem]">{property.title || "Untitled Property"}</h3>
-                <p className="text-sm text-gray-500 mt-1 truncate">{property.address || "No address listed"}</p>
-                
+                <h3 className="font-bold text-gray-900 line-clamp-2 min-h-[3rem]">
+                  {property.title || "Untitled Property"}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1 truncate">
+                  {property.address || "No address listed"}
+                </p>
+
                 <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-2 text-sm">
                   <div>
-                    <span className="block text-gray-400 text-xs uppercase tracking-wider">Zoning</span>
-                    <span className="font-medium text-gray-900">{property.zoning || "—"}</span>
+                    <span className="block text-gray-400 text-xs uppercase tracking-wider">
+                      Zoning
+                    </span>
+                    <span className="font-medium text-gray-900">
+                      {property.zoning || "—"}
+                    </span>
                   </div>
                   <div>
-                    <span className="block text-gray-400 text-xs uppercase tracking-wider">Parcel</span>
-                    <span className="font-medium text-gray-900">{property.parcelId || "—"}</span>
+                    <span className="block text-gray-400 text-xs uppercase tracking-wider">
+                      Parcel
+                    </span>
+                    <span className="font-medium text-gray-900">
+                      {property.parcelId || "—"}
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Fixed, Readable Action Button */}
               <div className="p-4 bg-gray-50 border-t border-gray-100">
                 <Link href={`/admin/properties/${property.id}/edit`}>
                   <button className="w-full bg-gray-900 text-white font-medium py-2 rounded-lg hover:bg-gray-800 transition-colors">
@@ -126,11 +139,9 @@ export default function PropertiesDashboard() {
                   </button>
                 </Link>
               </div>
-
             </div>
           ))}
 
-          {/* Empty State if search finds nothing */}
           {filteredProperties.length === 0 && (
             <div className="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
               No properties found matching "{searchQuery}"
