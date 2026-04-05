@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, getDocs } from "firebase/firestore"; 
-import { db } from "@/lib/firebase"; 
+import { db } from "../../../lib/firestore";
 
 export default function PropertiesDashboard() {
   const [properties, setProperties] = useState<any[]>([]);
