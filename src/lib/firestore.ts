@@ -1,4 +1,3 @@
-import "server-only";
 
 import { config as loadDotenv } from "dotenv";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
