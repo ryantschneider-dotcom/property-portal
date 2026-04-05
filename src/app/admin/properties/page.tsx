@@ -170,7 +170,7 @@ export default function PropertiesDashboard() {
                 </div>
 
                 <div className="p-4 bg-gray-50 border-t border-gray-100">
-                  <Link href={`/admin/properties/${property.id}/edit`}>
+                  <Link href={`/admin/properties/${property.slug || property.id}/edit`}>
                     <button className="w-full bg-gray-900 text-white font-medium py-2 rounded-lg hover:bg-gray-800 transition-colors">
                       Edit Details
                     </button>

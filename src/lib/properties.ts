@@ -113,10 +113,17 @@ export async function listPropertyCards(transaction: "sale" | "lease" | "all" = 
 }
 
 export async function getPropertyBySlug(slug: string): Promise<PropertyDetail | null> {
-  const snapshot = await db.collection(PROPERTIES_COLLECTION).where("slug", "==", slug).limit(1).get();
-  if (snapshot.empty) return null;
+  let doc = null as FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot | null;
 
-  const doc = snapshot.docs[0];
+  const snapshot = await db.collection(PROPERTIES_COLLECTION).where("slug", "==", slug).limit(1).get();
+  if (!snapshot.empty) {
+    doc = snapshot.docs[0];
+  } else {
+    const directDoc = await db.collection(PROPERTIES_COLLECTION).doc(slug).get();
+    if (!directDoc.exists) return null;
+    doc = directDoc;
+  }
+
   const data = doc.data() as Record<string, unknown>;
 
   return {
