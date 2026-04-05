@@ -19,6 +19,41 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
+function displayValue(value: unknown, fallback = "—") {
+  if (value == null || value === "") return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => displayValue(item, ""))
+      .filter(Boolean)
+      .join(", ") || fallback;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    for (const key of ["name", "label", "value", "title", "displayName", "formatted"]) {
+      const candidate = record[key];
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate;
+      }
+    }
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
+
+function searchableValue(value: unknown) {
+  return displayValue(value, "").toLowerCase();
+}
+
 export default function PropertiesDashboard() {
   const [properties, setProperties] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -46,9 +81,9 @@ export default function PropertiesDashboard() {
   const filteredProperties = properties.filter((prop) => {
     const searchLower = searchQuery.toLowerCase();
     return (
-      prop.title?.toLowerCase().includes(searchLower) ||
-      prop.address?.toLowerCase().includes(searchLower) ||
-      prop.parcelId?.toLowerCase().includes(searchLower)
+      searchableValue(prop.title).includes(searchLower) ||
+      searchableValue(prop.address).includes(searchLower) ||
+      searchableValue(prop.parcelId).includes(searchLower)
     );
   });
 
@@ -82,65 +117,62 @@ export default function PropertiesDashboard() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProperties.map((property) => (
-            <div
-              key={property.id}
-              className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
-            >
-              <div className="h-48 bg-gray-100 relative border-b border-gray-200">
-                {property.imageUrl ? (
-                  <img
-                    src={property.imageUrl}
-                    alt={property.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center w-full h-full text-gray-400 text-sm">
-                    No Image
-                  </div>
-                )}
-                <div className="absolute top-2 right-2 bg-black/80 text-white text-xs font-bold px-2 py-1 rounded">
-                  {property.transactionType || "N/A"}
-                </div>
-              </div>
+          {filteredProperties.map((property) => {
+            const imageUrl = typeof property.imageUrl === "string" ? property.imageUrl : "";
+            const title = displayValue(property.title, "Untitled Property");
+            const address = displayValue(property.address, "No address listed");
+            const transactionType = displayValue(property.transactionType, "N/A");
+            const zoning = displayValue(property.zoning, "—");
+            const parcelId = displayValue(property.parcelId, "—");
 
-              <div className="p-4 flex-grow flex flex-col">
-                <h3 className="font-bold text-gray-900 line-clamp-2 min-h-[3rem]">
-                  {property.title || "Untitled Property"}
-                </h3>
-                <p className="text-sm text-gray-500 mt-1 truncate">
-                  {property.address || "No address listed"}
-                </p>
-
-                <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="block text-gray-400 text-xs uppercase tracking-wider">
-                      Zoning
-                    </span>
-                    <span className="font-medium text-gray-900">
-                      {property.zoning || "—"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-gray-400 text-xs uppercase tracking-wider">
-                      Parcel
-                    </span>
-                    <span className="font-medium text-gray-900">
-                      {property.parcelId || "—"}
-                    </span>
+            return (
+              <div
+                key={property.id}
+                className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
+              >
+                <div className="h-48 bg-gray-100 relative border-b border-gray-200">
+                  {imageUrl ? (
+                    <img src={imageUrl} alt={title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex items-center justify-center w-full h-full text-gray-400 text-sm">
+                      No Image
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 bg-black/80 text-white text-xs font-bold px-2 py-1 rounded">
+                    {transactionType}
                   </div>
                 </div>
-              </div>
 
-              <div className="p-4 bg-gray-50 border-t border-gray-100">
-                <Link href={`/admin/properties/${property.id}/edit`}>
-                  <button className="w-full bg-gray-900 text-white font-medium py-2 rounded-lg hover:bg-gray-800 transition-colors">
-                    Edit Details
-                  </button>
-                </Link>
+                <div className="p-4 flex-grow flex flex-col">
+                  <h3 className="font-bold text-gray-900 line-clamp-2 min-h-[3rem]">{title}</h3>
+                  <p className="text-sm text-gray-500 mt-1 truncate">{address}</p>
+
+                  <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="block text-gray-400 text-xs uppercase tracking-wider">
+                        Zoning
+                      </span>
+                      <span className="font-medium text-gray-900">{zoning}</span>
+                    </div>
+                    <div>
+                      <span className="block text-gray-400 text-xs uppercase tracking-wider">
+                        Parcel
+                      </span>
+                      <span className="font-medium text-gray-900">{parcelId}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 border-t border-gray-100">
+                  <Link href={`/admin/properties/${property.id}/edit`}>
+                    <button className="w-full bg-gray-900 text-white font-medium py-2 rounded-lg hover:bg-gray-800 transition-colors">
+                      Edit Details
+                    </button>
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {filteredProperties.length === 0 && (
             <div className="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
