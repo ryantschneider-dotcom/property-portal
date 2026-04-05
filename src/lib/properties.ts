@@ -1,6 +1,6 @@
 import "server-only";
 
-import { db } from "../../../../firebase";
+import { db } from "@/../firebase";
 import type { PropertyCard, PropertyDetail, PropertyMapMarker, TransactionType } from "@/lib/types";
 
 function coalesce<T>(...values: Array<T | null | undefined>): T | null {
