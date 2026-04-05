@@ -19,39 +19,38 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const db = getFirestore(app);
 
-function displayValue(value: unknown, fallback = "—") {
+function asText(value: unknown, fallback = "—"): string {
   if (value == null || value === "") return fallback;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) {
-    return value
-      .map((item) => displayValue(item, ""))
+    const joined = value
+      .map((item) => asText(item, ""))
       .filter(Boolean)
-      .join(", ") || fallback;
+      .join(", ");
+    return joined || fallback;
   }
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;
-
-    for (const key of ["name", "label", "value", "title", "displayName", "formatted"]) {
+    for (const key of [
+      "full",
+      "street",
+      "name",
+      "label",
+      "value",
+      "title",
+      "displayName",
+      "formatted",
+      "city",
+    ]) {
       const candidate = record[key];
       if (typeof candidate === "string" && candidate.trim()) {
         return candidate;
       }
     }
-
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return fallback;
-    }
+    return fallback;
   }
-
   return fallback;
-}
-
-function searchableValue(value: unknown) {
-  return displayValue(value, "").toLowerCase();
 }
 
 export default function PropertiesDashboard() {
@@ -80,10 +79,14 @@ export default function PropertiesDashboard() {
 
   const filteredProperties = properties.filter((prop) => {
     const searchLower = searchQuery.toLowerCase();
+    const title = asText(prop.title, "").toLowerCase();
+    const address = asText(prop.address, "").toLowerCase();
+    const parcelId = asText(prop.parcelId ?? prop.property?.parcelId, "").toLowerCase();
+
     return (
-      searchableValue(prop.title).includes(searchLower) ||
-      searchableValue(prop.address).includes(searchLower) ||
-      searchableValue(prop.parcelId).includes(searchLower)
+      title.includes(searchLower) ||
+      address.includes(searchLower) ||
+      parcelId.includes(searchLower)
     );
   });
 
@@ -119,11 +122,14 @@ export default function PropertiesDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredProperties.map((property) => {
             const imageUrl = typeof property.imageUrl === "string" ? property.imageUrl : "";
-            const title = displayValue(property.title, "Untitled Property");
-            const address = displayValue(property.address, "No address listed");
-            const transactionType = displayValue(property.transactionType, "N/A");
-            const zoning = displayValue(property.zoning, "—");
-            const parcelId = displayValue(property.parcelId, "—");
+            const title = asText(property.title, "Untitled Property");
+            const address = asText(property.address, "No address listed");
+            const transactionType = asText(
+              property.transactionType ?? property.visibility?.transactionLabel,
+              "N/A"
+            );
+            const zoning = asText(property.zoning ?? property.property?.zoning, "—");
+            const parcelId = asText(property.parcelId ?? property.property?.parcelId, "—");
 
             return (
               <div
