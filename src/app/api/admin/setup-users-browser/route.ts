@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/firestore";
-import { getPortalUserByEmail, hashPassword, USERS_COLLECTION } from "@/lib/users";
+import { hashPassword, USERS_COLLECTION } from "@/lib/users";
 
 const DEFAULT_USERS = [
   {
@@ -45,13 +45,16 @@ export async function POST() {
   try {
     const cookieStore = await cookies();
     const session = parseSession(cookieStore.get("admin_session")?.value);
-    if (!session || session.role !== "admin") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
 
-    const existingAdmin = await getPortalUserByEmail(session.email);
-    if (session.email !== "ryantschneider-dotcom@gmail.com" && existingAdmin?.role !== "admin") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    const legacyAdminEmail = process.env.ADMIN_LOGIN_EMAIL?.trim().toLowerCase();
+    const normalizedSessionEmail = session?.email?.trim().toLowerCase();
+    const hasLegacyAdminSession = Boolean(
+      legacyAdminEmail && normalizedSessionEmail && normalizedSessionEmail === legacyAdminEmail,
+    );
+    const hasPortalAdminSession = Boolean(session && session.role === "admin");
+
+    if (!session || (!hasPortalAdminSession && !hasLegacyAdminSession)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const created = [] as Array<{ email: string; role: string }>;
