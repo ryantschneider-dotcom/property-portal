@@ -64,7 +64,7 @@ export default async function PropertiesDashboard() {
             <div className="p-4 bg-gray-50 border-t border-gray-100">
               <Link
                 href={`/admin/properties/${property.slug || property.id}/edit`}
-                className="block w-full bg-gray-900 text-white font-medium py-2 rounded-lg hover:bg-gray-800 transition-colors text-center"
+                className="block w-full rounded-lg border border-gray-900 bg-gray-900 px-4 py-2 text-center text-sm font-semibold tracking-wide !text-white shadow-sm transition-colors hover:bg-black hover:!text-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
               >
                 Edit Details
               </Link>
