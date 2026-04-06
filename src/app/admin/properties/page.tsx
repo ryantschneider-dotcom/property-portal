@@ -34,8 +34,16 @@ export default async function PropertiesDashboard() {
             key={property.id}
             className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
           >
-            <div className="h-48 bg-gray-100 relative border-b border-gray-200 flex items-center justify-center">
-              <div className="text-gray-400 text-sm">No Image</div>
+            <div className="h-48 bg-gray-100 relative border-b border-gray-200 flex items-center justify-center overflow-hidden">
+              {property.imageUrl ? (
+                <img
+                  src={property.imageUrl}
+                  alt={displayValue(property.title, "Property image")}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="text-gray-400 text-sm">No Image</div>
+              )}
               <div className="absolute top-2 right-2 bg-black/80 text-white text-xs font-bold px-2 py-1 rounded">
                 {displayValue(property.transactionLabel, "N/A")}
               </div>

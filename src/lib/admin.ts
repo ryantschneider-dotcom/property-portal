@@ -14,6 +14,7 @@ export type AdminPropertyListItem = {
   transactionLabel: string | null;
   parcelId: string | null;
   zoning: string | null;
+  imageUrl: string | null;
   updatedAt: string | null;
 };
 
@@ -131,6 +132,13 @@ export async function listAdminProperties(): Promise<AdminPropertyListItem[]> {
       const visibility = (data.visibility as Record<string, unknown> | undefined) ?? {};
       const property = (data.property as Record<string, unknown> | undefined) ?? {};
       const meta = (data.meta as Record<string, unknown> | undefined) ?? {};
+      const media = (data.media as Record<string, unknown> | undefined) ?? {};
+      const images = (media.images as Array<Record<string, unknown>> | undefined) ?? [];
+      const primaryImage = images.find((image) => image?.isPrimary === true) ?? images[0] ?? {};
+      const primaryUrls = (primaryImage.urls as Record<string, unknown> | undefined) ?? {};
+      const imageUrl = cleanDisplayText(
+        media.heroImageUrl ?? primaryUrls.large ?? primaryUrls.medium ?? primaryUrls.thumb,
+      );
       return {
         id: doc.id,
         slug: asString(data.slug),
@@ -139,6 +147,7 @@ export async function listAdminProperties(): Promise<AdminPropertyListItem[]> {
         transactionLabel: asString(visibility.transactionLabel) || null,
         parcelId: asString(property.parcelId) || null,
         zoning: asString(property.zoning) || null,
+        imageUrl: imageUrl || null,
         updatedAt: asString(meta.updatedAt) || null,
       } satisfies AdminPropertyListItem;
     })
