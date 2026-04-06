@@ -12,6 +12,15 @@ type AdminPropertyFormProps = {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+function normalizeSlug(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-2">
@@ -77,7 +86,15 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
           <Section title="Core listing information" description="Main listing identity, routing, and broker-facing fields.">
             <div className="grid gap-5 md:grid-cols-2">
               <Field label="Slug">
-                <input className={inputClassName()} value={formData.slug} onChange={(e) => update("slug", e.target.value)} required />
+                <input
+                  className={inputClassName()}
+                  value={formData.slug}
+                  onChange={(e) => update("slug", normalizeSlug(e.target.value))}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  required
+                />
               </Field>
               <Field label="Title">
                 <input className={inputClassName()} value={formData.title} onChange={(e) => update("title", e.target.value)} required />
