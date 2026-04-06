@@ -9,6 +9,18 @@ import { hashPassword, USERS_COLLECTION } from "@/lib/users";
 const OLD_EMAIL = "ryantschneider-dotcom@gmail.com";
 const NEW_EMAIL = "ryan@piercommercial.com";
 
+export async function GET() {
+  return NextResponse.json(
+    {
+      ok: false,
+      message: "Use POST from inside the authenticated admin app to run this migration.",
+      oldEmail: OLD_EMAIL,
+      newEmail: NEW_EMAIL,
+    },
+    { status: 200 },
+  );
+}
+
 export async function POST() {
   try {
     const now = new Date().toISOString();

@@ -11,6 +11,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <Link href="/admin/properties" className="block rounded-xl bg-white/10 px-4 py-3 font-medium text-white transition hover:bg-white/15">
               Properties
             </Link>
+            <Link href="/admin/setup-users" className="block rounded-xl px-4 py-3 text-zinc-300 transition hover:bg-white/5 hover:text-white">
+              Setup Users
+            </Link>
+            <Link href="/admin/migrate-ryan-email" className="block rounded-xl px-4 py-3 text-zinc-300 transition hover:bg-white/5 hover:text-white">
+              Migrate Ryan Login
+            </Link>
             <Link href="/" className="block rounded-xl px-4 py-3 text-zinc-300 transition hover:bg-white/5 hover:text-white">
               Public Site
             </Link>
