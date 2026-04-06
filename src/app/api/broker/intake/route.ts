@@ -1,10 +1,12 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import { randomUUID } from "crypto";
+
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
+import { db, PROPERTIES_COLLECTION, storage } from "@/lib/firestore";
 
 type IntakePayload = {
   slug: string;
@@ -60,6 +62,43 @@ function visibilityFromTransaction(transactionType: IntakePayload["transactionTy
   return { transactionLabel: "For Sale/Lease", saleActive: true, leaseActive: true };
 }
 
+async function uploadPhoto(slug: string, file: File, index: number) {
+  const bucket = storage.bucket();
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const storagePath = `property-intake/${slug}/${Date.now()}-${index}-${safeName}`;
+  const bucketFile = bucket.file(storagePath);
+
+  await bucketFile.save(bytes, {
+    metadata: {
+      contentType: file.type || "application/octet-stream",
+      cacheControl: "public, max-age=31536000",
+    },
+    resumable: false,
+  });
+
+  await bucketFile.makePublic();
+  const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+  return {
+    id: randomUUID(),
+    title: file.name,
+    caption: null,
+    isPrimary: index === 0,
+    sortOrder: index,
+    uploadedByUserId: null,
+    uploadedAt: new Date().toISOString(),
+    urls: {
+      original: publicUrl,
+      full: publicUrl,
+      xlarge: publicUrl,
+      large: publicUrl,
+      medium: publicUrl,
+      thumb: publicUrl,
+    },
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -70,31 +109,13 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const payload = JSON.parse(String(formData.get("payload") ?? "{}")) as IntakePayload;
-    const files = formData.getAll("photos").filter((entry): entry is File => entry instanceof File);
+    const files = formData.getAll("photos").filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
     if (!payload.slug || !payload.title || !payload.addressStreet || !payload.city || !payload.state || !payload.zip) {
       return NextResponse.json({ error: "Missing required intake fields" }, { status: 400 });
     }
 
-    const mediaImages = await Promise.all(
-      files.map(async (file, index) => ({
-        id: `${Date.now()}-${index}`,
-        title: file.name,
-        caption: null,
-        isPrimary: index === 0,
-        sortOrder: index,
-        uploadedByUserId: session.email,
-        uploadedAt: new Date().toISOString(),
-        urls: {
-          original: `intake-upload://${file.name}`,
-          full: `intake-upload://${file.name}`,
-          xlarge: `intake-upload://${file.name}`,
-          large: `intake-upload://${file.name}`,
-          medium: `intake-upload://${file.name}`,
-          thumb: `intake-upload://${file.name}`,
-        },
-      })),
-    );
+    const mediaImages = await Promise.all(files.map((file, index) => uploadPhoto(payload.slug, file, index)));
 
     const docId = payload.slug;
     const visibility = visibilityFromTransaction(payload.transactionType);
@@ -105,7 +126,7 @@ export async function POST(request: Request) {
         slug: payload.slug,
         title: payload.title,
         status: "draft",
-        workflowStatus: files.length ? "review" : "needs_input",
+        workflowStatus: mediaImages.length ? "review" : "needs_input",
         ownerUserId: session.email,
         ownerEmail: session.email,
         leadBroker: session.name || session.email,
@@ -178,7 +199,7 @@ export async function POST(request: Request) {
           },
           uploadedPhotoNames: files.map((file) => file.name),
           createdVia: "broker-intake-v1",
-          intakeStatus: files.length ? "submitted_with_photos" : "submitted_no_photos",
+          intakeStatus: mediaImages.length ? "submitted_with_photos" : "submitted_no_photos",
         },
       },
       { merge: true },
