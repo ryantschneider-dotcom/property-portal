@@ -1,25 +1,27 @@
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-
-function initFirebaseAdmin() {
-  if (getApps().length) return getApps()[0]!;
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  return initializeApp({ credential: cert(JSON.parse(raw!)) });
-}
 
 export async function POST(request: Request) {
   try {
-    const { idToken } = await request.json();
-    const app = initFirebaseAdmin();
-    
-    const expiresIn = 60 * 60 * 24 * 5 * 1000; 
-    const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn });
+    const { email, password } = await request.json();
+
+    const adminEmail = process.env.ADMIN_LOGIN_EMAIL;
+    const adminPassword = process.env.ADMIN_LOGIN_PASSWORD;
+
+    if (!adminEmail || !adminPassword) {
+      return NextResponse.json({ error: "Admin login is not configured" }, { status: 500 });
+    }
+
+    if (email !== adminEmail || password !== adminPassword) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const cookieStore = await cookies();
-    cookieStore.set("admin_session", sessionCookie, {
-      maxAge: expiresIn,
+    cookieStore.set("admin_session", "local-admin-session", {
+      maxAge: 60 * 60 * 24 * 5,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       path: "/",

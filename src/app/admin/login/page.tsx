@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase-client";
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -18,26 +16,24 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const idToken = await userCredential.user.getIdToken();
-
       const response = await fetch("/api/admin/auth/session", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (response.ok) {
         router.push("/admin/properties");
-        router.refresh(); 
+        router.refresh();
       } else {
-        setError("Failed to create secure session. Please try again.");
+        const payload = await response.json().catch(() => null);
+        setError(payload?.error ?? "Invalid login.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Login failed:", err);
-      setError("Invalid email or password.");
+      setError("Unable to sign in right now.");
     } finally {
       setLoading(false);
     }

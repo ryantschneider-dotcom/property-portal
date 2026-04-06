@@ -25,6 +25,18 @@ function inputClassName() {
   return "w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-900";
 }
 
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
+        {description ? <p className="mt-2 text-sm text-zinc-500">{description}</p> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<AdminPropertyFormData>(initialData);
@@ -62,9 +74,8 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
     <form onSubmit={handleSubmit} className="space-y-8">
       <div className="grid gap-8 xl:grid-cols-[1.4fr_0.8fr]">
         <div className="space-y-8">
-          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-semibold tracking-tight">Core listing information</h2>
-            <div className="mt-6 grid gap-5 md:grid-cols-2">
+          <Section title="Core listing information" description="Main listing identity, routing, and broker-facing fields.">
+            <div className="grid gap-5 md:grid-cols-2">
               <Field label="Slug">
                 <input className={inputClassName()} value={formData.slug} onChange={(e) => update("slug", e.target.value)} required />
               </Field>
@@ -88,11 +99,10 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
                 <input className={inputClassName()} value={formData.saleTitle} onChange={(e) => update("saleTitle", e.target.value)} />
               </Field>
             </div>
-          </section>
+          </Section>
 
-          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-semibold tracking-tight">Address & coordinates</h2>
-            <div className="mt-6 grid gap-5 md:grid-cols-2">
+          <Section title="Address & coordinates" description="Canonical address, county, and map positioning.">
+            <div className="grid gap-5 md:grid-cols-2">
               <Field label="Street Address">
                 <input className={inputClassName()} value={formData.addressStreet} onChange={(e) => update("addressStreet", e.target.value)} />
               </Field>
@@ -124,11 +134,10 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
                 <input className={inputClassName()} value={formData.corridor} onChange={(e) => update("corridor", e.target.value)} />
               </Field>
             </div>
-          </section>
+          </Section>
 
-          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-semibold tracking-tight">Descriptions & bullets</h2>
-            <div className="mt-6 space-y-5">
+          <Section title="Descriptions & bullets" description="Primary copy blocks used for listing output and Buildout-ready content.">
+            <div className="space-y-5">
               <Field label="Sale Description">
                 <textarea className={`${inputClassName()} min-h-36`} value={formData.saleDescription} onChange={(e) => update("saleDescription", e.target.value)} />
               </Field>
@@ -148,11 +157,10 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.leaseBullets} onChange={(e) => update("leaseBullets", e.target.value)} />
               </Field>
             </div>
-          </section>
+          </Section>
 
-          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-semibold tracking-tight">Location intelligence</h2>
-            <div className="mt-6 space-y-5">
+          <Section title="Location intelligence" description="Nearby anchors, restaurants, banks, and corridor context from enrichment.">
+            <div className="space-y-5">
               <Field label="Anchor Tenants (one per line)">
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.anchorTenants} onChange={(e) => update("anchorTenants", e.target.value)} />
               </Field>
@@ -163,13 +171,12 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.nearbyBanks} onChange={(e) => update("nearbyBanks", e.target.value)} />
               </Field>
             </div>
-          </section>
+          </Section>
         </div>
 
         <div className="space-y-8 xl:sticky xl:top-6 xl:self-start">
-          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-            <h2 className="text-2xl font-semibold tracking-tight">Pricing & facts</h2>
-            <div className="mt-6 space-y-5">
+          <Section title="Pricing & facts" description="Operator-facing price controls, property facts, and Buildout classification IDs.">
+            <div className="space-y-5">
               <Field label="Sale Price ($)">
                 <input className={inputClassName()} value={formData.salePriceDollars} onChange={(e) => update("salePriceDollars", e.target.value)} />
               </Field>
@@ -229,7 +236,20 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.assessorImprovements} onChange={(e) => update("assessorImprovements", e.target.value)} />
               </Field>
             </div>
-          </section>
+          </Section>
+
+          <details className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+            <summary className="cursor-pointer list-none text-2xl font-semibold tracking-tight">Source metadata & QA notes</summary>
+            <p className="mt-3 text-sm text-zinc-500">
+              Current form is focused on high-value Buildout/admin fields. Raw intake and research provenance remain preserved in Firestore/meta and can be expanded later without bloating the main editor.
+            </p>
+            <div className="mt-6 grid gap-5 md:grid-cols-2 text-sm text-zinc-600">
+              <div><span className="font-medium text-zinc-900">Slug</span><div className="mt-1 break-all">{formData.slug || "—"}</div></div>
+              <div><span className="font-medium text-zinc-900">Lead Broker</span><div className="mt-1">{formData.leadBroker || "—"}</div></div>
+              <div><span className="font-medium text-zinc-900">Property Type ID</span><div className="mt-1">{formData.propertyTypeId || "—"}</div></div>
+              <div><span className="font-medium text-zinc-900">Property Subtype ID</span><div className="mt-1">{formData.propertySubtypeId || "—"}</div></div>
+            </div>
+          </details>
 
           <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
             <p className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">Save status</p>

@@ -73,6 +73,23 @@ function asString(value: unknown): string {
   return value == null ? "" : String(value);
 }
 
+function cleanDisplayText(value: unknown): string {
+  const text = asString(value).trim();
+  if (!text) return "";
+  if (text === "0" || text === "0.0" || text === "0.00") return "";
+  if (["n/a", "na", "null", "undefined"].includes(text.toLowerCase())) return "";
+  return text;
+}
+
+function formatNumberString(value: unknown, decimals?: number): string {
+  const text = cleanDisplayText(value);
+  if (!text) return "";
+  const num = Number(text);
+  if (!Number.isFinite(num)) return text;
+  if (decimals == null) return String(num);
+  return num.toFixed(decimals).replace(/\.0+$|(?<=\.[0-9]*?)0+$/g, "").replace(/\.$/, "");
+}
+
 function splitLines(values: string): string[] {
   return values
     .split(/\n+/)
@@ -226,32 +243,32 @@ export async function getAdminPropertyFormData(slug: string): Promise<AdminPrope
     nearbyRestaurants: asString((places.restaurants ?? []).join("\n")),
     nearbyBanks: asString((places.banks ?? []).join("\n")),
 
-    saleTitle: asString(rawContent.saleTitle || rawProperty.sale_title || meta.copy?.sale_title),
-    salePriceDollars: asString(property.pricing.salePriceDollars || intake.listing_price_amount || intake["Listing Price Amount (Leave blank if undisclosed)"]),
-    hiddenPriceLabel: property.pricing.hiddenPriceLabel ?? asString(rawProperty.hidden_price_label),
+    saleTitle: cleanDisplayText(rawContent.saleTitle || rawProperty.sale_title || meta.copy?.sale_title),
+    salePriceDollars: formatNumberString(property.pricing.salePriceDollars || intake.listing_price_amount || intake["Listing Price Amount (Leave blank if undisclosed)"]),
+    hiddenPriceLabel: cleanDisplayText(property.pricing.hiddenPriceLabel ?? rawProperty.hidden_price_label),
     hideSalePrice: property.pricing.hideSalePrice === true || rawProperty.hide_sale_price === true,
-    listingPriceVisibility: asString(intake.listing_price_visibility || intake["Listing Price Visibility"]),
-    askingPriceRate: asString(intake.asking_price_rate || intake["Asking Price/Lease Rate/per sf"]),
-    availableSf: asString(intake.available_sf || intake["Available Sq. Ft."]),
-    leaseType: asString(intake.lease_type || intake["Lease Type"]),
+    listingPriceVisibility: cleanDisplayText(intake.listing_price_visibility || intake["Listing Price Visibility"]),
+    askingPriceRate: formatNumberString(intake.asking_price_rate || intake["Asking Price/Lease Rate/per sf"]),
+    availableSf: formatNumberString(intake.available_sf || intake["Available Sq. Ft."]),
+    leaseType: cleanDisplayText(intake.lease_type || intake["Lease Type"]),
 
-    propertyTypeId: asString(rawProperty.property_type_id),
-    propertySubtypeId: asString(rawProperty.property_subtype_id || meta.copy?.property_subtype_id),
-    propertyTypeLabel: asString(intake.property_type || intake["Property Type"]),
-    buildingSizeSf: asString(property.property.buildingSizeSf || rawProperty.building_size_sf || publicRecords.building_size_sf),
-    lotSizeAcres: asString(property.property.lotSizeAcres || rawProperty.lot_size_acres || publicRecords.lot_size_acres),
-    yearBuilt: asString(property.property.yearBuilt || rawProperty.year_built || publicRecords.year_built),
-    zoning: property.property.zoning ?? asString(rawProperty.zoning || publicRecords.zoning),
-    parcelId: property.property.parcelId ?? asString(intake.parcel_id || intake.tax_id || intake["Tax ID #/Map ID #"]),
-    parking: asString(publicRecords.parking),
-    exteriorConstructionType: asString(publicRecords.exterior_construction_type),
-    propertyClass: asString(publicRecords.property_class),
-    assessorImprovements: asString((publicRecords.assessor_improvements ?? []).join("\n")),
+    propertyTypeId: cleanDisplayText(rawProperty.property_type_id),
+    propertySubtypeId: cleanDisplayText(rawProperty.property_subtype_id || meta.copy?.property_subtype_id),
+    propertyTypeLabel: cleanDisplayText(intake.property_type || intake["Property Type"]),
+    buildingSizeSf: formatNumberString(property.property.buildingSizeSf || rawProperty.building_size_sf || publicRecords.building_size_sf),
+    lotSizeAcres: formatNumberString(property.property.lotSizeAcres || rawProperty.lot_size_acres || publicRecords.lot_size_acres, 4),
+    yearBuilt: formatNumberString(property.property.yearBuilt || rawProperty.year_built || publicRecords.year_built),
+    zoning: cleanDisplayText(property.property.zoning ?? rawProperty.zoning ?? publicRecords.zoning),
+    parcelId: cleanDisplayText(property.property.parcelId ?? intake.parcel_id ?? intake.tax_id ?? intake["Tax ID #/Map ID #"]),
+    parking: cleanDisplayText(publicRecords.parking),
+    exteriorConstructionType: cleanDisplayText(publicRecords.exterior_construction_type),
+    propertyClass: cleanDisplayText(publicRecords.property_class),
+    assessorImprovements: cleanDisplayText((publicRecords.assessor_improvements ?? []).join("\n")),
 
-    saleDescription: property.content.saleDescription ?? asString(rawProperty.sale_description || meta.copy?.sale_description),
-    leaseDescription: property.content.leaseDescription ?? "",
-    locationDescription: property.content.locationDescription ?? asString(rawProperty.location_description || meta.copy?.location_description),
-    exteriorDescription: property.content.exteriorDescription ?? asString(rawProperty.exterior_description || meta.copy?.exterior_description),
+    saleDescription: cleanDisplayText(property.content.saleDescription ?? rawProperty.sale_description ?? meta.copy?.sale_description),
+    leaseDescription: cleanDisplayText(property.content.leaseDescription ?? ""),
+    locationDescription: cleanDisplayText(property.content.locationDescription ?? rawProperty.location_description ?? meta.copy?.location_description),
+    exteriorDescription: cleanDisplayText(property.content.exteriorDescription ?? rawProperty.exterior_description ?? meta.copy?.exterior_description),
     saleBullets: (property.content.saleBullets ?? rawProperty.sale_bullets ?? meta.copy?.sale_bullets ?? []).join("\n"),
     leaseBullets: (property.content.leaseBullets ?? []).join("\n"),
   };
