@@ -4,23 +4,23 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { verifyPortalUser } from "@/lib/users";
+
+function encodeSession(value: { email: string; role: string; name: string }) {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+}
+
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
+    const user = await verifyPortalUser(email, password);
 
-    const adminEmail = process.env.ADMIN_LOGIN_EMAIL;
-    const adminPassword = process.env.ADMIN_LOGIN_PASSWORD;
-
-    if (!adminEmail || !adminPassword) {
-      return NextResponse.json({ error: "Admin login is not configured" }, { status: 500 });
-    }
-
-    if (email !== adminEmail || password !== adminPassword) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const cookieStore = await cookies();
-    cookieStore.set("admin_session", "local-admin-session", {
+    cookieStore.set("admin_session", encodeSession({ email: user.email, role: user.role, name: user.name }), {
       maxAge: 60 * 60 * 24 * 5,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       sameSite: "lax",
     });
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({ success: true, role: user.role, email: user.email, name: user.name }, { status: 200 });
   } catch (error) {
     console.error("Session creation error:", error);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
