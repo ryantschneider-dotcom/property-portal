@@ -8,7 +8,7 @@ import { hashPassword, USERS_COLLECTION } from "@/lib/users";
 
 const DEFAULT_USERS = [
   {
-    email: "ryantschneider-dotcom@gmail.com",
+    email: "ryan@piercommercial.com",
     name: "Ryan T. Schneider",
     role: "admin",
     passwordEnv: "SETUP_ADMIN_PASSWORD",
