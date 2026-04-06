@@ -1,7 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/firestore";
@@ -28,35 +27,8 @@ const DEFAULT_USERS = [
   },
 ] as const;
 
-function parseSession(value: string | undefined) {
-  if (!value) return null;
-  try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
-      email: string;
-      role: string;
-      name: string;
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function POST() {
   try {
-    const cookieStore = await cookies();
-    const session = parseSession(cookieStore.get("admin_session")?.value);
-
-    const legacyAdminEmail = process.env.ADMIN_LOGIN_EMAIL?.trim().toLowerCase();
-    const normalizedSessionEmail = session?.email?.trim().toLowerCase();
-    const hasLegacyAdminSession = Boolean(
-      legacyAdminEmail && normalizedSessionEmail && normalizedSessionEmail === legacyAdminEmail,
-    );
-    const hasPortalAdminSession = Boolean(session && session.role === "admin");
-
-    if (!session || (!hasPortalAdminSession && !hasLegacyAdminSession)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const created = [] as Array<{ email: string; role: string }>;
     const skipped = [] as Array<{ email: string; reason: string }>;
     const now = new Date().toISOString();
