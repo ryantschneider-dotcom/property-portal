@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { randomUUID } from "crypto";
 
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -204,6 +205,9 @@ export async function POST(request: Request) {
       },
       { merge: true },
     );
+
+    revalidatePath("/admin/properties");
+    revalidatePath(`/admin/properties/${payload.slug}/edit`);
 
     return NextResponse.json({ ok: true, slug: payload.slug, id: docId });
   } catch (error) {
