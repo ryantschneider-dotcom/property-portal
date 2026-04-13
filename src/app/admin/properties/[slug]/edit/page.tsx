@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AdminPropertyForm } from "@/components/admin-property-form";
 import { getAdminPropertyFormData } from "@/lib/admin";
+import { getPropertyBySlug } from "@/lib/properties";
 
 export default async function EditAdminPropertyPage({
   params,
@@ -9,9 +10,9 @@ export default async function EditAdminPropertyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const property = await getAdminPropertyFormData(slug);
+  const [property, propertyDetail] = await Promise.all([getAdminPropertyFormData(slug), getPropertyBySlug(slug)]);
 
-  if (!property) {
+  if (!property || !propertyDetail) {
     notFound();
   }
 
@@ -25,7 +26,7 @@ export default async function EditAdminPropertyPage({
         </p>
       </div>
 
-      <AdminPropertyForm initialData={property} mode="edit" />
+      <AdminPropertyForm initialData={property} mode="edit" media={propertyDetail.media} documentId={propertyDetail.id} />
     </main>
   );
 }

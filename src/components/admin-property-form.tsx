@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { AdminPropertyFormData } from "@/lib/admin";
+import type { PropertyDetail } from "@/lib/types";
 
 type AdminPropertyFormProps = {
   initialData: AdminPropertyFormData;
   mode: "edit" | "new";
+  media?: PropertyDetail["media"];
+  documentId?: string;
 };
+
+type MediaImage = PropertyDetail["media"]["images"][number];
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -46,14 +52,67 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
-export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps) {
+export function AdminPropertyForm({ initialData, mode, media, documentId }: AdminPropertyFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<AdminPropertyFormData>(initialData);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [mediaImages, setMediaImages] = useState<MediaImage[]>(media?.images ?? []);
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(media?.heroImageUrl ?? null);
+  const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+
+  const currentHeroPreview = useMemo(() => {
+    return (
+      heroImageUrl ??
+      mediaImages.find((image) => image.isPrimary)?.urls?.large ??
+      mediaImages.find((image) => image.urls.large)?.urls?.large ??
+      mediaImages[0]?.urls?.large ??
+      mediaImages[0]?.urls?.original ??
+      null
+    );
+  }, [heroImageUrl, mediaImages]);
 
   function update<K extends keyof AdminPropertyFormData>(key: K, value: AdminPropertyFormData[K]) {
     setFormData((current) => ({ ...current, [key]: value }));
+  }
+
+  async function handlePhotoUpload() {
+    if (!pendingPhotos.length || !documentId) return;
+
+    setUploadState("uploading");
+    setUploadMessage(null);
+
+    try {
+      const body = new FormData();
+      body.set("slug", formData.slug);
+      body.set("documentId", documentId);
+      pendingPhotos.forEach((file) => body.append("photos", file));
+
+      const response = await fetch("/api/admin/properties/media", {
+        method: "POST",
+        body,
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        setUploadState("error");
+        setUploadMessage(payload.error ?? "Unable to upload photos");
+        return;
+      }
+
+      setMediaImages(payload.images ?? []);
+      setHeroImageUrl(payload.heroImageUrl ?? null);
+      setPendingPhotos([]);
+      setUploadState("done");
+      setUploadMessage(`Uploaded ${payload.addedCount ?? pendingPhotos.length} photo(s).`);
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setUploadState("error");
+      setUploadMessage("Unable to upload photos");
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -187,6 +246,89 @@ export function AdminPropertyForm({ initialData, mode }: AdminPropertyFormProps)
               <Field label="Nearby Banks (one per line)">
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.nearbyBanks} onChange={(e) => update("nearbyBanks", e.target.value)} />
               </Field>
+            </div>
+          </Section>
+
+          <Section
+            title="Photos & media"
+            description="This is the missing return-later workflow layer: brokers/admins can review existing images and upload more photos after intake."
+          >
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="text-sm font-medium text-zinc-700">Current hero image</p>
+                  <div className="mt-3 relative aspect-[4/3] overflow-hidden rounded-2xl bg-zinc-100">
+                    {currentHeroPreview ? (
+                      <Image src={currentHeroPreview} alt={formData.title || "Hero image"} fill className="object-cover" sizes="(max-width: 1024px) 100vw, 40vw" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm text-zinc-500">No hero image yet</div>
+                    )}
+                  </div>
+                  <p className="mt-3 text-xs text-zinc-500">
+                    Hero image currently follows the first uploaded image. Manual hero/reorder controls can be added in the next pass.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="block space-y-2">
+                    <span className="text-sm font-medium text-zinc-700">Upload additional photos</span>
+                    <input
+                      className={inputClassName()}
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => setPendingPhotos(Array.from(e.target.files ?? []))}
+                    />
+                  </label>
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
+                    <p>Selected: {pendingPhotos.length} file(s)</p>
+                    <p className="mt-2">
+                      Use this when a broker submits the draft quickly and comes back later with better or additional images.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePhotoUpload}
+                    disabled={!pendingPhotos.length || !documentId || uploadState === "uploading"}
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-zinc-900 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {uploadState === "uploading" ? "Uploading photos…" : "Upload additional photos"}
+                  </button>
+                  {uploadMessage ? <p className={`text-sm ${uploadState === "error" ? "text-red-600" : "text-zinc-600"}`}>{uploadMessage}</p> : null}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-medium text-zinc-700">Current gallery</p>
+                  <p className="text-xs text-zinc-500">{mediaImages.length} image(s)</p>
+                </div>
+                {mediaImages.length ? (
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {mediaImages.map((image, index) => {
+                      const src = image.urls.large ?? image.urls.xlarge ?? image.urls.full ?? image.urls.original;
+                      return (
+                        <div key={`${image.id ?? index}`} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                          <div className="relative aspect-[4/3] bg-zinc-100">
+                            {src ? <Image src={src} alt={image.title ?? formData.title} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" /> : null}
+                            {image.isPrimary ? (
+                              <div className="absolute left-3 top-3 rounded-full bg-zinc-900 px-2 py-1 text-[11px] font-semibold text-white">Hero</div>
+                            ) : null}
+                          </div>
+                          <div className="p-4">
+                            <p className="text-sm font-medium text-zinc-900">{image.title ?? `Gallery Image ${index + 1}`}</p>
+                            <p className="mt-1 text-xs text-zinc-500">Sort order: {image.sortOrder ?? index}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-sm text-zinc-500">
+                    No gallery images yet. Brokers can upload at intake or return later from this draft editor.
+                  </div>
+                )}
+              </div>
             </div>
           </Section>
         </div>
