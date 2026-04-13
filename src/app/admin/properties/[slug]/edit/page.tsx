@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AdminPropertyForm } from "@/components/admin-property-form";
 import { getAdminPropertyFormData } from "@/lib/admin";
+import { getAdminWorkflowSnapshot } from "@/lib/admin-workflow";
 import { getPropertyBySlug } from "@/lib/properties";
 
 export default async function EditAdminPropertyPage({
@@ -10,7 +11,11 @@ export default async function EditAdminPropertyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [property, propertyDetail] = await Promise.all([getAdminPropertyFormData(slug), getPropertyBySlug(slug)]);
+  const [property, propertyDetail, workflow] = await Promise.all([
+    getAdminPropertyFormData(slug),
+    getPropertyBySlug(slug),
+    getAdminWorkflowSnapshot(slug),
+  ]);
 
   if (!property || !propertyDetail) {
     notFound();
@@ -26,7 +31,13 @@ export default async function EditAdminPropertyPage({
         </p>
       </div>
 
-      <AdminPropertyForm initialData={property} mode="edit" media={propertyDetail.media} documentId={propertyDetail.id} />
+      <AdminPropertyForm
+        initialData={property}
+        mode="edit"
+        media={propertyDetail.media}
+        documentId={propertyDetail.id}
+        workflow={workflow ?? undefined}
+      />
     </main>
   );
 }

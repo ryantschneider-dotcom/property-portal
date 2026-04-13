@@ -12,6 +12,16 @@ type AdminPropertyFormProps = {
   mode: "edit" | "new";
   media?: PropertyDetail["media"];
   documentId?: string;
+  workflow?: {
+    status: string | null;
+    workflowStatus: string | null;
+    ownerEmail: string | null;
+    leadBroker: string | null;
+    createdVia: string | null;
+    intakeStatus: string | null;
+    uploadedPhotoCount: number;
+    updatedAt: string | null;
+  };
 };
 
 type MediaImage = PropertyDetail["media"]["images"][number];
@@ -52,7 +62,7 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
-export function AdminPropertyForm({ initialData, mode, media, documentId }: AdminPropertyFormProps) {
+export function AdminPropertyForm({ initialData, mode, media, documentId, workflow }: AdminPropertyFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<AdminPropertyFormData>(initialData);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -394,6 +404,46 @@ export function AdminPropertyForm({ initialData, mode, media, documentId }: Admi
               <Field label="Assessor Improvements (one per line)">
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.assessorImprovements} onChange={(e) => update("assessorImprovements", e.target.value)} />
               </Field>
+            </div>
+          </Section>
+
+          <Section title="Draft workflow" description="This makes the draft feel like a review workspace instead of just a giant field form.">
+            <div className="grid gap-4 text-sm md:grid-cols-2">
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Record status</p>
+                <p className="mt-2 text-base font-semibold text-zinc-900">{workflow?.status ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Workflow status</p>
+                <p className="mt-2 text-base font-semibold text-zinc-900">{workflow?.workflowStatus ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Owner</p>
+                <p className="mt-2 text-base font-medium text-zinc-900 break-all">{workflow?.ownerEmail ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Lead broker</p>
+                <p className="mt-2 text-base font-medium text-zinc-900">{workflow?.leadBroker ?? formData.leadBroker ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Created via</p>
+                <p className="mt-2 text-base font-medium text-zinc-900">{workflow?.createdVia ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Intake status</p>
+                <p className="mt-2 text-base font-medium text-zinc-900">{workflow?.intakeStatus ?? "—"}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Photo count</p>
+                <p className="mt-2 text-base font-semibold text-zinc-900">{workflow?.uploadedPhotoCount ?? mediaImages.length}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Last updated</p>
+                <p className="mt-2 text-base font-medium text-zinc-900">{workflow?.updatedAt ?? "—"}</p>
+              </div>
+            </div>
+            <div className="mt-5 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+              Goal state: broker submits the minimum, then this screen becomes the enrichment and review workspace where we deepen facts, strengthen copy, and finalize media before publish.
             </div>
           </Section>
 
