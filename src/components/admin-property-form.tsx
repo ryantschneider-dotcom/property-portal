@@ -21,6 +21,9 @@ type AdminPropertyFormProps = {
     intakeStatus: string | null;
     uploadedPhotoCount: number;
     updatedAt: string | null;
+    enrichmentSummary?: string | null;
+    enrichmentLastRunAt?: string | null;
+    missingFields?: string[];
   };
 };
 
@@ -72,6 +75,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [enrichState, setEnrichState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [enrichMessage, setEnrichMessage] = useState<string | null>(workflow?.enrichmentSummary ?? null);
 
   const currentHeroPreview = useMemo(() => {
     return (
@@ -122,6 +127,51 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       console.error(error);
       setUploadState("error");
       setUploadMessage("Unable to upload photos");
+    }
+  }
+
+  async function handleEnrichDraft() {
+    if (!formData.slug) return;
+
+    setEnrichState("running");
+    setEnrichMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/properties/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: formData.slug }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        setEnrichState("error");
+        setEnrichMessage(payload.error ?? "Unable to enrich draft");
+        return;
+      }
+
+      if (payload.generated) {
+        setFormData((current) => ({
+          ...current,
+          saleTitle: current.saleTitle || payload.generated.saleTitle || current.saleTitle,
+          saleDescription: current.saleDescription || payload.generated.saleDescription || current.saleDescription,
+          locationDescription: current.locationDescription || payload.generated.locationDescription || current.locationDescription,
+          saleBullets:
+            current.saleBullets || (Array.isArray(payload.generated.saleBullets) ? payload.generated.saleBullets.join("\n") : current.saleBullets),
+        }));
+      }
+
+      setEnrichState("done");
+      setEnrichMessage(
+        payload.missingFields?.length
+          ? `Draft enrichment ran. Still missing: ${payload.missingFields.join(", ")}`
+          : "Draft enrichment ran successfully.",
+      );
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setEnrichState("error");
+      setEnrichMessage("Unable to enrich draft");
     }
   }
 
@@ -442,8 +492,25 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 <p className="mt-2 text-base font-medium text-zinc-900">{workflow?.updatedAt ?? "—"}</p>
               </div>
             </div>
-            <div className="mt-5 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
-              Goal state: broker submits the minimum, then this screen becomes the enrichment and review workspace where we deepen facts, strengthen copy, and finalize media before publish.
+            <div className="mt-5 space-y-4">
+              <button
+                type="button"
+                onClick={handleEnrichDraft}
+                disabled={!formData.slug || enrichState === "running"}
+                className="inline-flex w-full items-center justify-center rounded-2xl border border-blue-700 bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {enrichState === "running" ? "Generating draft enrichment…" : "Generate Draft Enrichment"}
+              </button>
+              {(enrichMessage || workflow?.enrichmentLastRunAt || workflow?.missingFields?.length) && (
+                <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600 space-y-2">
+                  {enrichMessage ? <p>{enrichMessage}</p> : null}
+                  {workflow?.enrichmentLastRunAt ? <p>Last enrichment run: {workflow.enrichmentLastRunAt}</p> : null}
+                  {workflow?.missingFields?.length ? <p>Missing fields: {workflow.missingFields.join(", ")}</p> : null}
+                </div>
+              )}
+              <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+                Goal state: broker submits the minimum, then this screen becomes the enrichment and review workspace where we deepen facts, strengthen copy, and finalize media before publish.
+              </div>
             </div>
           </Section>
 

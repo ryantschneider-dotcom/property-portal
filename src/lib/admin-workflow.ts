@@ -13,6 +13,9 @@ export type AdminWorkflowSnapshot = {
   intakeStatus: string | null;
   uploadedPhotoCount: number;
   updatedAt: string | null;
+  enrichmentSummary: string | null;
+  enrichmentLastRunAt: string | null;
+  missingFields: string[];
 };
 
 function asString(value: unknown): string | null {
@@ -29,6 +32,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
   const raw = (doc.data() as Record<string, any> | undefined) ?? {};
   const meta = raw.meta ?? {};
   const intake = meta.intake ?? {};
+  const enrichment = meta.enrichment ?? {};
 
   return {
     documentId: doc.id,
@@ -41,5 +45,10 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     intakeStatus: asString(meta.intakeStatus),
     uploadedPhotoCount: Number(intake.uploaded_photo_count ?? raw.media?.images?.length ?? 0) || 0,
     updatedAt: asString(raw.updatedAt) ?? asString(meta.updatedAt),
+    enrichmentSummary: asString(enrichment.summary),
+    enrichmentLastRunAt: asString(enrichment.lastRunAt),
+    missingFields: Array.isArray(enrichment.missingFields)
+      ? enrichment.missingFields.map((field: unknown) => asString(field)).filter(Boolean)
+      : [],
   };
 }
