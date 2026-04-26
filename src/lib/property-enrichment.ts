@@ -3,15 +3,14 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
+import { runLaunchpadEnrichment } from "@/lib/launchpad-enrichment";
 
 function asString(value: unknown): string {
   return value == null ? "" : String(value).trim();
 }
 
 function titleCase(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function parseList(value: unknown): string[] {
@@ -21,7 +20,7 @@ function parseList(value: unknown): string[] {
   const text = asString(value);
   if (!text) return [];
   return text
-    .split(/\n|,/)
+    .split(/\n|,/) 
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -44,6 +43,13 @@ function formatAcres(value: unknown): string | null {
   const number = Number(raw);
   if (!Number.isFinite(number)) return raw;
   return `${number.toFixed(number >= 10 ? 1 : 2).replace(/\.0$/, "")} acres`;
+}
+
+function parseOptionalNumber(value: unknown): number | null {
+  const raw = asString(value).replace(/,/g, "");
+  if (!raw) return null;
+  const number = Number(raw);
+  return Number.isFinite(number) ? number : null;
 }
 
 function buildNeighborhood(address: Record<string, unknown>, county: string, propertyType: string) {
@@ -105,12 +111,7 @@ function buildSaleDescription(input: {
 
   const notes = input.notes ? `Broker notes: ${input.notes}` : "";
 
-  return compact([
-    intro,
-    facts ? `Key facts include ${facts}.` : "",
-    market,
-    notes,
-  ]).join(" ");
+  return compact([intro, facts ? `Key facts include ${facts}.` : "", market, notes]).join(" ");
 }
 
 function buildLocationDescription(neighborhoodDescription: string, anchors: string[], restaurants: string[], banks: string[]) {
@@ -194,18 +195,56 @@ export async function enrichPropertyDraft(slug: string) {
   const city = asString(address.city || intake.city);
   const state = asString(address.state || intake.state) || "GA";
   const fullAddress = asString(address.full || address.street);
-  const buildingSizeSf = formatNumber(property.buildingSizeSf || intake.building_size_sf);
-  const lotSize = formatAcres(property.lotSizeAcres || intake.lot_size_acres);
-  const yearBuilt = formatNumber(property.yearBuilt || intake.year_built);
-  const zoning = asString(property.zoning || intake.zoning) || null;
-  const anchors = parseList(admin.anchorTenants || existingResearch.places?.anchor_tenants);
-  const restaurants = parseList(admin.nearbyRestaurants || existingResearch.places?.restaurants);
-  const banks = parseList(admin.nearbyBanks || existingResearch.places?.banks);
   const notes = asString(admin.intakeNotes || intake.notes);
 
+  const row = {
+    transaction_type: transactionLabel,
+    property_type: propertyType,
+    city,
+    county,
+    state,
+    available_sf: property.availableSqFt ?? pricing.availableSqFt ?? intake.available_sf,
+    listing_price_visibility: pricing.listingPriceVisibility ?? intake.listing_price_visibility,
+    listing_price_amount: pricing.salePriceDollars ?? intake.listing_price_amount,
+    asking_price_rate: pricing.askingPriceRatePerSf ?? intake.asking_price_rate,
+    lease_type: admin.leaseType ?? intake.lease_type,
+    lead_broker: raw.leadBroker ?? admin.leadBroker ?? raw.ownerEmail,
+    website_url: raw.links?.websiteUrl ?? intake.website_url,
+    parcel_id: property.parcelId ?? intake.parcel_id,
+    tax_id: property.parcelId ?? intake.tax_id,
+    street_number: "",
+    street_name: fullAddress,
+    zip_code: address.zip ?? intake.zip,
+  } as Record<string, unknown>;
+
+  let launchpad: {
+    public_records?: Record<string, unknown>;
+    places?: Record<string, unknown>;
+    ai_copy?: Record<string, unknown>;
+  } = {};
+
+  try {
+    launchpad = await runLaunchpadEnrichment(row, raw.location ?? null);
+  } catch (error) {
+    console.error("Launchpad enrichment failed; falling back to deterministic draft enrichment", error);
+  }
+
+  const publicRecords = (launchpad.public_records as Record<string, unknown> | undefined) ?? {};
+  const places = (launchpad.places as Record<string, unknown> | undefined) ?? {};
+  const aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
+
+  const buildingSizeSf = formatNumber(property.buildingSizeSf || publicRecords.building_size_sf || intake.building_size_sf);
+  const lotSize = formatAcres(property.lotSizeAcres || publicRecords.lot_size_acres || intake.lot_size_acres);
+  const yearBuilt = formatNumber(property.yearBuilt || publicRecords.year_built || intake.year_built);
+  const zoning = asString(property.zoning || publicRecords.zoning || intake.zoning) || null;
+
+  const anchors = parseList(admin.anchorTenants || places.anchor_tenants || existingResearch.places?.anchor_tenants);
+  const restaurants = parseList(admin.nearbyRestaurants || places.restaurants || existingResearch.places?.restaurants);
+  const banks = parseList(admin.nearbyBanks || places.banks || existingResearch.places?.banks);
+
   const neighborhood = buildNeighborhood(address, county, propertyType);
-  const generatedSaleTitle = buildSaleTitle(asString(raw.title), transactionLabel, city);
-  const generatedSaleDescription = buildSaleDescription({
+  const generatedSaleTitle = asString(aiCopy.sale_title) || buildSaleTitle(asString(raw.title), transactionLabel, city);
+  const generatedSaleDescription = asString(aiCopy.sale_description) || buildSaleDescription({
     title: asString(raw.title),
     transactionLabel,
     propertyType,
@@ -217,20 +256,31 @@ export async function enrichPropertyDraft(slug: string) {
     zoning,
     notes,
   });
-  const generatedLocationDescription = buildLocationDescription(neighborhood.description, anchors, restaurants, banks);
-  const generatedSaleBullets = buildBullets({
-    transactionLabel,
-    propertyType,
-    address: fullAddress,
-    buildingSizeSf,
-    lotSize,
-    yearBuilt,
-    zoning,
-    anchors,
-  });
+  const generatedLocationDescription = asString(aiCopy.location_description) || buildLocationDescription(asString(places.neighborhood) || neighborhood.description, anchors, restaurants, banks);
+  const generatedSaleBullets = Array.isArray(aiCopy.sale_bullets) && aiCopy.sale_bullets.length
+    ? aiCopy.sale_bullets.map((item) => asString(item)).filter(Boolean)
+    : buildBullets({
+        transactionLabel,
+        propertyType,
+        address: fullAddress,
+        buildingSizeSf,
+        lotSize,
+        yearBuilt,
+        zoning,
+        anchors,
+      });
+  const generatedExteriorDescription = asString(aiCopy.exterior_description) || asString(publicRecords.exterior_construction_type || publicRecords.notes);
 
   const missing = detectMissingFields({
     ...raw,
+    property: {
+      ...property,
+      parcelId: property.parcelId || publicRecords.parcel_number,
+      buildingSizeSf: property.buildingSizeSf || publicRecords.building_size_sf,
+      lotSizeAcres: property.lotSizeAcres || publicRecords.lot_size_acres,
+      yearBuilt: property.yearBuilt || publicRecords.year_built,
+      zoning: property.zoning || publicRecords.zoning,
+    },
     content: {
       ...content,
       saleDescription: content.saleDescription || generatedSaleDescription,
@@ -243,29 +293,41 @@ export async function enrichPropertyDraft(slug: string) {
   await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
     {
       workflowStatus,
+      property: {
+        parcelId: asString(property.parcelId) || asString(publicRecords.parcel_number) || null,
+        buildingSizeSf: property.buildingSizeSf ?? parseOptionalNumber(publicRecords.building_size_sf),
+        lotSizeAcres: property.lotSizeAcres ?? parseOptionalNumber(publicRecords.lot_size_acres),
+        yearBuilt: property.yearBuilt ?? parseOptionalNumber(publicRecords.year_built),
+        zoning: asString(property.zoning) || asString(publicRecords.zoning) || null,
+        parking: asString(property.parking) || asString(publicRecords.parking) || null,
+        exteriorConstructionType: asString(property.exteriorConstructionType) || asString(publicRecords.exterior_construction_type) || null,
+        propertyClass: asString(property.propertyClass) || asString(publicRecords.property_class) || null,
+      },
       content: {
         saleTitle: asString(content.saleTitle) || generatedSaleTitle,
         saleDescription: asString(content.saleDescription) || generatedSaleDescription,
         locationDescription: asString(content.locationDescription) || generatedLocationDescription,
+        exteriorDescription: asString(content.exteriorDescription) || generatedExteriorDescription || null,
         saleBullets: Array.isArray(content.saleBullets) && content.saleBullets.length ? content.saleBullets : generatedSaleBullets,
       },
       address: {
-        neighborhood: asString(address.neighborhood) || neighborhood.neighborhood,
-        submarket: asString(address.submarket) || neighborhood.corridor,
+        neighborhood: asString(address.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
+        submarket: asString(address.submarket) || asString(places.corridor) || neighborhood.corridor,
       },
       admin: {
-        neighborhood: asString(admin.neighborhood) || neighborhood.neighborhood,
-        corridor: asString(admin.corridor) || neighborhood.corridor,
+        neighborhood: asString(admin.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
+        corridor: asString(admin.corridor) || asString(places.corridor) || neighborhood.corridor,
         anchorTenants: anchors,
         nearbyRestaurants: restaurants,
         nearbyBanks: banks,
+        assessorImprovements: parseList(publicRecords.assessor_improvements),
       },
       meta: {
         updatedAt: FieldValue.serverTimestamp(),
         enrichment: {
           lastRunAt: FieldValue.serverTimestamp(),
-          version: "v1",
-          mode: "deterministic-draft",
+          version: "v2",
+          mode: asString(aiCopy.generator) ? `launchpad+${asString(aiCopy.generator)}` : "launchpad+deterministic",
           missingFields: missing.missing,
           summary: missing.missing.length
             ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
@@ -275,14 +337,17 @@ export async function enrichPropertyDraft(slug: string) {
           sale_title: generatedSaleTitle,
           sale_description: generatedSaleDescription,
           location_description: generatedLocationDescription,
+          exterior_description: generatedExteriorDescription,
           sale_bullets: generatedSaleBullets,
+          generator: asString(aiCopy.generator) || "deterministic",
         },
         research: {
           ...existingResearch,
+          public_records: publicRecords,
           places: {
             ...(existingResearch.places ?? {}),
-            neighborhood: asString(existingResearch.places?.neighborhood) || neighborhood.neighborhood,
-            corridor: asString(existingResearch.places?.corridor) || neighborhood.corridor,
+            neighborhood: asString(places.neighborhood) || neighborhood.neighborhood,
+            corridor: asString(places.corridor) || neighborhood.corridor,
             anchor_tenants: anchors,
             restaurants,
             banks,

@@ -19,6 +19,8 @@ export default async function PropertiesDashboard() {
   const session = await getPortalSession();
   const properties = await listAdminProperties(session);
   const isBroker = session?.role === "broker";
+  const readyForApproval = properties.filter((property) => property.workflowStatus === "ready_for_approval");
+  const inReview = properties.filter((property) => property.workflowStatus === "review");
 
   return (
     <div className="max-w-7xl mx-auto p-6">
@@ -39,6 +41,21 @@ export default async function PropertiesDashboard() {
           </Link>
         </div>
       </div>
+
+      {!isBroker && (readyForApproval.length || inReview.length) ? (
+        <div className="mb-8 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Ready for approval</p>
+            <p className="mt-2 text-3xl font-bold text-emerald-900">{readyForApproval.length}</p>
+            <p className="mt-2 text-sm text-emerald-800">Drafts brokers have submitted for admin review.</p>
+          </div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">In review</p>
+            <p className="mt-2 text-3xl font-bold text-blue-900">{inReview.length}</p>
+            <p className="mt-2 text-sm text-blue-800">Drafts enriched and waiting on broker cleanup or final push.</p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {properties.map((property) => (
@@ -95,9 +112,9 @@ export default async function PropertiesDashboard() {
             <div className="p-4 bg-gray-50 border-t border-gray-100">
               <Link
                 href={`/admin/properties/${property.slug || property.id}/edit`}
-                className="block w-full rounded-lg border border-gray-900 bg-gray-900 px-4 py-2 text-center text-sm font-semibold tracking-wide !text-white shadow-sm transition-colors hover:bg-black hover:!text-white focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2"
+                className={`block w-full rounded-lg border px-4 py-2 text-center text-sm font-semibold tracking-wide shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${property.workflowStatus === "ready_for_approval" ? "border-emerald-700 bg-emerald-600 !text-white hover:bg-emerald-700 focus:ring-emerald-700" : "border-gray-900 bg-gray-900 !text-white hover:bg-black hover:!text-white focus:ring-gray-900"}`}
               >
-                Edit Details
+                {property.workflowStatus === "ready_for_approval" ? "Review Submission" : "Edit Details"}
               </Link>
             </div>
           </div>

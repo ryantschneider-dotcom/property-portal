@@ -77,6 +77,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [enrichState, setEnrichState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [enrichMessage, setEnrichMessage] = useState<string | null>(workflow?.enrichmentSummary ?? null);
+  const [readyState, setReadyState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const [readyMessage, setReadyMessage] = useState<string | null>(null);
 
   const currentHeroPreview = useMemo(() => {
     return (
@@ -172,6 +174,34 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       console.error(error);
       setEnrichState("error");
       setEnrichMessage("Unable to enrich draft");
+    }
+  }
+
+  async function handleMarkReady() {
+    if (!formData.slug) return;
+
+    setReadyState("saving");
+    setReadyMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/properties/mark-ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: formData.slug }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setReadyState("error");
+        setReadyMessage(payload.error ?? "Unable to mark draft ready");
+        return;
+      }
+      setReadyState("done");
+      setReadyMessage("Draft marked ready for approval.");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setReadyState("error");
+      setReadyMessage("Unable to mark draft ready");
     }
   }
 
@@ -535,12 +565,23 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               {saveState === "saved" && "Saved successfully."}
               {saveState === "error" && (errorMessage ?? "Save failed.")}
             </p>
-            <button
-              type="submit"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
-            >
-              Save Property
-            </button>
+            <div className="mt-6 space-y-3">
+              <button
+                type="submit"
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-700"
+              >
+                Save Property
+              </button>
+              <button
+                type="button"
+                onClick={handleMarkReady}
+                disabled={!formData.slug || readyState === "saving"}
+                className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {readyState === "saving" ? "Submitting for approval…" : "Mark Ready for Approval"}
+              </button>
+            </div>
+            {readyMessage ? <p className={`mt-3 text-sm ${readyState === "error" ? "text-red-600" : "text-emerald-700"}`}>{readyMessage}</p> : null}
           </section>
         </div>
       </div>

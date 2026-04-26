@@ -1,0 +1,76 @@
+import "server-only";
+
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
+const PYTHON = process.env.PYTHON_BIN || "python3";
+const LAUNCHPAD_PATH = "/data/.openclaw/workspace/scripts/listing_launchpad.py";
+const SCRIPTS_ENV = "/data/.openclaw/workspace/scripts/.env";
+
+type LaunchpadResearchResult = {
+  public_records?: Record<string, unknown>;
+  places?: Record<string, unknown>;
+  ai_copy?: Record<string, unknown>;
+};
+
+function parseJsonBlock(stdout: string) {
+  const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const candidate = lines.slice(i).join("\n");
+    try {
+      return JSON.parse(candidate) as LaunchpadResearchResult;
+    } catch {
+      // keep scanning upward for the final JSON block
+    }
+  }
+  throw new Error("Unable to parse launchpad enrichment output");
+}
+
+export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCoordinates?: { lat?: number | null; lng?: number | null } | null) {
+  const script = `
+import importlib.util, json, os
+from pathlib import Path
+
+launchpad_path = ${JSON.stringify(LAUNCHPAD_PATH)}
+env_path = ${JSON.stringify(SCRIPTS_ENV)}
+if Path(env_path).exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path)
+    except Exception:
+        pass
+
+spec = importlib.util.spec_from_file_location('listing_launchpad', launchpad_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+row = json.loads(${JSON.stringify(JSON.stringify(row))})
+coords = json.loads(${JSON.stringify(JSON.stringify(mapCoordinates ?? {}))})
+map_coordinates = None
+if isinstance(coords, dict) and coords.get('lat') is not None and coords.get('lng') is not None:
+    map_coordinates = {'lat': coords.get('lat'), 'lng': coords.get('lng')}
+
+public_records = module.research_public_records_placeholder(row)
+places = module.research_google_places(row, map_coordinates)
+ai_copy = module.generate_ai_copy(row, public_records, {'public_records': public_records, 'places': places})
+
+print(json.dumps({
+    'public_records': public_records,
+    'places': places,
+    'ai_copy': ai_copy,
+}, default=str))
+`.trim();
+
+  const { stdout, stderr } = await execFileAsync(PYTHON, ["-c", script], {
+    cwd: "/data/.openclaw/workspace/property-portal",
+    env: process.env,
+    maxBuffer: 1024 * 1024 * 8,
+  });
+
+  if (stderr && stderr.trim()) {
+    console.warn("launchpad enrichment stderr:", stderr.trim());
+  }
+
+  return parseJsonBlock(stdout);
+}
