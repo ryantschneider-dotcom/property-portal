@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { db, PROPERTIES_COLLECTION, storage } from "@/lib/firestore";
+import { parsePortalSession } from "@/lib/portal-session";
 
 type IntakePayload = {
   slug: string;
@@ -32,19 +33,6 @@ type IntakePayload = {
   websiteUrl: string;
   notes: string;
 };
-
-function parseSession(value: string | undefined) {
-  if (!value) return null;
-  try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
-      email: string;
-      role: string;
-      name: string;
-    };
-  } catch {
-    return null;
-  }
-}
 
 function parseOptionalNumber(value: string) {
   const trimmed = value.trim();
@@ -103,7 +91,7 @@ async function uploadPhoto(slug: string, file: File, index: number) {
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
-    const session = parseSession(cookieStore.get("admin_session")?.value);
+    const session = parsePortalSession(cookieStore.get("admin_session")?.value);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

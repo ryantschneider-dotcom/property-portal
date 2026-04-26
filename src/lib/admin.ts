@@ -3,6 +3,7 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
+import type { PortalSession } from "@/lib/portal-session";
 import { getPropertyBySlug } from "@/lib/properties";
 import type { PropertyDetail } from "@/lib/types";
 
@@ -16,6 +17,8 @@ export type AdminPropertyListItem = {
   zoning: string | null;
   imageUrl: string | null;
   updatedAt: string | null;
+  ownerEmail: string | null;
+  workflowStatus: string | null;
 };
 
 export type AdminPropertyFormData = {
@@ -123,7 +126,7 @@ function inferCategory(existing?: PropertyDetail | null): string | null {
   return existing?.property.category ?? null;
 }
 
-export async function listAdminProperties(): Promise<AdminPropertyListItem[]> {
+export async function listAdminProperties(session?: PortalSession | null): Promise<AdminPropertyListItem[]> {
   const snapshot = await db.collection(PROPERTIES_COLLECTION).get();
   return snapshot.docs
     .map((doc) => {
@@ -149,7 +152,13 @@ export async function listAdminProperties(): Promise<AdminPropertyListItem[]> {
         zoning: asString(property.zoning) || null,
         imageUrl: imageUrl || null,
         updatedAt: asString(meta.updatedAt) || null,
+        ownerEmail: asString(data.ownerEmail || data.ownerUserId) || null,
+        workflowStatus: asString(data.workflowStatus) || null,
       } satisfies AdminPropertyListItem;
+    })
+    .filter((property) => {
+      if (!session || session.role === "admin") return true;
+      return property.ownerEmail?.toLowerCase() === session.email.toLowerCase();
     })
     .sort((a, b) => a.title.localeCompare(b.title));
 }

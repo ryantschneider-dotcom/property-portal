@@ -3,21 +3,31 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import { listAdminProperties } from "@/lib/admin";
+import { getPortalSession } from "@/lib/portal-session";
 
 function displayValue(value: string | null | undefined, fallback = "—") {
   if (value == null || value === "") return fallback;
   return value;
 }
 
+function formatWorkflowStatus(value: string | null | undefined) {
+  if (!value) return "Draft";
+  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default async function PropertiesDashboard() {
-  const properties = await listAdminProperties();
+  const session = await getPortalSession();
+  const properties = await listAdminProperties(session);
+  const isBroker = session?.role === "broker";
 
   return (
     <div className="max-w-7xl mx-auto p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Manage Inventory</h1>
-          <p className="text-gray-500 mt-1">PIER Commercial internal listing control center.</p>
+          <h1 className="text-3xl font-bold text-gray-900">{isBroker ? "My Listings" : "Manage Inventory"}</h1>
+          <p className="text-gray-500 mt-1">
+            {isBroker ? "Your draft listings, review queue, and intake workspace." : "PIER Commercial internal listing control center."}
+          </p>
         </div>
 
         <div className="w-full md:w-auto flex gap-2">
@@ -59,6 +69,17 @@ export default async function PropertiesDashboard() {
                 {displayValue(property.address, "No address listed")}
               </p>
 
+              <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
+                  {formatWorkflowStatus(property.workflowStatus)}
+                </span>
+                {!isBroker && property.ownerEmail && (
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">
+                    {property.ownerEmail}
+                  </span>
+                )}
+              </div>
+
               <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="block text-gray-400 text-xs uppercase tracking-wider">Zoning</span>
@@ -84,7 +105,7 @@ export default async function PropertiesDashboard() {
 
         {properties.length === 0 && (
           <div className="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-            No properties found.
+            {isBroker ? "No listings yet. Start a new intake to create your first draft." : "No properties found."}
           </div>
         )}
       </div>
