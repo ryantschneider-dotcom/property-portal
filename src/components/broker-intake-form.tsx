@@ -13,6 +13,7 @@ type IntakeState = {
   zip: string;
   county: string;
   parcelId: string;
+  suiteNumbers: string;
   listingPriceAmount: string;
   listingPriceVisibility: string;
   askingPriceRate: string;
@@ -36,6 +37,7 @@ const initialState: IntakeState = {
   zip: "",
   county: "",
   parcelId: "",
+  suiteNumbers: "",
   listingPriceAmount: "",
   listingPriceVisibility: "",
   askingPriceRate: "",
@@ -51,6 +53,15 @@ const initialState: IntakeState = {
 
 function inputClassName() {
   return "w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-900";
+}
+
+function labelText(text: string, required?: boolean) {
+  return (
+    <>
+      {text}
+      {required ? <span className="ml-1 text-red-600">*</span> : null}
+    </>
+  );
 }
 
 function slugify(value: string) {
@@ -72,6 +83,9 @@ export function BrokerIntakeForm() {
     const titlePart = slugify(formData.title || `${formData.addressStreet} ${formData.city}`.trim());
     return titlePart || "new-listing";
   }, [formData.title, formData.addressStreet, formData.city]);
+
+  const isLease = formData.transactionType === "lease" || formData.transactionType === "sale-lease";
+  const isSale = formData.transactionType === "sale" || formData.transactionType === "sale-lease";
 
   function update<K extends keyof IntakeState>(key: K, value: IntakeState[K]) {
     setFormData((current) => ({ ...current, [key]: value }));
@@ -118,7 +132,7 @@ export function BrokerIntakeForm() {
 
         <div className="mt-6 grid gap-5 md:grid-cols-2">
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Property Title</span>
+            <span className="text-sm font-medium text-zinc-700">{labelText("Property Title", true)}</span>
             <input className={inputClassName()} value={formData.title} onChange={(e) => update("title", e.target.value)} required />
           </label>
           <label className="block space-y-2">
@@ -138,44 +152,48 @@ export function BrokerIntakeForm() {
             <input className={inputClassName()} value={formData.propertyType} onChange={(e) => update("propertyType", e.target.value)} required />
           </label>
           <label className="block space-y-2 md:col-span-2">
-            <span className="text-sm font-medium text-zinc-700">Street Address</span>
+            <span className="text-sm font-medium text-zinc-700">{labelText("Street Address", true)}</span>
             <input className={inputClassName()} value={formData.addressStreet} onChange={(e) => update("addressStreet", e.target.value)} required />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">City</span>
+            <span className="text-sm font-medium text-zinc-700">{labelText("City", true)}</span>
             <input className={inputClassName()} value={formData.city} onChange={(e) => update("city", e.target.value)} required />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">State</span>
+            <span className="text-sm font-medium text-zinc-700">{labelText("State", true)}</span>
             <input className={inputClassName()} value={formData.state} onChange={(e) => update("state", e.target.value)} required />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">ZIP</span>
-            <input className={inputClassName()} value={formData.zip} onChange={(e) => update("zip", e.target.value)} required />
+            <input className={inputClassName()} value={formData.zip} onChange={(e) => update("zip", e.target.value)} />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">County</span>
             <input className={inputClassName()} value={formData.county} onChange={(e) => update("county", e.target.value)} />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Parcel ID</span>
-            <input className={inputClassName()} value={formData.parcelId} onChange={(e) => update("parcelId", e.target.value)} />
+            <span className="text-sm font-medium text-zinc-700">{labelText("Property Tax ID# (Parcel ID)", true)}</span>
+            <input className={inputClassName()} value={formData.parcelId} onChange={(e) => update("parcelId", e.target.value)} required />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Listing Price Amount</span>
-            <input className={inputClassName()} value={formData.listingPriceAmount} onChange={(e) => update("listingPriceAmount", e.target.value)} />
+            <span className="text-sm font-medium text-zinc-700">{labelText("Suite Number(s)", isLease)}</span>
+            <input className={inputClassName()} value={formData.suiteNumbers} onChange={(e) => update("suiteNumbers", e.target.value)} required={isLease} />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-zinc-700">{labelText("Sale Price", isSale)}</span>
+            <input className={inputClassName()} value={formData.listingPriceAmount} onChange={(e) => update("listingPriceAmount", e.target.value)} required={isSale} />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">Listing Price Visibility</span>
             <input className={inputClassName()} value={formData.listingPriceVisibility} onChange={(e) => update("listingPriceVisibility", e.target.value)} />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Asking Lease Rate</span>
-            <input className={inputClassName()} value={formData.askingPriceRate} onChange={(e) => update("askingPriceRate", e.target.value)} />
+            <span className="text-sm font-medium text-zinc-700">{labelText("Asking Lease Rate", isLease)}</span>
+            <input className={inputClassName()} value={formData.askingPriceRate} onChange={(e) => update("askingPriceRate", e.target.value)} required={isLease} />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Available SF</span>
-            <input className={inputClassName()} value={formData.availableSf} onChange={(e) => update("availableSf", e.target.value)} />
+            <span className="text-sm font-medium text-zinc-700">{labelText("Available Size (SF)", isLease)}</span>
+            <input className={inputClassName()} value={formData.availableSf} onChange={(e) => update("availableSf", e.target.value)} required={isLease} />
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-medium text-zinc-700">Building SF</span>
@@ -194,8 +212,15 @@ export function BrokerIntakeForm() {
             <input className={inputClassName()} value={formData.zoning} onChange={(e) => update("zoning", e.target.value)} />
           </label>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Lease Type</span>
-            <input className={inputClassName()} value={formData.leaseType} onChange={(e) => update("leaseType", e.target.value)} />
+            <span className="text-sm font-medium text-zinc-700">{labelText("Lease Type", isLease)}</span>
+            <select className={inputClassName()} value={formData.leaseType} onChange={(e) => update("leaseType", e.target.value)} required={isLease}>
+              <option value="">Select lease type</option>
+              <option value="NNN">NNN</option>
+              <option value="Gross">Gross</option>
+              <option value="Modified Gross">Modified Gross</option>
+              <option value="Full Service">Full Service</option>
+              <option value="Net">Net</option>
+            </select>
           </label>
           <label className="block space-y-2 md:col-span-2">
             <span className="text-sm font-medium text-zinc-700">Website URL</span>

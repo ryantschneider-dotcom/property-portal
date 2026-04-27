@@ -21,6 +21,7 @@ type IntakePayload = {
   zip: string;
   county: string;
   parcelId: string;
+  suiteNumbers: string;
   listingPriceAmount: string;
   listingPriceVisibility: string;
   askingPriceRate: string;
@@ -100,8 +101,19 @@ export async function POST(request: Request) {
     const payload = JSON.parse(String(formData.get("payload") ?? "{}")) as IntakePayload;
     const files = formData.getAll("photos").filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-    if (!payload.slug || !payload.title || !payload.addressStreet || !payload.city || !payload.state || !payload.zip) {
-      return NextResponse.json({ error: "Missing required intake fields" }, { status: 400 });
+    const isLease = payload.transactionType === "lease" || payload.transactionType === "sale-lease";
+    const isSale = payload.transactionType === "sale" || payload.transactionType === "sale-lease";
+
+    if (!payload.slug || !payload.title || !payload.addressStreet || !payload.city || !payload.state || !payload.parcelId) {
+      return NextResponse.json({ error: "Missing required intake fields: property tax ID, street address, city, and state are required." }, { status: 400 });
+    }
+
+    if (isLease && (!payload.suiteNumbers || !payload.availableSf || !payload.askingPriceRate || !payload.leaseType)) {
+      return NextResponse.json({ error: "Missing required lease fields: suite number(s), available size, asking lease rate, and lease type are required for lease listings." }, { status: 400 });
+    }
+
+    if (isSale && !payload.listingPriceAmount) {
+      return NextResponse.json({ error: "Missing required sale field: sale price is required for sale listings." }, { status: 400 });
     }
 
     const mediaImages = await Promise.all(files.map((file, index) => uploadPhoto(payload.slug, file, index)));
@@ -146,6 +158,7 @@ export async function POST(request: Request) {
           listingPriceVisibility: payload.listingPriceVisibility || null,
           askingPriceRatePerSf: parseOptionalNumber(payload.askingPriceRate),
           availableSqFt: parseOptionalNumber(payload.availableSf),
+          suiteNumbers: payload.suiteNumbers || null,
         },
         content: {
           saleTitle: payload.title,
@@ -166,6 +179,7 @@ export async function POST(request: Request) {
         },
         admin: {
           leaseType: payload.leaseType || null,
+          suiteNumbers: payload.suiteNumbers || null,
           propertyTypeLabel: payload.propertyType || null,
           intakeNotes: payload.notes || null,
         },
@@ -175,6 +189,7 @@ export async function POST(request: Request) {
             parcel_id: payload.parcelId,
             listing_price_amount: payload.listingPriceAmount,
             listing_price_visibility: payload.listingPriceVisibility,
+            suite_numbers: payload.suiteNumbers,
             asking_price_rate: payload.askingPriceRate,
             available_sf: payload.availableSf,
             building_size_sf: payload.buildingSizeSf,
