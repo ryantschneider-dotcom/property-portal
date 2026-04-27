@@ -19,6 +19,9 @@ export type AdminPropertyListItem = {
   updatedAt: string | null;
   ownerEmail: string | null;
   workflowStatus: string | null;
+  approvalStatus: string | null;
+  rejectionReason: string | null;
+  decisionNote: string | null;
 };
 
 export type AdminPropertyFormData = {
@@ -136,6 +139,7 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       const property = (data.property as Record<string, unknown> | undefined) ?? {};
       const meta = (data.meta as Record<string, unknown> | undefined) ?? {};
       const media = (data.media as Record<string, unknown> | undefined) ?? {};
+      const approval = (meta.approval as Record<string, unknown> | undefined) ?? {};
       const images = (media.images as Array<Record<string, unknown>> | undefined) ?? [];
       const primaryImage = images.find((image) => image?.isPrimary === true) ?? images[0] ?? {};
       const primaryUrls = (primaryImage.urls as Record<string, unknown> | undefined) ?? {};
@@ -154,6 +158,9 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
         updatedAt: asString(meta.updatedAt) || null,
         ownerEmail: asString(data.ownerEmail || data.ownerUserId) || null,
         workflowStatus: asString(data.workflowStatus) || null,
+        approvalStatus: asString(approval.status) || null,
+        rejectionReason: asString(approval.rejectionReason) || null,
+        decisionNote: asString(approval.decisionNote) || null,
       } satisfies AdminPropertyListItem;
     })
     .filter((property) => {

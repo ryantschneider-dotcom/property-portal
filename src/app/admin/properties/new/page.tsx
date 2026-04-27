@@ -12,7 +12,7 @@ export default function NewAdminPropertyPage() {
         </p>
       </div>
 
-      <AdminPropertyForm initialData={buildEmptyAdminFormData()} mode="new" />
+      <AdminPropertyForm initialData={buildEmptyAdminFormData()} mode="new" userRole="admin" />
     </main>
   );
 }

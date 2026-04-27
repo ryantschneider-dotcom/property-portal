@@ -21,6 +21,8 @@ export default async function PropertiesDashboard() {
   const isBroker = session?.role === "broker";
   const readyForApproval = properties.filter((property) => property.workflowStatus === "ready_for_approval");
   const inReview = properties.filter((property) => property.workflowStatus === "review");
+  const approved = properties.filter((property) => property.workflowStatus === "approved");
+  const changesRequested = properties.filter((property) => property.workflowStatus === "needs_input" || property.approvalStatus === "rejected");
 
   return (
     <div className="max-w-7xl mx-auto p-6">
@@ -42,8 +44,8 @@ export default async function PropertiesDashboard() {
         </div>
       </div>
 
-      {!isBroker && (readyForApproval.length || inReview.length) ? (
-        <div className="mb-8 grid gap-4 md:grid-cols-2">
+      {!isBroker && (readyForApproval.length || inReview.length || approved.length) ? (
+        <div className="mb-8 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Ready for approval</p>
             <p className="mt-2 text-3xl font-bold text-emerald-900">{readyForApproval.length}</p>
@@ -54,6 +56,19 @@ export default async function PropertiesDashboard() {
             <p className="mt-2 text-3xl font-bold text-blue-900">{inReview.length}</p>
             <p className="mt-2 text-sm text-blue-800">Drafts enriched and waiting on broker cleanup or final push.</p>
           </div>
+          <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-700">Approved</p>
+            <p className="mt-2 text-3xl font-bold text-zinc-900">{approved.length}</p>
+            <p className="mt-2 text-sm text-zinc-800">Listings approved internally and ready for structured export/publish handoff.</p>
+          </div>
+        </div>
+      ) : null}
+
+      {isBroker && changesRequested.length ? (
+        <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Changes requested</p>
+          <p className="mt-2 text-3xl font-bold text-amber-900">{changesRequested.length}</p>
+          <p className="mt-2 text-sm text-amber-800">Admin sent draft{changesRequested.length === 1 ? "" : "s"} back for updates. Open the draft to read the note and make revisions.</p>
         </div>
       ) : null}
 
@@ -87,8 +102,8 @@ export default async function PropertiesDashboard() {
               </p>
 
               <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium">
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">
-                  {formatWorkflowStatus(property.workflowStatus)}
+                <span className={`rounded-full px-2.5 py-1 ${property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                  {property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "Changes Requested" : formatWorkflowStatus(property.workflowStatus)}
                 </span>
                 {!isBroker && property.ownerEmail && (
                   <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">
@@ -96,6 +111,13 @@ export default async function PropertiesDashboard() {
                   </span>
                 )}
               </div>
+
+              {(property.rejectionReason || property.decisionNote) && isBroker ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Admin note</p>
+                  <p className="mt-2 line-clamp-4">{property.rejectionReason || property.decisionNote}</p>
+                </div>
+              ) : null}
 
               <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-2 text-sm">
                 <div>
@@ -112,9 +134,9 @@ export default async function PropertiesDashboard() {
             <div className="p-4 bg-gray-50 border-t border-gray-100">
               <Link
                 href={`/admin/properties/${property.slug || property.id}/edit`}
-                className={`block w-full rounded-lg border px-4 py-2 text-center text-sm font-semibold tracking-wide shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${property.workflowStatus === "ready_for_approval" ? "border-emerald-700 bg-emerald-600 !text-white hover:bg-emerald-700 focus:ring-emerald-700" : "border-gray-900 bg-gray-900 !text-white hover:bg-black hover:!text-white focus:ring-gray-900"}`}
+                className={`block w-full rounded-lg border px-4 py-2 text-center text-sm font-semibold tracking-wide shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${property.workflowStatus === "ready_for_approval" ? "border-emerald-700 bg-emerald-600 !text-white hover:bg-emerald-700 focus:ring-emerald-700" : property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "border-amber-700 bg-amber-600 !text-white hover:bg-amber-700 focus:ring-amber-700" : "border-gray-900 bg-gray-900 !text-white hover:bg-black hover:!text-white focus:ring-gray-900"}`}
               >
-                {property.workflowStatus === "ready_for_approval" ? "Review Submission" : "Edit Details"}
+                {property.workflowStatus === "ready_for_approval" ? "Review Submission" : property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "Review Changes" : "Edit Details"}
               </Link>
             </div>
           </div>

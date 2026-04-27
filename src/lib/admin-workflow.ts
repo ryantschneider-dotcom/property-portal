@@ -16,6 +16,19 @@ export type AdminWorkflowSnapshot = {
   enrichmentSummary: string | null;
   enrichmentLastRunAt: string | null;
   missingFields: string[];
+  approvalStatus: string | null;
+  approvalSubmittedAt: string | null;
+  approvalSubmittedBy: string | null;
+  approvalDecidedAt: string | null;
+  approvalDecidedBy: string | null;
+  approvalDecisionNote: string | null;
+  approvalRejectionReason: string | null;
+  buildoutReady: boolean;
+  buildoutPayloadVersion: string | null;
+  buildoutSyncStatus: string | null;
+  buildoutSyncError: string | null;
+  buildoutMissingFields: string[];
+  buildoutWarnings: string[];
 };
 
 function asString(value: unknown): string | null {
@@ -33,6 +46,8 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
   const meta = raw.meta ?? {};
   const intake = meta.intake ?? {};
   const enrichment = meta.enrichment ?? {};
+  const approval = meta.approval ?? {};
+  const exportMeta = meta.export ?? {};
 
   return {
     documentId: doc.id,
@@ -49,6 +64,23 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     enrichmentLastRunAt: asString(enrichment.lastRunAt),
     missingFields: Array.isArray(enrichment.missingFields)
       ? enrichment.missingFields.map((field: unknown) => asString(field)).filter(Boolean)
+      : [],
+    approvalStatus: asString(approval.status),
+    approvalSubmittedAt: asString(approval.submittedAt),
+    approvalSubmittedBy: asString(approval.submittedBy),
+    approvalDecidedAt: asString(approval.decidedAt),
+    approvalDecidedBy: asString(approval.decidedBy),
+    approvalDecisionNote: asString(approval.decisionNote),
+    approvalRejectionReason: asString(approval.rejectionReason),
+    buildoutReady: exportMeta.buildoutReady === true,
+    buildoutPayloadVersion: asString(exportMeta.buildoutPayloadVersion),
+    buildoutSyncStatus: asString(exportMeta.buildoutSyncStatus),
+    buildoutSyncError: asString(exportMeta.buildoutSyncError),
+    buildoutMissingFields: Array.isArray(exportMeta.missingRequiredFields)
+      ? exportMeta.missingRequiredFields.map((field: unknown) => asString(field)).filter(Boolean)
+      : [],
+    buildoutWarnings: Array.isArray(exportMeta.warnings)
+      ? exportMeta.warnings.map((field: unknown) => asString(field)).filter(Boolean)
       : [],
   };
 }

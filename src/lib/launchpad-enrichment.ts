@@ -1,6 +1,7 @@
 import "server-only";
 
 import { execFile } from "child_process";
+import { readFileSync } from "fs";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
@@ -13,6 +14,24 @@ type LaunchpadResearchResult = {
   places?: Record<string, unknown>;
   ai_copy?: Record<string, unknown>;
 };
+
+function loadScriptEnv() {
+  try {
+    const text = readFileSync(SCRIPTS_ENV, "utf8");
+    const values: Record<string, string> = {};
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+      const index = trimmed.indexOf("=");
+      const key = trimmed.slice(0, index).trim();
+      const value = trimmed.slice(index + 1).trim();
+      if (key) values[key] = value;
+    }
+    return values;
+  } catch {
+    return {};
+  }
+}
 
 function parseJsonBlock(stdout: string) {
   const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
@@ -62,9 +81,14 @@ print(json.dumps({
 }, default=str))
 `.trim();
 
+  const env = {
+    ...loadScriptEnv(),
+    ...process.env,
+  };
+
   const { stdout, stderr } = await execFileAsync(PYTHON, ["-c", script], {
     cwd: "/data/.openclaw/workspace/property-portal",
-    env: process.env,
+    env,
     maxBuffer: 1024 * 1024 * 8,
   });
 

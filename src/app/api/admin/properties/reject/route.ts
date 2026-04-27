@@ -12,11 +12,11 @@ export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
     const session = parsePortalSession(cookieStore.get("admin_session")?.value);
-    if (!session) {
+    if (!session || session.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { slug } = await request.json();
+    const { slug, note, reason } = await request.json();
     if (!slug || typeof slug !== "string") {
       return NextResponse.json({ error: "Slug is required" }, { status: 400 });
     }
@@ -27,35 +27,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Property not found" }, { status: 404 });
     }
 
-    const raw = (doc.data() as Record<string, unknown> | undefined) ?? {};
-    const ownerEmail = typeof raw.ownerEmail === "string" ? raw.ownerEmail.toLowerCase() : null;
-    if (session.role !== "admin" && ownerEmail !== session.email.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
       {
-        workflowStatus: "ready_for_approval",
+        workflowStatus: "needs_input",
         updatedByUserId: session.email,
         meta: {
           updatedAt: FieldValue.serverTimestamp(),
-          reviewReadyAt: FieldValue.serverTimestamp(),
-          reviewReadyBy: session.email,
           approval: {
-            status: "pending",
-            submittedAt: FieldValue.serverTimestamp(),
-            submittedBy: session.email,
+            status: "rejected",
+            decidedAt: FieldValue.serverTimestamp(),
+            decidedBy: session.email,
+            decisionNote: typeof note === "string" ? note.trim() || null : null,
+            rejectionReason: typeof reason === "string" ? reason.trim() || null : null,
           },
         },
       },
       { merge: true },
     );
 
-    return NextResponse.json({ success: true, slug, workflowStatus: "ready_for_approval" });
+    return NextResponse.json({ success: true, slug, workflowStatus: "needs_input", approvalStatus: "rejected" });
   } catch (error) {
-    console.error("Mark ready error:", error);
+    console.error("Reject property error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to mark property ready" },
+      { error: error instanceof Error ? error.message : "Failed to reject property" },
       { status: 500 },
     );
   }

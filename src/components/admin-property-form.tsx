@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { AdminPropertyFormData } from "@/lib/admin";
+import type { PortalRole } from "@/lib/users";
 import type { PropertyDetail } from "@/lib/types";
 
 type AdminPropertyFormProps = {
@@ -12,6 +13,7 @@ type AdminPropertyFormProps = {
   mode: "edit" | "new";
   media?: PropertyDetail["media"];
   documentId?: string;
+  userRole: PortalRole;
   workflow?: {
     status: string | null;
     workflowStatus: string | null;
@@ -24,6 +26,19 @@ type AdminPropertyFormProps = {
     enrichmentSummary?: string | null;
     enrichmentLastRunAt?: string | null;
     missingFields?: string[];
+    approvalStatus?: string | null;
+    approvalSubmittedAt?: string | null;
+    approvalSubmittedBy?: string | null;
+    approvalDecidedAt?: string | null;
+    approvalDecidedBy?: string | null;
+    approvalDecisionNote?: string | null;
+    approvalRejectionReason?: string | null;
+    buildoutReady?: boolean;
+    buildoutPayloadVersion?: string | null;
+    buildoutSyncStatus?: string | null;
+    buildoutSyncError?: string | null;
+    buildoutMissingFields?: string[];
+    buildoutWarnings?: string[];
   };
 };
 
@@ -65,7 +80,7 @@ function Section({ title, description, children }: { title: string; description?
   );
 }
 
-export function AdminPropertyForm({ initialData, mode, media, documentId, workflow }: AdminPropertyFormProps) {
+export function AdminPropertyForm({ initialData, mode, media, documentId, workflow, userRole }: AdminPropertyFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<AdminPropertyFormData>(initialData);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -79,6 +94,16 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [enrichMessage, setEnrichMessage] = useState<string | null>(workflow?.enrichmentSummary ?? null);
   const [readyState, setReadyState] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [readyMessage, setReadyMessage] = useState<string | null>(null);
+  const [approvalState, setApprovalState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [approvalNote, setApprovalNote] = useState<string>(workflow?.approvalDecisionNote ?? workflow?.approvalRejectionReason ?? "");
+  const [exportState, setExportState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportPreview, setExportPreview] = useState<Record<string, unknown> | null>(null);
+  const [exportMissingFields, setExportMissingFields] = useState<string[]>(workflow?.buildoutMissingFields ?? []);
+  const [exportWarnings, setExportWarnings] = useState<string[]>(workflow?.buildoutWarnings ?? []);
+
+  const isAdmin = userRole === "admin";
 
   const currentHeroPreview = useMemo(() => {
     return (
@@ -202,6 +227,69 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       console.error(error);
       setReadyState("error");
       setReadyMessage("Unable to mark draft ready");
+    }
+  }
+
+  async function handleApproval(action: "approve" | "reject") {
+    if (!formData.slug) return;
+
+    setApprovalState("saving");
+    setApprovalMessage(null);
+
+    try {
+      const response = await fetch(`/api/admin/properties/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: formData.slug,
+          note: approvalNote,
+          reason: action === "reject" ? approvalNote : undefined,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setApprovalState("error");
+        setApprovalMessage(payload.error ?? `Unable to ${action} property`);
+        return;
+      }
+      setApprovalState("done");
+      setApprovalMessage(action === "approve" ? "Property approved." : "Property sent back for changes.");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setApprovalState("error");
+      setApprovalMessage(`Unable to ${action} property`);
+    }
+  }
+
+  async function handleBuildoutPreview() {
+    if (!formData.slug) return;
+
+    setExportState("running");
+    setExportMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/properties/export-buildout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: formData.slug }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setExportState("error");
+        setExportMessage(payload.error ?? "Unable to generate Buildout payload preview");
+        return;
+      }
+      setExportState("done");
+      setExportMessage(payload.ready ? "Buildout payload preview is ready." : "Buildout preview generated with validation gaps.");
+      setExportPreview(payload.payload ?? null);
+      setExportMissingFields(Array.isArray(payload.missingRequiredFields) ? payload.missingRequiredFields : []);
+      setExportWarnings(Array.isArray(payload.warnings) ? payload.warnings : []);
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setExportState("error");
+      setExportMessage("Unable to generate Buildout payload preview");
     }
   }
 
@@ -541,6 +629,98 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
                 Goal state: broker submits the minimum, then this screen becomes the enrichment and review workspace where we deepen facts, strengthen copy, and finalize media before publish.
               </div>
+            </div>
+          </Section>
+
+          <Section title={isAdmin ? "Approval & export" : "Review feedback"} description={isAdmin ? "Phase 3 admin controls for approve/reject decisions and Buildout-ready payload validation." : "Admin feedback loop so brokers can see exactly what needs to be fixed before resubmitting."}>
+            <div className="space-y-5">
+              <div className="grid gap-4 text-sm md:grid-cols-2">
+                <div className={`rounded-2xl border p-4 ${workflow?.approvalStatus === "rejected" ? "border-amber-200 bg-amber-50" : "border-zinc-200 bg-zinc-50"}`}>
+                  <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Approval status</p>
+                  <p className="mt-2 text-base font-semibold text-zinc-900">{workflow?.approvalStatus ?? "pending"}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Current workflow</p>
+                  <p className="mt-2 text-base font-semibold text-zinc-900">{workflow?.workflowStatus ?? "review"}</p>
+                </div>
+              </div>
+
+              {(workflow?.approvalRejectionReason || workflow?.approvalDecisionNote) ? (
+                <div className={`rounded-2xl border p-4 text-sm space-y-2 ${workflow?.approvalStatus === "rejected" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">{workflow?.approvalStatus === "rejected" ? "Changes requested" : "Admin decision note"}</p>
+                  {workflow?.approvalRejectionReason ? <p>{workflow.approvalRejectionReason}</p> : null}
+                  {!workflow?.approvalRejectionReason && workflow?.approvalDecisionNote ? <p>{workflow.approvalDecisionNote}</p> : null}
+                </div>
+              ) : null}
+
+              <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600 space-y-2">
+                {workflow?.approvalSubmittedAt ? <p>Submitted for approval: {workflow.approvalSubmittedAt}</p> : null}
+                {workflow?.approvalSubmittedBy ? <p>Submitted by: {workflow.approvalSubmittedBy}</p> : null}
+                {workflow?.approvalDecidedAt ? <p>Last decision: {workflow.approvalDecidedAt}</p> : null}
+                {workflow?.approvalDecidedBy ? <p>Decision by: {workflow.approvalDecidedBy}</p> : null}
+              </div>
+
+              {isAdmin ? (
+                <>
+                  <Field label="Admin decision note / send-back note">
+                    <textarea className={`${inputClassName()} min-h-28`} value={approvalNote} onChange={(e) => setApprovalNote(e.target.value)} />
+                  </Field>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => handleApproval("approve")}
+                      disabled={!formData.slug || approvalState === "saving"}
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {approvalState === "saving" ? "Saving decision…" : "Approve Property"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApproval("reject")}
+                      disabled={!formData.slug || approvalState === "saving"}
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-amber-700 bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {approvalState === "saving" ? "Saving decision…" : "Reject / Send Back"}
+                    </button>
+                  </div>
+                  {approvalMessage ? <p className={`text-sm ${approvalState === "error" ? "text-red-600" : "text-zinc-700"}`}>{approvalMessage}</p> : null}
+
+                  <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+                    Buildout preview remains an internal structuring/validation tool only. No live Buildout sync work is in scope.
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleBuildoutPreview}
+                    disabled={!formData.slug || exportState === "running"}
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-zinc-900 bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {exportState === "running" ? "Generating Buildout preview…" : "Generate Buildout Payload Preview"}
+                  </button>
+                  {exportMessage ? <p className={`text-sm ${exportState === "error" ? "text-red-600" : "text-zinc-700"}`}>{exportMessage}</p> : null}
+
+                  {(exportMissingFields.length || exportWarnings.length || workflow?.buildoutPayloadVersion) && (
+                    <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600 space-y-2">
+                      {workflow?.buildoutPayloadVersion ? <p>Payload version: {workflow.buildoutPayloadVersion}</p> : null}
+                      {exportMissingFields.length ? <p>Missing required fields: {exportMissingFields.join(", ")}</p> : <p>Missing required fields: none</p>}
+                      {exportWarnings.length ? <p>Warnings: {exportWarnings.join(", ")}</p> : <p>Warnings: none</p>}
+                      {workflow?.buildoutSyncError ? <p className="text-red-600">Sync error: {workflow.buildoutSyncError}</p> : null}
+                    </div>
+                  )}
+
+                  {exportPreview ? (
+                    <details className="rounded-2xl border border-zinc-200 bg-white p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-zinc-900">View Buildout payload preview</summary>
+                      <pre className="mt-4 overflow-x-auto rounded-2xl bg-zinc-950 p-4 text-xs text-zinc-100">{JSON.stringify(exportPreview, null, 2)}</pre>
+                    </details>
+                  ) : null}
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+                  If admin requested changes, update the draft, save, and click <span className="font-semibold text-zinc-900">Mark Ready for Approval</span> again when it is clean.
+                </div>
+              )}
             </div>
           </Section>
 

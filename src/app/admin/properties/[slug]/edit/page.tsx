@@ -47,6 +47,7 @@ export default async function EditAdminPropertyPage({
         media={propertyDetail.media}
         documentId={propertyDetail.id}
         workflow={workflow ?? undefined}
+        userRole={session.role}
       />
     </main>
   );
