@@ -1,13 +1,20 @@
 import "server-only";
 
 import { execFile } from "child_process";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
+import path from "path";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
+const PROJECT_ROOT = process.cwd();
 const PYTHON = process.env.PYTHON_BIN || "python3";
-const LAUNCHPAD_PATH = `${process.cwd()}/scripts/listing_launchpad.py`;
-const SCRIPTS_ENV = "/data/.openclaw/workspace/scripts/.env";
+const LAUNCHPAD_PATH = path.join(PROJECT_ROOT, "scripts", "listing_launchpad.py");
+const ENV_CANDIDATES = [
+  "/data/.openclaw/workspace/scripts/.env",
+  path.join(PROJECT_ROOT, ".env.local"),
+  path.join(PROJECT_ROOT, ".env"),
+  path.join(PROJECT_ROOT, "scripts", ".env"),
+];
 
 type LaunchpadResearchResult = {
   public_records?: Record<string, unknown>;
@@ -16,19 +23,30 @@ type LaunchpadResearchResult = {
   ai_copy?: Record<string, unknown>;
 };
 
+function parseEnvFile(filePath: string) {
+  const text = readFileSync(filePath, "utf8");
+  const values: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const index = trimmed.indexOf("=");
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim();
+    if (key) values[key] = value;
+  }
+  return values;
+}
+
+function resolveEnvPath() {
+  return ENV_CANDIDATES.find((candidate) => existsSync(candidate)) ?? null;
+}
+
 function loadScriptEnv() {
+  const envPath = resolveEnvPath();
+  if (!envPath) return {};
+
   try {
-    const text = readFileSync(SCRIPTS_ENV, "utf8");
-    const values: Record<string, string> = {};
-    for (const line of text.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-      const index = trimmed.indexOf("=");
-      const key = trimmed.slice(0, index).trim();
-      const value = trimmed.slice(index + 1).trim();
-      if (key) values[key] = value;
-    }
-    return values;
+    return parseEnvFile(envPath);
   } catch {
     return {};
   }
@@ -53,11 +71,18 @@ export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCo
     ...process.env,
   };
 
+  const envPath = resolveEnvPath();
+
   console.log("[enrich][launchpad] starting python enrichment", {
     address: row.street_name,
     city: row.city,
     state: row.state,
     zip: row.zip_code,
+    projectRoot: PROJECT_ROOT,
+    cwdExists: existsSync(PROJECT_ROOT),
+    launchpadPath: LAUNCHPAD_PATH,
+    launchpadExists: existsSync(LAUNCHPAD_PATH),
+    envPath,
     hasInputCoordinates: Boolean(mapCoordinates?.lat != null && mapCoordinates?.lng != null),
     hasOpenAiKey: Boolean(env.OPENAI_API_KEY),
     hasMapsKey: Boolean(env.Maps_API_KEY),
@@ -69,8 +94,8 @@ import importlib.util, json, os
 from pathlib import Path
 
 launchpad_path = ${JSON.stringify(LAUNCHPAD_PATH)}
-env_path = ${JSON.stringify(SCRIPTS_ENV)}
-if Path(env_path).exists():
+env_path = ${JSON.stringify(envPath)}
+if env_path and Path(env_path).exists():
     try:
         from dotenv import load_dotenv
         load_dotenv(env_path)
@@ -103,7 +128,7 @@ print(json.dumps({
 `.trim();
 
   const { stdout, stderr } = await execFileAsync(PYTHON, ["-c", script], {
-    cwd: "/data/.openclaw/workspace/property-portal",
+    cwd: PROJECT_ROOT,
     env,
     maxBuffer: 1024 * 1024 * 8,
   });
