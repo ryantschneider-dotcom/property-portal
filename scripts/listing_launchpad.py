@@ -20,12 +20,14 @@ Environment variables:
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import io
 import json
 import os
 import re
 import time
+import html
 import hashlib
 import subprocess
 import tempfile
@@ -69,6 +71,7 @@ STATE_FILE = os.getenv(
     os.path.join(SCRIPT_DIR, ".launchpad_state"),
 )
 DOTENV_PATH = os.path.join(SCRIPT_DIR, ".env")
+COPYWRITING_RULES_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "docs", "ai_copywriting_rules.md")
 FIRESTORE_COLLECTION = "listings"
 BUILDOUT_PAYLOAD_DIR = os.path.join(SCRIPT_DIR, "buildout_payloads")
 
@@ -1036,6 +1039,251 @@ def build_property_address(row: Dict[str, Any]) -> str:
     return " ".join(str(part).strip() for part in parts if str(part).strip())
 
 
+def read_copywriting_rules() -> str:
+    try:
+        with open(COPYWRITING_RULES_PATH, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except Exception:
+        return ""
+
+
+def fetch_url_bytes(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 30) -> bytes:
+    req = urllib_request.Request(url, headers=headers or {"User-Agent": "Mozilla/5.0"}, method="GET")
+    with urllib_request.urlopen(req, timeout=timeout) as response:
+        return response.read()
+
+
+def fetch_url_text(url: str, headers: Optional[Dict[str, str]] = None, timeout: int = 30) -> str:
+    return fetch_url_bytes(url, headers=headers, timeout=timeout).decode("utf-8", errors="ignore")
+
+
+def strip_html_text(value: str) -> str:
+    if not value:
+        return ""
+    text = re.sub(r"<script[\s\S]*?</script>", " ", value, flags=re.IGNORECASE)
+    text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def sanitize_marketing_language(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.sub(r"\b(?:unknown|unspecified|not available|not specified)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bare\s*[,.;:]", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    return text.strip(" ,.;:")
+
+
+def openai_chat_json(
+    *,
+    api_key: str,
+    model: str,
+    messages: List[Dict[str, Any]],
+    temperature: float = 0.2,
+    timeout: int = 120,
+) -> Dict[str, Any]:
+    if OpenAI is not None:
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            response_format={"type": "json_object"},
+            messages=messages,
+            timeout=timeout,
+        )
+        text = response.choices[0].message.content or ""
+        return json.loads(text)
+
+    body = json.dumps(
+        {
+            "model": model,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+            "messages": messages,
+        }
+    ).encode("utf-8")
+    req = urllib_request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    with urllib_request.urlopen(req, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    text = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
+    return json.loads(text)
+
+
+def fetch_street_view_images(row: Dict[str, Any], map_coordinates: Optional[Dict[str, float]]) -> Dict[str, Any]:
+    api_key = os.getenv("Maps_API_KEY", "").strip()
+    if not api_key:
+        return {"status": "skipped", "reason": "Maps_API_KEY missing", "images": []}
+
+    coords = map_coordinates or geocode_address(row).get("map_coordinates")
+    if not coords:
+        return {"status": "skipped", "reason": "missing coordinates", "images": []}
+
+    lat = coords.get("lat")
+    lng = coords.get("lng")
+    if lat is None or lng is None:
+        return {"status": "skipped", "reason": "invalid coordinates", "images": []}
+
+    shots = [
+        {"label": "subject_front", "heading": 0, "fov": 90},
+        {"label": "eastbound_street", "heading": 90, "fov": 100},
+        {"label": "rear_context", "heading": 180, "fov": 90},
+        {"label": "westbound_street", "heading": 270, "fov": 100},
+    ]
+    images: List[Dict[str, Any]] = []
+    errors: List[str] = []
+
+    for shot in shots:
+        params = urllib_parse.urlencode(
+            {
+                "size": "640x640",
+                "location": f"{lat},{lng}",
+                "heading": shot["heading"],
+                "fov": shot["fov"],
+                "pitch": "0",
+                "return_error_code": "true",
+                "source": "outdoor",
+                "key": api_key,
+            }
+        )
+        image_url = f"https://maps.googleapis.com/maps/api/streetview?{params}"
+        metadata_url = f"https://maps.googleapis.com/maps/api/streetview/metadata?{params}"
+        try:
+            metadata = json.loads(fetch_url_text(metadata_url, timeout=30))
+            if metadata.get("status") != "OK":
+                errors.append(f"{shot['label']}: metadata {metadata.get('status')}")
+                continue
+            content = fetch_url_bytes(image_url, timeout=45)
+            if not content:
+                errors.append(f"{shot['label']}: empty image")
+                continue
+            images.append(
+                {
+                    "label": shot["label"],
+                    "heading": shot["heading"],
+                    "fov": shot["fov"],
+                    "content_type": "image/jpeg",
+                    "image_base64": base64.b64encode(content).decode("ascii"),
+                    "copyright": metadata.get("copyright"),
+                }
+            )
+        except Exception as exc:
+            errors.append(f"{shot['label']}: {exc}")
+
+    return {
+        "status": "ok" if images else "error",
+        "images": images,
+        "map_coordinates": {"lat": lat, "lng": lng},
+        "errors": errors,
+    }
+
+
+def analyze_street_view_with_vision(
+    row: Dict[str, Any],
+    street_view: Optional[Dict[str, Any]],
+    places: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    model = os.getenv("OPENAI_VISION_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o")).strip() or "gpt-4o"
+    images = ((street_view or {}).get("images") or []) if isinstance(street_view, dict) else []
+    if not api_key:
+        return {"status": "skipped", "reason": "OPENAI_API_KEY missing"}
+    if not images:
+        return {"status": "skipped", "reason": "street view images unavailable"}
+
+    prompt = f"""
+Analyze these Street View images for the commercial property at {build_property_address(row)}.
+
+Return strict JSON with exactly these keys:
+- exterior_construction_type
+- parking
+- environment_character
+- streetscape_summary
+- confidence
+
+Requirements:
+- Identify the likely exterior type using observable facts only (examples: historic brick facade, glass storefront, metal warehouse, stucco strip-center frontage).
+- Identify the parking situation using observable facts only (examples: curbside street parking, no dedicated parking visible, surface parking lot, rear parking court, truck court).
+- Describe the visual character of the environment in CRE terms.
+- Never use the words "unknown", "unspecified", "not available", or "not specified".
+- If a detail cannot be proven, describe what is visible instead of punting.
+- Keep each field concise, factual, and broker-usable.
+
+Nearby place context:
+{json.dumps(places or {}, indent=2, default=str)}
+""".strip()
+
+    content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for image in images[:4]:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image.get('content_type') or 'image/jpeg'};base64,{image.get('image_base64', '')}",
+                    "detail": "high",
+                },
+            }
+        )
+
+    try:
+        parsed = openai_chat_json(
+            api_key=api_key,
+            model=model,
+            temperature=0.1,
+            timeout=180,
+            messages=[
+                {"role": "system", "content": "You analyze commercial property Street View images and return strict JSON only."},
+                {"role": "user", "content": content},
+            ],
+        )
+        return {
+            "status": "ok",
+            "model": model,
+            "exterior_construction_type": sanitize_marketing_language(str(parsed.get("exterior_construction_type", ""))),
+            "parking": sanitize_marketing_language(str(parsed.get("parking", ""))),
+            "environment_character": sanitize_marketing_language(str(parsed.get("environment_character", ""))),
+            "streetscape_summary": sanitize_marketing_language(str(parsed.get("streetscape_summary", ""))),
+            "confidence": sanitize_marketing_language(str(parsed.get("confidence", ""))),
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+def search_public_web_context(row: Dict[str, Any], limit: int = 5) -> Dict[str, Any]:
+    query = build_property_address(row)
+    if not query:
+        return {"status": "skipped", "reason": "missing address", "results": []}
+
+    url = f"https://html.duckduckgo.com/html/?{urllib_parse.urlencode({'q': query + ' commercial real estate'})}"
+    try:
+        html_text = fetch_url_text(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        results: List[Dict[str, str]] = []
+        blocks = re.findall(r'<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.IGNORECASE)
+        snippets = re.findall(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>|<div[^>]+class="result__snippet"[^>]*>(.*?)</div>', html_text, flags=re.IGNORECASE)
+        for index, block in enumerate(blocks[:limit]):
+            href, title_html = block
+            title = strip_html_text(title_html)
+            snippet_html = ""
+            if index < len(snippets):
+                snippet_html = snippets[index][0] or snippets[index][1]
+            snippet = strip_html_text(snippet_html)
+            results.append({"title": title, "url": html.unescape(href), "snippet": snippet})
+        return {"status": "ok" if results else "empty", "query": query, "results": results}
+    except Exception as exc:
+        return {"status": "error", "query": query, "error": str(exc), "results": []}
+
+
 def google_places_text_search(query: str, limit: int = 8) -> List[str]:
     api_key = os.getenv("Maps_API_KEY", "").strip()
     if not api_key:
@@ -1110,14 +1358,19 @@ def research_google_places(row: Dict[str, Any], map_coordinates: Optional[Dict[s
         city = row.get("city", "")
         state = row.get("state", "")
         near_phrase = f"near {build_property_address(row)}"
+        neighborhood_text = (neighborhood or "").lower()
+        corridor_text = (corridor or "").lower()
+        environment_mode = "urban_walkable" if any(token in neighborhood_text or token in corridor_text for token in ["historic", "downtown", "district", "main street", "river street"]) else "vehicular_corridor"
 
         return {
             "status": "ok",
             "neighborhood": neighborhood,
             "corridor": corridor,
+            "environment_mode": environment_mode,
             "anchor_tenants": google_places_text_search(f"retail shopping centers and anchor tenants {near_phrase} {city} {state}"),
             "restaurants": google_places_text_search(f"restaurants {near_phrase} {city} {state}"),
             "banks": google_places_text_search(f"banks {near_phrase} {city} {state}"),
+            "landmarks": google_places_text_search(f"historic squares landmarks parks near {near_phrase} {city} {state}"),
             "map_coordinates": {"lat": lat, "lng": lng},
         }
     except Exception as exc:
@@ -1148,6 +1401,40 @@ def research_public_records_placeholder(row: Dict[str, Any]) -> Dict[str, Any]:
         "notes": [
             "Assessor scraper fallback not yet implemented for this address.",
         ],
+    }
+
+
+def enrich_research_package(
+    row: Dict[str, Any],
+    assessor_result: Optional[Dict[str, Any]] = None,
+    research: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    base_research = dict(research or {})
+    public_records = dict((base_research.get("public_records") or assessor_result or {}) if isinstance(base_research, dict) else {})
+    places = dict((base_research.get("places") or {}) if isinstance(base_research, dict) else {})
+    map_coordinates = places.get("map_coordinates") if isinstance(places, dict) else None
+
+    street_view = fetch_street_view_images(row, map_coordinates if isinstance(map_coordinates, dict) else None)
+    vision = analyze_street_view_with_vision(row, street_view, places)
+    web_context = search_public_web_context(row)
+
+    if isinstance(vision, dict) and vision.get("status") == "ok":
+        if not public_records.get("exterior_construction_type") and vision.get("exterior_construction_type"):
+            public_records["exterior_construction_type"] = vision.get("exterior_construction_type")
+        if not public_records.get("parking") and vision.get("parking"):
+            public_records["parking"] = vision.get("parking")
+
+    return {
+        "public_records": public_records,
+        "places": places,
+        "street_view": {
+            "status": street_view.get("status"),
+            "errors": street_view.get("errors"),
+            "map_coordinates": street_view.get("map_coordinates"),
+            "captured_labels": [img.get("label") for img in street_view.get("images", []) if isinstance(img, dict)],
+        },
+        "vision": vision,
+        "web_context": web_context,
     }
 
 
@@ -1186,15 +1473,8 @@ def generate_rule_based_copy(
 
 
 BANNED_COPY_PHRASES = [
-    "ideal for",
-    "opportunity",
-    "prime",
-    "growing market",
-    "bustling",
     "unparalleled",
     "premier",
-    "strategic",
-    "thriving",
     "perfect",
 ]
 
@@ -1225,6 +1505,13 @@ def generate_ai_copy(
     if not api_key:
         return fallback
 
+    enriched_research = enrich_research_package(row, assessor_result, research)
+    public_records = dict(enriched_research.get("public_records") or {})
+    places = dict(enriched_research.get("places") or {})
+    vision = dict(enriched_research.get("vision") or {})
+    web_context = dict(enriched_research.get("web_context") or {})
+    copy_rules = read_copywriting_rules()
+
     property_address = build_property_address(row)
     property_type = row.get("property_type", "") or "Property"
     transaction_type = row.get("transaction_type", "") or "Listing"
@@ -1237,7 +1524,7 @@ def generate_ai_copy(
     allowed_subtype_ids = sorted(BUILDOUT_ALLOWED_SUBTYPES_BY_PROPERTY_TYPE.get(property_type_key, set()))
     subtype_options = {k: BUILDOUT_PROPERTY_SUBTYPE_ENUMS[k] for k in allowed_subtype_ids}
 
-    research_json = json.dumps(research or {}, indent=2, default=str)
+    research_json = json.dumps(enriched_research, indent=2, default=str)
     banned_csv = ", ".join(BANNED_COPY_PHRASES)
     price_text = "Price undisclosed" if visibility == "Undisclosed" or not price_amount else f"Price: {price_amount}"
 
@@ -1256,10 +1543,10 @@ Return strict JSON with exactly these keys:
 
 Requirements:
 - sale_title: macro focused, city-forward, practical, not cheesy
-- sale_description: robust factual paragraph with site size, building size, construction/exterior, parking, and assessor/public-record improvements when supported by research
-- location_description: detailed paragraph describing the corridor/neighborhood and specifically naming nearby retailers, restaurants, and banks when present in the research
+- sale_description: full broker-quality marketing narrative in 2-3 paragraphs when the research supports it; should sound like high-end offering memorandum copy, not boilerplate
+- location_description: rich 2-paragraph neighborhood narrative that explains why the location works, with context-aware emphasis depending on the environment type
 - sale_bullets: array of 3 to 5 concise bullets
-- exterior_description: concise factual description of facade, parking, and construction type
+- exterior_description: factual but polished paragraph describing the facade, streetscape presence, and parking/access arrangement
 - property_subtype_id: choose the most accurate Buildout subtype ID from the enum list below
 - building_size_sf: integer or null
 - year_built: integer or null
@@ -1267,13 +1554,23 @@ Requirements:
 Guardrails:
 - Be factual, specific, and CRE-broker professional
 - Do not invent facts not reasonably supported by the intake or research
-- If research is weak, say less, not more
+- If research is weak, say less, not more — but still write like a broker, not a placeholder generator
 - Avoid these phrases: {banned_csv}
+- Also avoid lazy CRE filler such as: ideal for, prime location, thriving corridor, strategic location, rare opportunity, prestigious address
 - Bullets should be short and useful, not marketing fluff
+- Never write "unknown", "unspecified", "not available", or "not specified" in sale_description, location_description, or exterior_description
+- If exterior construction type or parking cannot be fully proven, describe what is visible or strongly inferable from street view / public web context instead of punting
+- Urban/walkable properties: focus on foot traffic, pedestrian energy, adjacency to squares/parks, storefront synergy, and block-level context
+- Suburban/highway/rural properties: focus on road hierarchy, signalized access, major intersections, interstate/port connectivity, truck or customer access, and surrounding use mix
+- Use any address-specific historical/corridor color present in the research package, including public-web context, as long as it is supportable
+- If landmarks, districts, or squares appear in the research package, name them directly instead of flattening them into generic corridor copy
 - Valid JSON only
 
 Buildout Property Subtype Enum options for this property type only:
 {json.dumps(subtype_options, indent=2)}
+
+Durable copywriting rules:
+{copy_rules or 'No external rules file found.'}
 
 Listing intake:
 - Transaction type: {transaction_type}
@@ -1289,70 +1586,40 @@ Research package:
 """.strip()
 
     try:
-        if OpenAI is not None:
-            client = OpenAI(api_key=api_key)
-            response = client.chat.completions.create(
-                model=model,
-                temperature=0.2,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You produce strict factual CRE enrichment JSON for Buildout payloads.",
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
-                ],
-            )
-            text = response.choices[0].message.content or ""
-        else:
-            body = json.dumps({
-                "model": model,
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You produce strict factual CRE enrichment JSON for Buildout payloads.",
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
-                ],
-            }).encode("utf-8")
-            req = urllib_request.Request(
-                "https://api.openai.com/v1/chat/completions",
-                data=body,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
+        parsed = openai_chat_json(
+            api_key=api_key,
+            model=model,
+            temperature=0.35,
+            timeout=180,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You produce strict factual CRE enrichment JSON for broker-facing marketing copy. Write with texture and local context when supported, but never invent facts.",
                 },
-                method="POST",
-            )
-            with urllib_request.urlopen(req, timeout=90) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-            text = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
-        parsed = json.loads(text)
-        sale_description = str(parsed.get("sale_description", "")).strip()
-        location_description = str(parsed.get("location_description", "")).strip()
-        if contains_banned_copy(sale_description) or contains_banned_copy(location_description):
-            fallback["error"] = "AI enrichment used banned phrasing"
-            return fallback
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+        )
+        sale_description = sanitize_marketing_language(str(parsed.get("sale_description", "")).strip())
+        location_description = sanitize_marketing_language(str(parsed.get("location_description", "")).strip())
+        exterior_description = sanitize_marketing_language(str(parsed.get("exterior_description", "")).strip())
         selected_subtype = constrain_property_subtype_id(property_type, normalize_integer(parsed.get("property_subtype_id")))
-        return {
+        result = {
             "sale_title": str(parsed.get("sale_title", "")).strip() or fallback.get("sale_title"),
             "sale_description": sale_description or fallback.get("sale_description"),
             "location_description": location_description or fallback.get("location_description"),
             "sale_bullets": parsed.get("sale_bullets") if isinstance(parsed.get("sale_bullets"), list) else fallback.get("sale_bullets"),
-            "exterior_description": str(parsed.get("exterior_description", "")).strip() or fallback.get("exterior_description"),
+            "exterior_description": exterior_description or fallback.get("exterior_description"),
             "property_subtype_id": selected_subtype or fallback.get("property_subtype_id"),
             "building_size_sf": normalize_integer(parsed.get("building_size_sf")) or fallback.get("building_size_sf"),
             "year_built": normalize_integer(parsed.get("year_built")),
             "generator": f"ai:{model}",
         }
+        if contains_banned_copy(sale_description) or contains_banned_copy(location_description):
+            result["warning"] = "AI enrichment used soft-banned phrasing"
+        return result
     except Exception as exc:
         fallback["error"] = str(exc)
         print(f"OpenAI enrichment failed: {exc}")

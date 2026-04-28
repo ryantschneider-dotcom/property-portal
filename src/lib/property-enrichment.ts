@@ -250,6 +250,7 @@ export async function enrichPropertyDraft(slug: string) {
   let launchpad: {
     public_records?: Record<string, unknown>;
     places?: Record<string, unknown>;
+    research?: Record<string, unknown>;
     ai_copy?: Record<string, unknown>;
   } = {};
 
@@ -261,6 +262,7 @@ export async function enrichPropertyDraft(slug: string) {
 
   const publicRecords = (launchpad.public_records as Record<string, unknown> | undefined) ?? {};
   const places = (launchpad.places as Record<string, unknown> | undefined) ?? {};
+  const deepResearch = (launchpad.research as Record<string, unknown> | undefined) ?? {};
   const aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
 
   const buildingSizeSf = formatNumber(property.buildingSizeSf || publicRecords.building_size_sf || intake.building_size_sf);
@@ -379,11 +381,14 @@ export async function enrichPropertyDraft(slug: string) {
         },
         research: {
           ...existingResearch,
+          ...deepResearch,
           public_records: publicRecords,
           places: {
             ...(existingResearch.places ?? {}),
             neighborhood: asString(places.neighborhood) || neighborhood.neighborhood,
             corridor: asString(places.corridor) || neighborhood.corridor,
+            environment_mode: asString(places.environment_mode) || null,
+            landmarks: firstNonEmptyList((places as Record<string, unknown>).landmarks, (existingResearch.places ?? {}).landmarks),
             anchor_tenants: anchors,
             restaurants,
             banks,

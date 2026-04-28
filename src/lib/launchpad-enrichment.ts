@@ -12,6 +12,7 @@ const SCRIPTS_ENV = "/data/.openclaw/workspace/scripts/.env";
 type LaunchpadResearchResult = {
   public_records?: Record<string, unknown>;
   places?: Record<string, unknown>;
+  research?: Record<string, unknown>;
   ai_copy?: Record<string, unknown>;
 };
 
@@ -72,11 +73,15 @@ if isinstance(coords, dict) and coords.get('lat') is not None and coords.get('ln
 
 public_records = module.research_public_records_placeholder(row)
 places = module.research_google_places(row, map_coordinates)
-ai_copy = module.generate_ai_copy(row, public_records, {'public_records': public_records, 'places': places})
+research = module.enrich_research_package(row, public_records, {'public_records': public_records, 'places': places})
+public_records = research.get('public_records') or public_records
+places = research.get('places') or places
+ai_copy = module.generate_ai_copy(row, public_records, research)
 
 print(json.dumps({
     'public_records': public_records,
     'places': places,
+    'research': research,
     'ai_copy': ai_copy,
 }, default=str))
 `.trim();
