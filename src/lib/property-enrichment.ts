@@ -255,6 +255,7 @@ function detectMissingFields(raw: Record<string, any>) {
 }
 
 export async function enrichPropertyDraft(slug: string) {
+  console.log("[enrich] starting enrichPropertyDraft", { slug });
   const query = await db.collection(PROPERTIES_COLLECTION).where("slug", "==", slug).limit(1).get();
   const doc = !query.empty ? query.docs[0] : await db.collection(PROPERTIES_COLLECTION).doc(slug).get();
   if (!doc.exists) {
@@ -299,6 +300,17 @@ export async function enrichPropertyDraft(slug: string) {
     zip_code: address.zip ?? intake.zip,
   } as Record<string, unknown>;
 
+  console.log("[enrich] prepared row", {
+    slug,
+    documentId: doc.id,
+    title: raw.title ?? null,
+    fullAddress,
+    county,
+    transactionLabel,
+    propertyType,
+    existingLocation: raw.location ?? null,
+  });
+
   let launchpad: {
     public_records?: Record<string, unknown>;
     places?: Record<string, unknown>;
@@ -307,15 +319,32 @@ export async function enrichPropertyDraft(slug: string) {
   } = {};
 
   try {
+    console.log("[enrich] calling runLaunchpadEnrichment", { slug, hasExistingLocation: Boolean(raw.location) });
     launchpad = await runLaunchpadEnrichment(row, raw.location ?? null);
   } catch (error) {
-    console.error("Launchpad enrichment failed; falling back to deterministic draft enrichment", error);
+    console.error("[enrich] Launchpad enrichment failed; falling back to deterministic draft enrichment", {
+      slug,
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
+    });
   }
 
   const publicRecords = (launchpad.public_records as Record<string, unknown> | undefined) ?? {};
   const places = (launchpad.places as Record<string, unknown> | undefined) ?? {};
   const deepResearch = (launchpad.research as Record<string, unknown> | undefined) ?? {};
   const aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
+  console.log("[enrich] launchpad result summary", {
+    slug,
+    publicRecordsStatus: publicRecords.status ?? null,
+    placesStatus: places.status ?? null,
+    aiGenerator: aiCopy.generator ?? null,
+    aiError: aiCopy.error ?? null,
+    aiWarning: aiCopy.warning ?? null,
+    streetViewStatus: (deepResearch.street_view as Record<string, unknown> | undefined)?.status ?? null,
+    streetViewErrors: (deepResearch.street_view as Record<string, unknown> | undefined)?.errors ?? null,
+    visionStatus: (deepResearch.vision as Record<string, unknown> | undefined)?.status ?? null,
+    visionError: (deepResearch.vision as Record<string, unknown> | undefined)?.error ?? null,
+    webContextStatus: (deepResearch.web_context as Record<string, unknown> | undefined)?.status ?? null,
+  });
   const media = raw.media ?? {};
   const streetViewResearch = (deepResearch.street_view as Record<string, unknown> | undefined) ?? {};
   const visionResearch = (deepResearch.vision as Record<string, unknown> | undefined) ?? {};
@@ -363,6 +392,15 @@ export async function enrichPropertyDraft(slug: string) {
     ((raw.location as Record<string, unknown> | undefined) ?? null);
   const resolvedLat = parseOptionalNumber(resolvedCoordinates?.lat);
   const resolvedLng = parseOptionalNumber(resolvedCoordinates?.lng);
+  console.log("[enrich] resolved coordinates", {
+    slug,
+    resolvedCoordinates,
+    resolvedLat,
+    resolvedLng,
+    rawLocation: raw.location ?? null,
+    placesMapCoordinates: (deepResearch.places as Record<string, unknown> | undefined)?.map_coordinates ?? null,
+    streetViewMapCoordinates: (deepResearch.street_view as Record<string, unknown> | undefined)?.map_coordinates ?? null,
+  });
 
   const missing = detectMissingFields({
     ...raw,
@@ -395,6 +433,13 @@ export async function enrichPropertyDraft(slug: string) {
         imageBase64: asString(streetViewPrimary.image_base64),
       })
     : null;
+  console.log("[enrich] street view gallery decision", {
+    slug,
+    hasStreetViewGalleryImage,
+    hasStreetViewPrimary: Boolean(streetViewPrimary),
+    streetViewPrimaryLabel: streetViewPrimary?.label ?? null,
+    generatedStreetViewImage: Boolean(generatedStreetViewImage),
+  });
 
   const updatePayload: Record<string, unknown> = {
     workflowStatus,
@@ -485,7 +530,26 @@ export async function enrichPropertyDraft(slug: string) {
     };
   }
 
+  console.log("[enrich] saving update payload", {
+    slug,
+    documentId: doc.id,
+    workflowStatus,
+    location: updatePayload.location ?? null,
+    mode: (updatePayload.meta as Record<string, unknown> | undefined)?.enrichment && ((updatePayload.meta as Record<string, unknown>).enrichment as Record<string, unknown>).mode,
+    launchpadErrors:
+      (updatePayload.meta as Record<string, unknown> | undefined)?.enrichment &&
+      ((updatePayload.meta as Record<string, unknown>).enrichment as Record<string, unknown>).launchpadErrors,
+  });
+
   await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(updatePayload, { merge: true });
+
+  console.log("[enrich] completed enrichPropertyDraft", {
+    slug,
+    documentId: doc.id,
+    workflowStatus,
+    savedLocation: updatePayload.location ?? null,
+    generatedSaleTitle,
+  });
 
   return {
     ok: true,

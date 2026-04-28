@@ -1,0 +1,2 @@
+purpose=live enrichment logging deploy
+notes=adds explicit server logs for env presence, launchpad result summary, coordinates resolution, street-view decision, and payload save path

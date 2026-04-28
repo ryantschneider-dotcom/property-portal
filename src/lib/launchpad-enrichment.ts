@@ -48,6 +48,22 @@ function parseJsonBlock(stdout: string) {
 }
 
 export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCoordinates?: { lat?: number | null; lng?: number | null } | null) {
+  const env = {
+    ...loadScriptEnv(),
+    ...process.env,
+  };
+
+  console.log("[enrich][launchpad] starting python enrichment", {
+    address: row.street_name,
+    city: row.city,
+    state: row.state,
+    zip: row.zip_code,
+    hasInputCoordinates: Boolean(mapCoordinates?.lat != null && mapCoordinates?.lng != null),
+    hasOpenAiKey: Boolean(env.OPENAI_API_KEY),
+    hasMapsKey: Boolean(env.Maps_API_KEY),
+    openAiModel: env.OPENAI_MODEL || null,
+  });
+
   const script = `
 import importlib.util, json, os
 from pathlib import Path
@@ -86,11 +102,6 @@ print(json.dumps({
 }, default=str))
 `.trim();
 
-  const env = {
-    ...loadScriptEnv(),
-    ...process.env,
-  };
-
   const { stdout, stderr } = await execFileAsync(PYTHON, ["-c", script], {
     cwd: "/data/.openclaw/workspace/property-portal",
     env,
@@ -98,8 +109,16 @@ print(json.dumps({
   });
 
   if (stderr && stderr.trim()) {
-    console.warn("launchpad enrichment stderr:", stderr.trim());
+    console.warn("[enrich][launchpad] python stderr", stderr.trim());
   }
 
-  return parseJsonBlock(stdout);
+  const parsed = parseJsonBlock(stdout);
+  console.log("[enrich][launchpad] completed python enrichment", {
+    placesStatus: parsed.places && typeof parsed.places === "object" ? (parsed.places as Record<string, unknown>).status ?? null : null,
+    aiGenerator: parsed.ai_copy && typeof parsed.ai_copy === "object" ? (parsed.ai_copy as Record<string, unknown>).generator ?? null : null,
+    aiError: parsed.ai_copy && typeof parsed.ai_copy === "object" ? (parsed.ai_copy as Record<string, unknown>).error ?? null : null,
+    researchKeys: parsed.research && typeof parsed.research === "object" ? Object.keys(parsed.research) : [],
+  });
+
+  return parsed;
 }
