@@ -1,0 +1,2 @@
+purpose=runtime enrichment fix
+notes=normalize openai model ids persist geocoded location add nominatim geocode fallback retain coords when maps is missing or denied

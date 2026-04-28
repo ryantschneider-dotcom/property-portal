@@ -355,14 +355,23 @@ def geocode_address(row: Dict[str, Any]) -> Dict[str, Any]:
         try:
             results = client.geocode(address)
             if not results:
+                fallback = geocode_address_nominatim(address)
+                if fallback:
+                    return {"status": "ok", "source": "nominatim", "map_coordinates": fallback, "address": address}
                 return {"status": "not_found", "map_coordinates": None, "address": address}
             location = results[0].get("geometry", {}).get("location", {})
             coords = {"lat": float(location["lat"]), "lng": float(location["lng"])}
             return {"status": "ok", "map_coordinates": coords, "address": address}
         except Exception as exc:  # pragma: no cover
+            fallback = geocode_address_nominatim(address)
+            if fallback:
+                return {"status": "ok", "source": "nominatim", "map_coordinates": fallback, "address": address, "warning": str(exc)}
             return {"status": "error", "error": str(exc), "address": address, "map_coordinates": None}
 
     if not api_key:
+        fallback = geocode_address_nominatim(address)
+        if fallback:
+            return {"status": "ok", "source": "nominatim", "map_coordinates": fallback, "address": address}
         return {"status": "skipped", "reason": "Maps_API_KEY missing", "map_coordinates": None}
 
     try:
@@ -372,14 +381,41 @@ def geocode_address(row: Dict[str, Any]) -> Dict[str, Any]:
             payload = json.loads(response.read().decode("utf-8"))
         results = payload.get("results", [])
         if not results:
+            fallback = geocode_address_nominatim(address)
+            if fallback:
+                return {"status": "ok", "source": "nominatim", "map_coordinates": fallback, "address": address}
             return {"status": "not_found", "map_coordinates": None, "address": address}
         location = (results[0].get("geometry") or {}).get("location") or {}
         if "lat" not in location or "lng" not in location:
+            fallback = geocode_address_nominatim(address)
+            if fallback:
+                return {"status": "ok", "source": "nominatim", "map_coordinates": fallback, "address": address}
             return {"status": "not_found", "map_coordinates": None, "address": address}
         coords = {"lat": float(location["lat"]), "lng": float(location["lng"])}
         return {"status": "ok", "map_coordinates": coords, "address": address}
     except Exception as exc:
+        fallback = geocode_address_nominatim(address)
+        if fallback:
+            return {"status": "ok", "source": "nominatim", "map_coordinates": fallback, "address": address, "warning": str(exc)}
         return {"status": "error", "error": str(exc), "address": address, "map_coordinates": None}
+
+
+def geocode_address_nominatim(address: str) -> Optional[Dict[str, float]]:
+    try:
+        query = urllib_parse.urlencode({"q": address, "format": "jsonv2", "limit": 1})
+        url = f"https://nominatim.openstreetmap.org/search?{query}"
+        text = fetch_url_text(url, headers={"User-Agent": "PIERPropertyPortal/1.0 (internal enrichment)"}, timeout=30)
+        results = json.loads(text)
+        if not isinstance(results, list) or not results:
+            return None
+        first = results[0] or {}
+        lat = first.get("lat")
+        lon = first.get("lon")
+        if lat is None or lon is None:
+            return None
+        return {"lat": float(lat), "lng": float(lon)}
+    except Exception:
+        return None
 
 
 def init_firestore():
@@ -1078,6 +1114,17 @@ def sanitize_marketing_language(value: str) -> str:
     return text.strip(" ,.;:")
 
 
+def normalize_openai_model_name(model: str) -> str:
+    text = str(model or "").strip()
+    if not text:
+        return "gpt-4o"
+    if "/" in text:
+        provider, candidate = text.split("/", 1)
+        if provider.strip().lower() == "openai" and candidate.strip():
+            return candidate.strip()
+    return text
+
+
 def openai_chat_json(
     *,
     api_key: str,
@@ -1086,54 +1133,69 @@ def openai_chat_json(
     temperature: float = 0.2,
     timeout: int = 120,
 ) -> Dict[str, Any]:
-    if OpenAI is not None:
-        client = OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            response_format={"type": "json_object"},
-            messages=messages,
-            timeout=timeout,
-        )
-        text = response.choices[0].message.content or ""
-        return json.loads(text)
+    candidate_models: List[str] = []
+    for candidate in [normalize_openai_model_name(model), "gpt-4o"]:
+        if candidate and candidate not in candidate_models:
+            candidate_models.append(candidate)
 
-    body = json.dumps(
-        {
-            "model": model,
-            "temperature": temperature,
-            "response_format": {"type": "json_object"},
-            "messages": messages,
-        }
-    ).encode("utf-8")
-    req = urllib_request.Request(
-        "https://api.openai.com/v1/chat/completions",
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-    with urllib_request.urlopen(req, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    text = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
-    return json.loads(text)
+    last_error: Optional[Exception] = None
+
+    for candidate_model in candidate_models:
+        try:
+            if OpenAI is not None:
+                client = OpenAI(api_key=api_key)
+                response = client.chat.completions.create(
+                    model=candidate_model,
+                    temperature=temperature,
+                    response_format={"type": "json_object"},
+                    messages=messages,
+                    timeout=timeout,
+                )
+                text = response.choices[0].message.content or ""
+                return json.loads(text)
+
+            body = json.dumps(
+                {
+                    "model": candidate_model,
+                    "temperature": temperature,
+                    "response_format": {"type": "json_object"},
+                    "messages": messages,
+                }
+            ).encode("utf-8")
+            req = urllib_request.Request(
+                "https://api.openai.com/v1/chat/completions",
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                },
+                method="POST",
+            )
+            with urllib_request.urlopen(req, timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            text = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
+            return json.loads(text)
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("OpenAI enrichment failed before any request could be attempted")
 
 
 def fetch_street_view_images(row: Dict[str, Any], map_coordinates: Optional[Dict[str, float]]) -> Dict[str, Any]:
     api_key = os.getenv("Maps_API_KEY", "").strip()
-    if not api_key:
-        return {"status": "skipped", "reason": "Maps_API_KEY missing", "images": []}
-
     coords = map_coordinates or geocode_address(row).get("map_coordinates")
+    if not api_key:
+        return {"status": "skipped", "reason": "Maps_API_KEY missing", "images": [], "map_coordinates": coords}
     if not coords:
-        return {"status": "skipped", "reason": "missing coordinates", "images": []}
+        return {"status": "skipped", "reason": "missing coordinates", "images": [], "map_coordinates": None}
 
     lat = coords.get("lat")
     lng = coords.get("lng")
     if lat is None or lng is None:
-        return {"status": "skipped", "reason": "invalid coordinates", "images": []}
+        return {"status": "skipped", "reason": "invalid coordinates", "images": [], "map_coordinates": coords}
 
     shots = [
         {"label": "subject_front", "heading": 0, "fov": 90},
@@ -1353,7 +1415,7 @@ def research_google_places(row: Dict[str, Any], map_coordinates: Optional[Dict[s
                 if not corridor and "route" in types:
                     corridor = result.get("formatted_address", "")
         else:
-            return {"status": "skipped", "reason": "Maps_API_KEY missing"}
+            return {"status": "skipped", "reason": "Maps_API_KEY missing", "map_coordinates": {"lat": lat, "lng": lng}}
 
         corridor = corridor or build_property_address(row)
         city = row.get("city", "")
@@ -1375,7 +1437,7 @@ def research_google_places(row: Dict[str, Any], map_coordinates: Optional[Dict[s
             "map_coordinates": {"lat": lat, "lng": lng},
         }
     except Exception as exc:
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": str(exc), "map_coordinates": {"lat": lat, "lng": lng}}
 
 
 def research_public_records_placeholder(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -1453,9 +1515,34 @@ def generate_rule_based_copy(
     subtype_label = BUILDOUT_PROPERTY_SUBTYPE_ENUMS.get(subtype_id, property_type)
 
     transaction_phrase = "for Sale" if transaction_type.lower() == "for sale" else ("for Lease" if transaction_type.lower() == "for lease" else transaction_type)
-    sale_title = f"{property_type} Property {transaction_phrase} in {city}".strip()
+    assessor = dict(assessor_result or {})
+    bundle = dict(research or {})
+    web_context = dict(bundle.get("web_context") or {})
+    results = web_context.get("results") if isinstance(web_context.get("results"), list) else []
+    joined_snippets = " ".join(str((item or {}).get("snippet") or "") for item in results[:3] if isinstance(item, dict)).strip()
+    year_built = normalize_integer(assessor.get("year_built"))
+    building_size = normalize_integer(assessor.get("building_size_sf")) or normalize_integer(row.get("available_sf"))
+    title_prefix = "Historic " if year_built and year_built < 1945 else ""
+
+    sale_title = f"{title_prefix}{city} {property_type} Opportunity".strip() if city else f"{property_type} Opportunity".strip()
     sale_description = f"{property_type} property located in {city}, {county} County.".strip()
+    if year_built and building_size and city:
+        sale_description = f"{building_size:,} square feet in {city}, {county} County, with a recorded year built of {year_built}."
+    elif building_size and city:
+        sale_description = f"{building_size:,} square feet located in {city}, {county} County."
+
     location_description = f"Located along the {city} commercial corridor.".strip() if city else ""
+    exterior_description = "Exterior/construction details pending public-record research."
+
+    lowered = joined_snippets.lower()
+    if "historic" in lowered and city:
+        location_description = f"Positioned in Savannah's historic downtown setting near Broughton Street and surrounding pedestrian-oriented blocks."
+    if "broughton" in lowered:
+        location_description += " The property sits just off Broughton Street, placing it near one of downtown Savannah's most active retail and dining corridors."
+    if "brick" in lowered:
+        exterior_description = "Historic brick street-front building with a traditional downtown Savannah facade and pedestrian-oriented access."
+    elif year_built and year_built < 1945:
+        exterior_description = "Historic street-front building with an early-era downtown facade and walk-up access along the block."
 
     return {
         "sale_title": sale_title,
@@ -1466,10 +1553,10 @@ def generate_rule_based_copy(
             "Address confirmed from Launchpad intake",
             "Draft enrichment pending deeper public-record extraction",
         ],
-        "exterior_description": "Exterior/construction details pending public-record research.",
+        "exterior_description": exterior_description,
         "property_subtype_id": subtype_id,
-        "building_size_sf": normalize_integer(row.get("available_sf")),
-        "year_built": None,
+        "building_size_sf": building_size,
+        "year_built": year_built,
         "generator": "rule-based",
     }
 

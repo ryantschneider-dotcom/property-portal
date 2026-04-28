@@ -317,6 +317,8 @@ export async function enrichPropertyDraft(slug: string) {
   const deepResearch = (launchpad.research as Record<string, unknown> | undefined) ?? {};
   const aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
   const media = raw.media ?? {};
+  const streetViewResearch = (deepResearch.street_view as Record<string, unknown> | undefined) ?? {};
+  const visionResearch = (deepResearch.vision as Record<string, unknown> | undefined) ?? {};
 
   const buildingSizeSf = formatNumber(property.buildingSizeSf || publicRecords.building_size_sf || intake.building_size_sf);
   const lotSize = formatAcres(property.lotSizeAcres || publicRecords.lot_size_acres || intake.lot_size_acres);
@@ -355,6 +357,12 @@ export async function enrichPropertyDraft(slug: string) {
         anchors,
       });
   const generatedExteriorDescription = asString(aiCopy.exterior_description) || asString(publicRecords.exterior_construction_type || publicRecords.notes);
+  const resolvedCoordinates =
+    ((deepResearch.street_view as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
+    ((deepResearch.places as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
+    ((raw.location as Record<string, unknown> | undefined) ?? null);
+  const resolvedLat = parseOptionalNumber(resolvedCoordinates?.lat);
+  const resolvedLng = parseOptionalNumber(resolvedCoordinates?.lng);
 
   const missing = detectMissingFields({
     ...raw,
@@ -375,7 +383,7 @@ export async function enrichPropertyDraft(slug: string) {
 
   const workflowStatus = missing.hasCriticalGaps ? "needs_input" : "review";
 
-  const streetViewPrimary = ((deepResearch.street_view as Record<string, unknown> | undefined)?.primary_image as Record<string, unknown> | undefined) ?? null;
+  const streetViewPrimary = (streetViewResearch.primary_image as Record<string, unknown> | undefined) ?? null;
   const existingImages = Array.isArray(media.images) ? (media.images as Array<Record<string, unknown>>) : [];
   const hasStreetViewGalleryImage = existingImages.some((image: Record<string, unknown>) => asString(image?.source) === "street-view-auto");
   const generatedStreetViewImage = !hasStreetViewGalleryImage && streetViewPrimary && asString(streetViewPrimary.image_base64)
@@ -412,6 +420,10 @@ export async function enrichPropertyDraft(slug: string) {
       neighborhood: asString(address.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
       submarket: asString(address.submarket) || asString(places.corridor) || neighborhood.corridor,
     },
+    location: {
+      lat: resolvedLat,
+      lng: resolvedLng,
+    },
     admin: {
       neighborhood: asString(admin.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
       corridor: asString(admin.corridor) || asString(places.corridor) || neighborhood.corridor,
@@ -434,6 +446,10 @@ export async function enrichPropertyDraft(slug: string) {
           asString((publicRecords as Record<string, unknown>).error),
           asString((places as Record<string, unknown>).error),
           asString((aiCopy as Record<string, unknown>).error),
+          asString(visionResearch.error),
+          ...(Array.isArray(streetViewResearch.errors)
+            ? streetViewResearch.errors.map((item) => asString(item)).filter(Boolean)
+            : []),
         ]),
         streetViewGalleryInjected: Boolean(generatedStreetViewImage),
       },
