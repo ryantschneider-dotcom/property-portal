@@ -1,0 +1,2 @@
+purpose=client enrich ui hardening
+notes=guards media image url access adds client hydration and enrich click logs to trace pre-request crashes

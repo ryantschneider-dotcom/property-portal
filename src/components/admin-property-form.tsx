@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { AdminPropertyFormData } from "@/lib/admin";
@@ -68,6 +68,10 @@ function inputClassName() {
   return "w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-900";
 }
 
+function getMediaImageSrc(image: MediaImage | null | undefined) {
+  return image?.urls?.large ?? image?.urls?.xlarge ?? image?.urls?.full ?? image?.urls?.original ?? null;
+}
+
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
@@ -105,13 +109,21 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
 
   const isAdmin = userRole === "admin";
 
+  useEffect(() => {
+    console.log("[enrich][client] admin form hydrated", {
+      slug: initialData.slug,
+      mode,
+      documentId: documentId ?? null,
+      mediaImageCount: mediaImages.length,
+    });
+  }, [documentId, initialData.slug, mediaImages.length, mode]);
+
   const currentHeroPreview = useMemo(() => {
     return (
       heroImageUrl ??
-      mediaImages.find((image) => image.isPrimary)?.urls?.large ??
-      mediaImages.find((image) => image.urls.large)?.urls?.large ??
-      mediaImages[0]?.urls?.large ??
-      mediaImages[0]?.urls?.original ??
+      getMediaImageSrc(mediaImages.find((image) => image?.isPrimary)) ??
+      getMediaImageSrc(mediaImages.find((image) => Boolean(image?.urls?.large || image?.urls?.xlarge || image?.urls?.full || image?.urls?.original))) ??
+      getMediaImageSrc(mediaImages[0]) ??
       null
     );
   }, [heroImageUrl, mediaImages]);
@@ -158,26 +170,39 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   }
 
   async function handleEnrichDraft() {
-    if (!formData.slug) return;
+    console.log("[enrich][client] handleEnrichDraft clicked", {
+      slug: formData.slug,
+      documentId: documentId ?? null,
+      currentPath: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+
+    if (!formData.slug) {
+      console.warn("[enrich][client] missing slug; aborting enrich click");
+      return;
+    }
 
     setEnrichState("running");
-    setEnrichMessage(null);
+    setEnrichMessage("Starting draft enrichment…");
 
     try {
+      console.log("[enrich][client] sending enrich request", { slug: formData.slug });
       const response = await fetch("/api/admin/properties/enrich", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: formData.slug }),
       });
 
+      console.log("[enrich][client] enrich response received", { slug: formData.slug, status: response.status, ok: response.ok });
       const payload = await response.json();
       if (!response.ok) {
+        console.error("[enrich][client] enrich response error", payload);
         setEnrichState("error");
         setEnrichMessage(payload.error ?? "Unable to enrich draft");
         return;
       }
 
       if (payload.generated) {
+        console.log("[enrich][client] applying generated enrichment payload", payload.generated);
         setFormData((current) => ({
           ...current,
           saleTitle: current.saleTitle || payload.generated.saleTitle || current.saleTitle,
@@ -196,9 +221,9 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       );
       router.refresh();
     } catch (error) {
-      console.error(error);
+      console.error("[enrich][client] enrich request crashed before completion", error);
       setEnrichState("error");
-      setEnrichMessage("Unable to enrich draft");
+      setEnrichMessage(error instanceof Error ? `Unable to enrich draft: ${error.message}` : "Unable to enrich draft");
     }
   }
 
@@ -484,7 +509,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 {mediaImages.length ? (
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {mediaImages.map((image, index) => {
-                      const src = image.urls.large ?? image.urls.xlarge ?? image.urls.full ?? image.urls.original;
+                      const src = getMediaImageSrc(image);
                       return (
                         <div key={`${image.id ?? index}`} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
                           <div className="relative aspect-[4/3] bg-zinc-100">
