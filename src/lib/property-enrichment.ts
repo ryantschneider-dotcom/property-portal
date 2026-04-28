@@ -20,9 +20,17 @@ function parseList(value: unknown): string[] {
   const text = asString(value);
   if (!text) return [];
   return text
-    .split(/\n|,/) 
+    .split(/\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function firstNonEmptyList(...values: unknown[]): string[] {
+  for (const value of values) {
+    const parsed = parseList(value);
+    if (parsed.length) return parsed;
+  }
+  return [];
 }
 
 function compact<T>(values: Array<T | null | undefined | false | "">): T[] {
@@ -145,6 +153,28 @@ function buildBullets(input: {
   ]);
 }
 
+function normalizeCounty(value: unknown, city: string, state: string) {
+  const county = asString(value).replace(/\s+county$/i, "").trim();
+  if (county && !/^[A-Z]{2}$/i.test(county)) return county;
+
+  const normalizedCity = city.trim().toLowerCase();
+  const normalizedState = state.trim().toUpperCase();
+  if (normalizedState === "GA") {
+    if (["savannah", "pooler", "port wentworth", "tybee island", "garden city", "thunderbolt", "bloomingdale"].includes(normalizedCity)) {
+      return "Chatham";
+    }
+    if (["richmond hill", "pembroke"].includes(normalizedCity)) return "Bryan";
+    if (["rincon", "springfield"].includes(normalizedCity)) return "Effingham";
+    if (["hinesville", "midway", "walthourville"].includes(normalizedCity)) return "Liberty";
+    if (["statesboro", "brooklet"].includes(normalizedCity)) return "Bulloch";
+    if (["st marys", "st. marys", "kingsland", "woodbine"].includes(normalizedCity)) return "Camden";
+    if (["brunswick"].includes(normalizedCity)) return "Glynn";
+    if (["darien"].includes(normalizedCity)) return "McIntosh";
+  }
+
+  return county;
+}
+
 function detectMissingFields(raw: Record<string, any>) {
   const address = raw.address ?? {};
   const property = raw.property ?? {};
@@ -191,9 +221,9 @@ export async function enrichPropertyDraft(slug: string) {
 
   const transactionLabel = asString(raw.visibility?.transactionLabel) || "For Sale";
   const propertyType = asString(property.category || admin.propertyTypeLabel || intake.property_type) || "Commercial Property";
-  const county = asString(address.county || intake.county);
   const city = asString(address.city || intake.city);
   const state = asString(address.state || intake.state) || "GA";
+  const county = normalizeCounty(address.county || intake.county, city, state);
   const fullAddress = asString(address.full || address.street);
   const notes = asString(admin.intakeNotes || intake.notes);
 
@@ -213,7 +243,7 @@ export async function enrichPropertyDraft(slug: string) {
     parcel_id: property.parcelId ?? intake.parcel_id,
     tax_id: property.parcelId ?? intake.tax_id,
     street_number: "",
-    street_name: fullAddress,
+    street_name: address.street ?? intake.address_street ?? fullAddress,
     zip_code: address.zip ?? intake.zip,
   } as Record<string, unknown>;
 
@@ -238,9 +268,9 @@ export async function enrichPropertyDraft(slug: string) {
   const yearBuilt = formatNumber(property.yearBuilt || publicRecords.year_built || intake.year_built);
   const zoning = asString(property.zoning || publicRecords.zoning || intake.zoning) || null;
 
-  const anchors = parseList(admin.anchorTenants || places.anchor_tenants || existingResearch.places?.anchor_tenants);
-  const restaurants = parseList(admin.nearbyRestaurants || places.restaurants || existingResearch.places?.restaurants);
-  const banks = parseList(admin.nearbyBanks || places.banks || existingResearch.places?.banks);
+  const anchors = firstNonEmptyList(admin.anchorTenants, places.anchor_tenants, existingResearch.places?.anchor_tenants);
+  const restaurants = firstNonEmptyList(admin.nearbyRestaurants, places.restaurants, existingResearch.places?.restaurants);
+  const banks = firstNonEmptyList(admin.nearbyBanks, places.banks, existingResearch.places?.banks);
 
   const neighborhood = buildNeighborhood(address, county, propertyType);
   const generatedSaleTitle = asString(aiCopy.sale_title) || buildSaleTitle(asString(raw.title), transactionLabel, city);
@@ -311,6 +341,7 @@ export async function enrichPropertyDraft(slug: string) {
         saleBullets: Array.isArray(content.saleBullets) && content.saleBullets.length ? content.saleBullets : generatedSaleBullets,
       },
       address: {
+        county: county || null,
         neighborhood: asString(address.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
         submarket: asString(address.submarket) || asString(places.corridor) || neighborhood.corridor,
       },
@@ -332,6 +363,11 @@ export async function enrichPropertyDraft(slug: string) {
           summary: missing.missing.length
             ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
             : "Draft enrichment completed with no critical missing fields.",
+          launchpadErrors: compact([
+            asString((publicRecords as Record<string, unknown>).error),
+            asString((places as Record<string, unknown>).error),
+            asString((aiCopy as Record<string, unknown>).error),
+          ]),
         },
         copy: {
           sale_title: generatedSaleTitle,

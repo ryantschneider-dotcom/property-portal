@@ -186,6 +186,11 @@ export async function POST(request: Request) {
         meta: {
           intake: {
             property_type: payload.propertyType,
+            address_street: payload.addressStreet,
+            city: payload.city,
+            state: payload.state,
+            zip: payload.zip,
+            county: payload.county,
             parcel_id: payload.parcelId,
             listing_price_amount: payload.listingPriceAmount,
             listing_price_visibility: payload.listingPriceVisibility,

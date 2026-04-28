@@ -6,7 +6,7 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 const PYTHON = process.env.PYTHON_BIN || "python3";
-const LAUNCHPAD_PATH = "/data/.openclaw/workspace/scripts/listing_launchpad.py";
+const LAUNCHPAD_PATH = `${process.cwd()}/scripts/listing_launchpad.py`;
 const SCRIPTS_ENV = "/data/.openclaw/workspace/scripts/.env";
 
 type LaunchpadResearchResult = {
