@@ -1,8 +1,10 @@
 import "server-only";
 
+import { randomUUID } from "crypto";
+
 import { FieldValue } from "firebase-admin/firestore";
 
-import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
+import { db, PROPERTIES_COLLECTION, storage } from "@/lib/firestore";
 import { runLaunchpadEnrichment } from "@/lib/launchpad-enrichment";
 
 function asString(value: unknown): string {
@@ -175,6 +177,56 @@ function normalizeCounty(value: unknown, city: string, state: string) {
   return county;
 }
 
+async function uploadStreetViewGalleryImage(input: {
+  slug: string;
+  documentId: string;
+  title: string;
+  contentType: string;
+  imageBase64: string;
+}) {
+  const bytes = Buffer.from(input.imageBase64, "base64");
+  if (!bytes.length) return null;
+
+  const ext = input.contentType.includes("png") ? "png" : "jpg";
+  const storagePath = `property-generated/${input.slug}/${Date.now()}-street-view.${ext}`;
+  const bucket = storage.bucket();
+  const bucketFile = bucket.file(storagePath);
+
+  await bucketFile.save(bytes, {
+    metadata: {
+      contentType: input.contentType || "image/jpeg",
+      cacheControl: "public, max-age=31536000",
+      metadata: {
+        source: "street-view-auto",
+        documentId: input.documentId,
+      },
+    },
+    resumable: false,
+  });
+
+  await bucketFile.makePublic();
+  const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+  return {
+    id: randomUUID(),
+    title: input.title,
+    caption: "Auto-generated from Google Street View during enrichment",
+    isPrimary: false,
+    sortOrder: 999,
+    uploadedByUserId: null,
+    uploadedAt: new Date().toISOString(),
+    source: "street-view-auto",
+    urls: {
+      original: publicUrl,
+      full: publicUrl,
+      xlarge: publicUrl,
+      large: publicUrl,
+      medium: publicUrl,
+      thumb: publicUrl,
+    },
+  };
+}
+
 function detectMissingFields(raw: Record<string, any>) {
   const address = raw.address ?? {};
   const property = raw.property ?? {};
@@ -264,6 +316,7 @@ export async function enrichPropertyDraft(slug: string) {
   const places = (launchpad.places as Record<string, unknown> | undefined) ?? {};
   const deepResearch = (launchpad.research as Record<string, unknown> | undefined) ?? {};
   const aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
+  const media = raw.media ?? {};
 
   const buildingSizeSf = formatNumber(property.buildingSizeSf || publicRecords.building_size_sf || intake.building_size_sf);
   const lotSize = formatAcres(property.lotSizeAcres || publicRecords.lot_size_acres || intake.lot_size_acres);
@@ -322,82 +375,101 @@ export async function enrichPropertyDraft(slug: string) {
 
   const workflowStatus = missing.hasCriticalGaps ? "needs_input" : "review";
 
-  await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
-    {
-      workflowStatus,
-      property: {
-        parcelId: asString(property.parcelId) || asString(publicRecords.parcel_number) || null,
-        buildingSizeSf: property.buildingSizeSf ?? parseOptionalNumber(publicRecords.building_size_sf),
-        lotSizeAcres: property.lotSizeAcres ?? parseOptionalNumber(publicRecords.lot_size_acres),
-        yearBuilt: property.yearBuilt ?? parseOptionalNumber(publicRecords.year_built),
-        zoning: asString(property.zoning) || asString(publicRecords.zoning) || null,
-        parking: asString(property.parking) || asString(publicRecords.parking) || null,
-        exteriorConstructionType: asString(property.exteriorConstructionType) || asString(publicRecords.exterior_construction_type) || null,
-        propertyClass: asString(property.propertyClass) || asString(publicRecords.property_class) || null,
+  const streetViewPrimary = ((deepResearch.street_view as Record<string, unknown> | undefined)?.primary_image as Record<string, unknown> | undefined) ?? null;
+  const existingImages = Array.isArray(media.images) ? (media.images as Array<Record<string, unknown>>) : [];
+  const hasStreetViewGalleryImage = existingImages.some((image: Record<string, unknown>) => asString(image?.source) === "street-view-auto");
+  const generatedStreetViewImage = !hasStreetViewGalleryImage && streetViewPrimary && asString(streetViewPrimary.image_base64)
+    ? await uploadStreetViewGalleryImage({
+        slug,
+        documentId: doc.id,
+        title: `${asString(raw.title) || slug} — Street View`,
+        contentType: asString(streetViewPrimary.content_type) || "image/jpeg",
+        imageBase64: asString(streetViewPrimary.image_base64),
+      })
+    : null;
+
+  const updatePayload: Record<string, unknown> = {
+    workflowStatus,
+    property: {
+      parcelId: asString(property.parcelId) || asString(publicRecords.parcel_number) || null,
+      buildingSizeSf: property.buildingSizeSf ?? parseOptionalNumber(publicRecords.building_size_sf),
+      lotSizeAcres: property.lotSizeAcres ?? parseOptionalNumber(publicRecords.lot_size_acres),
+      yearBuilt: property.yearBuilt ?? parseOptionalNumber(publicRecords.year_built),
+      zoning: asString(property.zoning) || asString(publicRecords.zoning) || null,
+      parking: asString(property.parking) || asString(publicRecords.parking) || null,
+      exteriorConstructionType: asString(property.exteriorConstructionType) || asString(publicRecords.exterior_construction_type) || null,
+      propertyClass: asString(property.propertyClass) || asString(publicRecords.property_class) || null,
+    },
+    content: {
+      saleTitle: asString(content.saleTitle) || generatedSaleTitle,
+      saleDescription: asString(content.saleDescription) || generatedSaleDescription,
+      locationDescription: asString(content.locationDescription) || generatedLocationDescription,
+      exteriorDescription: asString(content.exteriorDescription) || generatedExteriorDescription || null,
+      saleBullets: Array.isArray(content.saleBullets) && content.saleBullets.length ? content.saleBullets : generatedSaleBullets,
+    },
+    address: {
+      county: county || null,
+      neighborhood: asString(address.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
+      submarket: asString(address.submarket) || asString(places.corridor) || neighborhood.corridor,
+    },
+    admin: {
+      neighborhood: asString(admin.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
+      corridor: asString(admin.corridor) || asString(places.corridor) || neighborhood.corridor,
+      anchorTenants: anchors,
+      nearbyRestaurants: restaurants,
+      nearbyBanks: banks,
+      assessorImprovements: parseList(publicRecords.assessor_improvements),
+    },
+    meta: {
+      updatedAt: FieldValue.serverTimestamp(),
+      enrichment: {
+        lastRunAt: FieldValue.serverTimestamp(),
+        version: "v2",
+        mode: asString(aiCopy.generator) ? `launchpad+${asString(aiCopy.generator)}` : "launchpad+deterministic",
+        missingFields: missing.missing,
+        summary: missing.missing.length
+          ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
+          : "Draft enrichment completed with no critical missing fields.",
+        launchpadErrors: compact([
+          asString((publicRecords as Record<string, unknown>).error),
+          asString((places as Record<string, unknown>).error),
+          asString((aiCopy as Record<string, unknown>).error),
+        ]),
+        streetViewGalleryInjected: Boolean(generatedStreetViewImage),
       },
-      content: {
-        saleTitle: asString(content.saleTitle) || generatedSaleTitle,
-        saleDescription: asString(content.saleDescription) || generatedSaleDescription,
-        locationDescription: asString(content.locationDescription) || generatedLocationDescription,
-        exteriorDescription: asString(content.exteriorDescription) || generatedExteriorDescription || null,
-        saleBullets: Array.isArray(content.saleBullets) && content.saleBullets.length ? content.saleBullets : generatedSaleBullets,
+      copy: {
+        sale_title: generatedSaleTitle,
+        sale_description: generatedSaleDescription,
+        location_description: generatedLocationDescription,
+        exterior_description: generatedExteriorDescription,
+        sale_bullets: generatedSaleBullets,
+        generator: asString(aiCopy.generator) || "deterministic",
       },
-      address: {
-        county: county || null,
-        neighborhood: asString(address.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
-        submarket: asString(address.submarket) || asString(places.corridor) || neighborhood.corridor,
-      },
-      admin: {
-        neighborhood: asString(admin.neighborhood) || asString(places.neighborhood) || neighborhood.neighborhood,
-        corridor: asString(admin.corridor) || asString(places.corridor) || neighborhood.corridor,
-        anchorTenants: anchors,
-        nearbyRestaurants: restaurants,
-        nearbyBanks: banks,
-        assessorImprovements: parseList(publicRecords.assessor_improvements),
-      },
-      meta: {
-        updatedAt: FieldValue.serverTimestamp(),
-        enrichment: {
-          lastRunAt: FieldValue.serverTimestamp(),
-          version: "v2",
-          mode: asString(aiCopy.generator) ? `launchpad+${asString(aiCopy.generator)}` : "launchpad+deterministic",
-          missingFields: missing.missing,
-          summary: missing.missing.length
-            ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
-            : "Draft enrichment completed with no critical missing fields.",
-          launchpadErrors: compact([
-            asString((publicRecords as Record<string, unknown>).error),
-            asString((places as Record<string, unknown>).error),
-            asString((aiCopy as Record<string, unknown>).error),
-          ]),
-        },
-        copy: {
-          sale_title: generatedSaleTitle,
-          sale_description: generatedSaleDescription,
-          location_description: generatedLocationDescription,
-          exterior_description: generatedExteriorDescription,
-          sale_bullets: generatedSaleBullets,
-          generator: asString(aiCopy.generator) || "deterministic",
-        },
-        research: {
-          ...existingResearch,
-          ...deepResearch,
-          public_records: publicRecords,
-          places: {
-            ...(existingResearch.places ?? {}),
-            neighborhood: asString(places.neighborhood) || neighborhood.neighborhood,
-            corridor: asString(places.corridor) || neighborhood.corridor,
-            environment_mode: asString(places.environment_mode) || null,
-            landmarks: firstNonEmptyList((places as Record<string, unknown>).landmarks, (existingResearch.places ?? {}).landmarks),
-            anchor_tenants: anchors,
-            restaurants,
-            banks,
-          },
+      research: {
+        ...existingResearch,
+        ...deepResearch,
+        public_records: publicRecords,
+        places: {
+          ...(existingResearch.places ?? {}),
+          neighborhood: asString(places.neighborhood) || neighborhood.neighborhood,
+          corridor: asString(places.corridor) || neighborhood.corridor,
+          environment_mode: asString(places.environment_mode) || null,
+          landmarks: firstNonEmptyList((places as Record<string, unknown>).landmarks, (existingResearch.places ?? {}).landmarks),
+          anchor_tenants: anchors,
+          restaurants,
+          banks,
         },
       },
     },
-    { merge: true },
-  );
+  };
+
+  if (generatedStreetViewImage) {
+    updatePayload.media = {
+      images: [...existingImages, generatedStreetViewImage],
+    };
+  }
+
+  await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(updatePayload, { merge: true });
 
   return {
     ok: true,

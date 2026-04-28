@@ -1184,6 +1184,7 @@ def fetch_street_view_images(row: Dict[str, Any], map_coordinates: Optional[Dict
     return {
         "status": "ok" if images else "error",
         "images": images,
+        "primary_image": images[0] if images else None,
         "map_coordinates": {"lat": lat, "lng": lng},
         "errors": errors,
     }
@@ -1432,6 +1433,7 @@ def enrich_research_package(
             "errors": street_view.get("errors"),
             "map_coordinates": street_view.get("map_coordinates"),
             "captured_labels": [img.get("label") for img in street_view.get("images", []) if isinstance(img, dict)],
+            "primary_image": street_view.get("primary_image"),
         },
         "vision": vision,
         "web_context": web_context,
