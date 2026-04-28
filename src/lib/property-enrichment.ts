@@ -62,6 +62,95 @@ function parseOptionalNumber(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
+function normalizeOpenAiModelName(value: unknown) {
+  const text = asString(value);
+  if (!text) return "gpt-4o";
+  if (text.startsWith("openai/")) return text.slice("openai/".length) || "gpt-4o";
+  return text;
+}
+
+async function generateOpenAiCopyFallback(input: {
+  title: string;
+  transactionLabel: string;
+  propertyType: string;
+  city: string;
+  county: string;
+  state: string;
+  address: string;
+  buildingSizeSf: string | null;
+  lotSize: string | null;
+  yearBuilt: string | null;
+  zoning: string | null;
+  research: Record<string, unknown>;
+}) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY missing in Node runtime");
+  }
+
+  const model = normalizeOpenAiModelName(process.env.OPENAI_MODEL);
+  const prompt = `You are writing CRE broker-facing enrichment copy. Return strict JSON with keys sale_title, sale_description, location_description, sale_bullets, exterior_description.\n\nRules:\n- factual, polished, no fluff\n- no placeholders like unknown/unspecified/not available\n- use local context only when supported by research\n- sale_bullets must be an array of 3 to 5 short bullets\n\nListing:\n${JSON.stringify({
+    title: input.title,
+    transactionLabel: input.transactionLabel,
+    propertyType: input.propertyType,
+    city: input.city,
+    county: input.county,
+    state: input.state,
+    address: input.address,
+    buildingSizeSf: input.buildingSizeSf,
+    lotSize: input.lotSize,
+    yearBuilt: input.yearBuilt,
+    zoning: input.zoning,
+  }, null, 2)}\n\nResearch:\n${JSON.stringify(input.research, null, 2)}`;
+
+  console.log("[enrich][node-openai] attempting direct OpenAI fallback", {
+    model,
+    address: input.address,
+    city: input.city,
+    hasApiKey: true,
+  });
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.35,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "You produce factual CRE enrichment JSON for broker-facing marketing copy.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    }),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`OpenAI fallback failed (${response.status}): ${text.slice(0, 800)}`);
+  }
+
+  const payload = JSON.parse(text) as Record<string, unknown>;
+  const content = (((payload.choices as Array<Record<string, unknown>> | undefined)?.[0]?.message as Record<string, unknown> | undefined)?.content) ?? "";
+  const parsed = JSON.parse(asString(content)) as Record<string, unknown>;
+  return {
+    sale_title: asString(parsed.sale_title),
+    sale_description: asString(parsed.sale_description),
+    location_description: asString(parsed.location_description),
+    exterior_description: asString(parsed.exterior_description),
+    sale_bullets: Array.isArray(parsed.sale_bullets) ? parsed.sale_bullets.map((item) => asString(item)).filter(Boolean) : [],
+    generator: `node-openai:${model}`,
+  };
+}
+
 function buildNeighborhood(address: Record<string, unknown>, county: string, propertyType: string) {
   const city = asString(address.city);
   const state = asString(address.state) || "GA";
@@ -317,21 +406,23 @@ export async function enrichPropertyDraft(slug: string) {
     research?: Record<string, unknown>;
     ai_copy?: Record<string, unknown>;
   } = {};
+  let launchpadFailure: string | null = null;
 
   try {
     console.log("[enrich] calling runLaunchpadEnrichment", { slug, hasExistingLocation: Boolean(raw.location) });
     launchpad = await runLaunchpadEnrichment(row, raw.location ?? null);
   } catch (error) {
+    launchpadFailure = error instanceof Error ? error.message : String(error);
     console.error("[enrich] Launchpad enrichment failed; falling back to deterministic draft enrichment", {
       slug,
       error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
     });
   }
 
-  const publicRecords = (launchpad.public_records as Record<string, unknown> | undefined) ?? {};
-  const places = (launchpad.places as Record<string, unknown> | undefined) ?? {};
-  const deepResearch = (launchpad.research as Record<string, unknown> | undefined) ?? {};
-  const aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
+  const publicRecords = ((launchpad.public_records as Record<string, unknown> | undefined) ?? (existingResearch.public_records as Record<string, unknown> | undefined)) ?? {};
+  const places = ((launchpad.places as Record<string, unknown> | undefined) ?? (existingResearch.places as Record<string, unknown> | undefined)) ?? {};
+  const deepResearch = ((launchpad.research as Record<string, unknown> | undefined) ?? existingResearch) ?? {};
+  let aiCopy = (launchpad.ai_copy as Record<string, unknown> | undefined) ?? {};
   console.log("[enrich] launchpad result summary", {
     slug,
     publicRecordsStatus: publicRecords.status ?? null,
@@ -359,6 +450,45 @@ export async function enrichPropertyDraft(slug: string) {
   const banks = firstNonEmptyList(admin.nearbyBanks, places.banks, existingResearch.places?.banks);
 
   const neighborhood = buildNeighborhood(address, county, propertyType);
+  if (!asString(aiCopy.sale_description) && !asString(aiCopy.location_description) && process.env.OPENAI_API_KEY) {
+    try {
+      aiCopy = await generateOpenAiCopyFallback({
+        title: asString(raw.title),
+        transactionLabel,
+        propertyType,
+        city,
+        county,
+        state,
+        address: fullAddress,
+        buildingSizeSf,
+        lotSize,
+        yearBuilt,
+        zoning,
+        research: {
+          public_records: publicRecords,
+          places: {
+            ...places,
+            anchor_tenants: anchors,
+            restaurants,
+            banks,
+          },
+          web_context: (deepResearch.web_context as Record<string, unknown> | undefined) ?? (existingResearch.web_context as Record<string, unknown> | undefined) ?? {},
+          street_view: (deepResearch.street_view as Record<string, unknown> | undefined) ?? (existingResearch.street_view as Record<string, unknown> | undefined) ?? {},
+        },
+      });
+    } catch (error) {
+      const fallbackError = error instanceof Error ? error.message : String(error);
+      aiCopy = {
+        ...aiCopy,
+        error: [asString(aiCopy.error), fallbackError].filter(Boolean).join(" | "),
+      };
+      console.error("[enrich][node-openai] direct OpenAI fallback failed", {
+        slug,
+        error: fallbackError,
+      });
+    }
+  }
+
   const generatedSaleTitle = asString(aiCopy.sale_title) || buildSaleTitle(asString(raw.title), transactionLabel, city);
   const generatedSaleDescription = asString(aiCopy.sale_description) || buildSaleDescription({
     title: asString(raw.title),
@@ -389,6 +519,8 @@ export async function enrichPropertyDraft(slug: string) {
   const resolvedCoordinates =
     ((deepResearch.street_view as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
     ((deepResearch.places as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
+    ((existingResearch.street_view as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
+    ((existingResearch.places as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
     ((raw.location as Record<string, unknown> | undefined) ?? null);
   const resolvedLat = parseOptionalNumber(resolvedCoordinates?.lat);
   const resolvedLng = parseOptionalNumber(resolvedCoordinates?.lng);
@@ -488,6 +620,7 @@ export async function enrichPropertyDraft(slug: string) {
           ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
           : "Draft enrichment completed with no critical missing fields.",
         launchpadErrors: compact([
+          launchpadFailure,
           asString((publicRecords as Record<string, unknown>).error),
           asString((places as Record<string, unknown>).error),
           asString((aiCopy as Record<string, unknown>).error),

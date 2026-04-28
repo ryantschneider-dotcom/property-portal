@@ -1,0 +1,2 @@
+purpose=node openai fallback for production enrichment
+notes=preserve prior research and coordinates when python launchpad fails surface subprocess failure and generate rich copy directly from node runtime
