@@ -205,11 +205,10 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
         console.log("[enrich][client] applying generated enrichment payload", payload.generated);
         setFormData((current) => ({
           ...current,
-          saleTitle: current.saleTitle || payload.generated.saleTitle || current.saleTitle,
-          saleDescription: current.saleDescription || payload.generated.saleDescription || current.saleDescription,
-          locationDescription: current.locationDescription || payload.generated.locationDescription || current.locationDescription,
-          saleBullets:
-            current.saleBullets || (Array.isArray(payload.generated.saleBullets) ? payload.generated.saleBullets.join("\n") : current.saleBullets),
+          saleTitle: payload.generated.saleTitle || current.saleTitle,
+          saleDescription: payload.generated.saleDescription || current.saleDescription,
+          locationDescription: payload.generated.locationDescription || current.locationDescription,
+          saleBullets: Array.isArray(payload.generated.saleBullets) ? payload.generated.saleBullets.join("\n") : current.saleBullets,
         }));
       }
 

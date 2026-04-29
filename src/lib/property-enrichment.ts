@@ -68,6 +68,22 @@ function normalizeOpenAiModelName(value: unknown) {
   return text;
 }
 
+function getOpenAiApiKey() {
+  return asString(process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY);
+}
+
+function getMapsApiKey() {
+  return asString(process.env.Maps_API_KEY || process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+}
+
+function shouldReplaceAutoContent(currentValue: unknown, previousGeneratedValue: unknown) {
+  const current = asString(currentValue);
+  const previous = asString(previousGeneratedValue);
+  if (!current) return true;
+  if (!previous) return false;
+  return current === previous;
+}
+
 async function generateOpenAiCopyFallback(input: {
   title: string;
   transactionLabel: string;
@@ -82,7 +98,7 @@ async function generateOpenAiCopyFallback(input: {
   zoning: string | null;
   research: Record<string, unknown>;
 }) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getOpenAiApiKey();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY missing in Node runtime");
   }
@@ -266,7 +282,7 @@ function normalizeCounty(value: unknown, city: string, state: string) {
 }
 
 async function geocodeAddress(address: string) {
-  const apiKey = process.env.Maps_API_KEY;
+  const apiKey = getMapsApiKey();
   if (!apiKey || !address) {
     return { status: "skipped", reason: !apiKey ? "Maps_API_KEY missing" : "address missing" } as const;
   }
@@ -297,7 +313,7 @@ async function geocodeAddress(address: string) {
 }
 
 async function searchGooglePlaces(textQuery: string, includedType?: string) {
-  const apiKey = process.env.Maps_API_KEY;
+  const apiKey = getMapsApiKey();
   if (!apiKey || !textQuery) return [] as string[];
 
   const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -329,7 +345,7 @@ async function searchGooglePlaces(textQuery: string, includedType?: string) {
 }
 
 async function fetchStreetViewResearch(input: { lat: number; lng: number }) {
-  const apiKey = process.env.Maps_API_KEY;
+  const apiKey = getMapsApiKey();
   if (!apiKey) {
     return { status: "skipped", reason: "Maps_API_KEY missing" } as const;
   }
@@ -575,8 +591,8 @@ export async function enrichPropertyDraft(slug: string) {
     console.log("[enrich] running native node enrichment", {
       slug,
       hasExistingLocation: Boolean(raw.location),
-      hasMapsKey: Boolean(process.env.Maps_API_KEY),
-      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasMapsKey: Boolean(getMapsApiKey()),
+      hasOpenAiKey: Boolean(getOpenAiApiKey()),
     });
     launchpad = await buildNativeEnrichment(row, raw.location ?? null);
   } catch (error) {
@@ -618,7 +634,7 @@ export async function enrichPropertyDraft(slug: string) {
   const banks = firstNonEmptyList(admin.nearbyBanks, places.banks, existingResearch.places?.banks);
 
   const neighborhood = buildNeighborhood(address, county, propertyType);
-  if (!asString(aiCopy.sale_description) && !asString(aiCopy.location_description) && process.env.OPENAI_API_KEY) {
+  if (!asString(aiCopy.sale_description) && !asString(aiCopy.location_description) && getOpenAiApiKey()) {
     try {
       aiCopy = await generateOpenAiCopyFallback({
         title: asString(raw.title),
@@ -741,6 +757,8 @@ export async function enrichPropertyDraft(slug: string) {
     generatedStreetViewImage: Boolean(generatedStreetViewImage),
   });
 
+  const previousGenerated = (meta.copy ?? {}) as Record<string, unknown>;
+
   const updatePayload: Record<string, unknown> = {
     workflowStatus,
     property: {
@@ -754,11 +772,18 @@ export async function enrichPropertyDraft(slug: string) {
       propertyClass: asString(property.propertyClass) || asString(publicRecords.property_class) || null,
     },
     content: {
-      saleTitle: asString(content.saleTitle) || generatedSaleTitle,
-      saleDescription: asString(content.saleDescription) || generatedSaleDescription,
-      locationDescription: asString(content.locationDescription) || generatedLocationDescription,
-      exteriorDescription: asString(content.exteriorDescription) || generatedExteriorDescription || null,
-      saleBullets: Array.isArray(content.saleBullets) && content.saleBullets.length ? content.saleBullets : generatedSaleBullets,
+      saleTitle: shouldReplaceAutoContent(content.saleTitle, previousGenerated.sale_title) ? generatedSaleTitle : asString(content.saleTitle),
+      saleDescription: shouldReplaceAutoContent(content.saleDescription, previousGenerated.sale_description) ? generatedSaleDescription : asString(content.saleDescription),
+      locationDescription: shouldReplaceAutoContent(content.locationDescription, previousGenerated.location_description) ? generatedLocationDescription : asString(content.locationDescription),
+      exteriorDescription: shouldReplaceAutoContent(content.exteriorDescription, previousGenerated.exterior_description)
+        ? generatedExteriorDescription || null
+        : asString(content.exteriorDescription) || null,
+      saleBullets:
+        Array.isArray(content.saleBullets) && content.saleBullets.length
+          ? JSON.stringify(content.saleBullets) === JSON.stringify(previousGenerated.sale_bullets ?? [])
+            ? generatedSaleBullets
+            : content.saleBullets
+          : generatedSaleBullets,
     },
     address: {
       county: county || null,
