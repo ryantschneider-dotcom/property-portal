@@ -5,7 +5,6 @@ import { randomUUID } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { db, PROPERTIES_COLLECTION, storage } from "@/lib/firestore";
-import { runLaunchpadEnrichment } from "@/lib/launchpad-enrichment";
 
 function asString(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -266,6 +265,170 @@ function normalizeCounty(value: unknown, city: string, state: string) {
   return county;
 }
 
+async function geocodeAddress(address: string) {
+  const apiKey = process.env.Maps_API_KEY;
+  if (!apiKey || !address) {
+    return { status: "skipped", reason: !apiKey ? "Maps_API_KEY missing" : "address missing" } as const;
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, { cache: "no-store" });
+  const payload = (await response.json()) as {
+    status?: string;
+    results?: Array<{ geometry?: { location?: { lat?: number; lng?: number } } }>;
+    error_message?: string;
+  };
+
+  const location = payload.results?.[0]?.geometry?.location;
+  if (!response.ok || payload.status !== "OK" || location?.lat == null || location?.lng == null) {
+    return {
+      status: "error",
+      reason: payload.error_message || payload.status || `HTTP ${response.status}`,
+    } as const;
+  }
+
+  return {
+    status: "ok",
+    map_coordinates: {
+      lat: location.lat,
+      lng: location.lng,
+    },
+  } as const;
+}
+
+async function searchGooglePlaces(textQuery: string, includedType?: string) {
+  const apiKey = process.env.Maps_API_KEY;
+  if (!apiKey || !textQuery) return [] as string[];
+
+  const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": "places.displayName,places.formattedAddress",
+    },
+    body: JSON.stringify({
+      textQuery,
+      includedType,
+      pageSize: 6,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) return [] as string[];
+  const payload = (await response.json()) as {
+    places?: Array<{ displayName?: { text?: string } }>;
+  };
+
+  const names: string[] = [];
+  for (const place of payload.places ?? []) {
+    const name = asString(place.displayName?.text);
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+async function fetchStreetViewResearch(input: { lat: number; lng: number }) {
+  const apiKey = process.env.Maps_API_KEY;
+  if (!apiKey) {
+    return { status: "skipped", reason: "Maps_API_KEY missing" } as const;
+  }
+
+  const params = new URLSearchParams({
+    size: "640x640",
+    location: `${input.lat},${input.lng}`,
+    heading: "0",
+    fov: "90",
+    pitch: "0",
+    return_error_code: "true",
+    source: "outdoor",
+    key: apiKey,
+  });
+
+  const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?${params.toString()}`;
+  const metadataResponse = await fetch(metadataUrl, { cache: "no-store" });
+  const metadata = (await metadataResponse.json()) as { status?: string; copyright?: string };
+  if (!metadataResponse.ok || metadata.status !== "OK") {
+    return {
+      status: "error",
+      errors: [`street_view metadata ${metadata.status || metadataResponse.status}`],
+      map_coordinates: { lat: input.lat, lng: input.lng },
+    } as const;
+  }
+
+  const imageUrl = `https://maps.googleapis.com/maps/api/streetview?${params.toString()}`;
+  const imageResponse = await fetch(imageUrl, { cache: "no-store" });
+  if (!imageResponse.ok) {
+    return {
+      status: "error",
+      errors: [`street_view image HTTP ${imageResponse.status}`],
+      map_coordinates: { lat: input.lat, lng: input.lng },
+    } as const;
+  }
+
+  const arrayBuffer = await imageResponse.arrayBuffer();
+  const imageBase64 = Buffer.from(arrayBuffer).toString("base64");
+  return {
+    status: imageBase64 ? "ok" : "error",
+    errors: imageBase64 ? [] : ["street_view image empty"],
+    map_coordinates: { lat: input.lat, lng: input.lng },
+    primary_image: imageBase64
+      ? {
+          label: "subject_front",
+          heading: 0,
+          fov: 90,
+          content_type: imageResponse.headers.get("content-type") || "image/jpeg",
+          image_base64: imageBase64,
+          copyright: metadata.copyright || null,
+        }
+      : null,
+  } as const;
+}
+
+async function buildNativeEnrichment(row: Record<string, unknown>, fallbackLocation?: { lat?: number | null; lng?: number | null } | null) {
+  const fullAddress = [asString(row.street_name), asString(row.city), asString(row.state), asString(row.zip_code)].filter(Boolean).join(", ");
+  const geocode = fallbackLocation?.lat != null && fallbackLocation?.lng != null
+    ? { status: "ok", map_coordinates: { lat: fallbackLocation.lat, lng: fallbackLocation.lng } }
+    : await geocodeAddress(fullAddress);
+
+  const mapCoordinates = geocode.status === "ok" ? geocode.map_coordinates : undefined;
+  const [anchors, restaurants, banks, streetView] = await Promise.all([
+    searchGooglePlaces(`${fullAddress} major retail anchors`, "store"),
+    searchGooglePlaces(`${fullAddress} nearby restaurants`, "restaurant"),
+    searchGooglePlaces(`${fullAddress} nearby banks`, "bank"),
+    mapCoordinates ? fetchStreetViewResearch(mapCoordinates) : Promise.resolve({ status: "skipped", reason: "missing coordinates" } as const),
+  ]);
+
+  return {
+    public_records: {
+      status: "skipped",
+      reason: "native node enrich path has no assessor integration yet",
+    },
+    places: {
+      status: mapCoordinates ? "ok" : "skipped",
+      neighborhood: asString(row.city) ? `${asString(row.city)}, ${asString(row.state) || "GA"}` : null,
+      corridor: asString(row.city) ? titleCase(`${asString(row.city)} commercial corridor`) : null,
+      anchor_tenants: anchors,
+      restaurants,
+      banks,
+      map_coordinates: mapCoordinates ?? null,
+    },
+    research: {
+      native_runtime: "nodejs",
+      geocode,
+      street_view: streetView,
+      places: {
+        status: mapCoordinates ? "ok" : "skipped",
+        anchor_tenants: anchors,
+        restaurants,
+        banks,
+        map_coordinates: mapCoordinates ?? null,
+      },
+    },
+    ai_copy: {},
+  };
+}
+
 async function uploadStreetViewGalleryImage(input: {
   slug: string;
   documentId: string;
@@ -409,11 +572,16 @@ export async function enrichPropertyDraft(slug: string) {
   let launchpadFailure: string | null = null;
 
   try {
-    console.log("[enrich] calling runLaunchpadEnrichment", { slug, hasExistingLocation: Boolean(raw.location) });
-    launchpad = await runLaunchpadEnrichment(row, raw.location ?? null);
+    console.log("[enrich] running native node enrichment", {
+      slug,
+      hasExistingLocation: Boolean(raw.location),
+      hasMapsKey: Boolean(process.env.Maps_API_KEY),
+      hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    });
+    launchpad = await buildNativeEnrichment(row, raw.location ?? null);
   } catch (error) {
     launchpadFailure = error instanceof Error ? error.message : String(error);
-    console.error("[enrich] Launchpad enrichment failed; falling back to deterministic draft enrichment", {
+    console.error("[enrich] Native node enrichment failed; falling back to deterministic draft enrichment", {
       slug,
       error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
     });
@@ -614,7 +782,7 @@ export async function enrichPropertyDraft(slug: string) {
       enrichment: {
         lastRunAt: FieldValue.serverTimestamp(),
         version: "v2",
-        mode: asString(aiCopy.generator) ? `launchpad+${asString(aiCopy.generator)}` : "launchpad+deterministic",
+        mode: asString(aiCopy.generator) ? `node-native+${asString(aiCopy.generator)}` : "node-native+deterministic",
         missingFields: missing.missing,
         summary: missing.missing.length
           ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
