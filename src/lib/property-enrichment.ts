@@ -875,6 +875,12 @@ export async function enrichPropertyDraft(slug: string) {
     workflowStatus,
     savedLocation: updatePayload.location ?? null,
     generatedSaleTitle,
+    hasMapsKey: Boolean(getMapsApiKey()),
+    hasOpenAiKey: Boolean(getOpenAiApiKey()),
+    streetViewStatus: (streetViewResearch as Record<string, unknown> | undefined)?.status ?? null,
+    generatedStreetViewImage: Boolean(generatedStreetViewImage),
+    aiGenerator: aiCopy.generator ?? null,
+    aiError: aiCopy.error ?? null,
   });
 
   return {
