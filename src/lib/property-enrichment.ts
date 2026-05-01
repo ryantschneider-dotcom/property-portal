@@ -851,8 +851,13 @@ export async function enrichPropertyDraft(slug: string) {
   };
 
   if (generatedStreetViewImage) {
+    const nextImages = [...existingImages, generatedStreetViewImage];
+    const existingHeroImageUrl = asString(media.heroImageUrl);
+    const generatedHeroImageUrl = asString(generatedStreetViewImage.urls?.large || generatedStreetViewImage.urls?.original);
+
     updatePayload.media = {
-      images: [...existingImages, generatedStreetViewImage],
+      images: nextImages,
+      heroImageUrl: existingHeroImageUrl || generatedHeroImageUrl || null,
     };
   }
 
