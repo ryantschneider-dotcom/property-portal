@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     const payload = await request.json();
     const result = await saveAdminProperty(payload);
-    return NextResponse.json({ success: true, id: result.documentId, slug: result.slug });
+    return NextResponse.json({ success: true, id: result.documentId, slug: result.slug, sync: result.sync });
   } catch (error) {
     console.error("Save error:", error);
     return NextResponse.json(

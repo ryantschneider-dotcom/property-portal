@@ -2,6 +2,7 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 
+import { syncPropertyToAscendix } from "@/lib/ascendix-sync";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import type { PortalSession } from "@/lib/portal-session";
 import { getPropertyBySlug } from "@/lib/properties";
@@ -28,6 +29,7 @@ export type AdminPropertyFormData = {
   id?: string;
   slug: string;
   title: string;
+  listingStatus: "active" | "inactive" | "leased" | "sold";
   transactionType: "sale" | "lease" | "sale-lease";
   websiteUrl: string;
   leadBroker: string;
@@ -174,6 +176,7 @@ export function buildEmptyAdminFormData(): AdminPropertyFormData {
   return {
     slug: "",
     title: "",
+    listingStatus: "active",
     transactionType: "sale",
     websiteUrl: "",
     leadBroker: "",
@@ -223,6 +226,14 @@ export function buildEmptyAdminFormData(): AdminPropertyFormData {
   };
 }
 
+function adminListingStatusFromStored(value: unknown): AdminPropertyFormData["listingStatus"] {
+  const status = asString(value).trim().toLowerCase();
+  if (status === "inactive") return "inactive";
+  if (status === "leased") return "leased";
+  if (status === "sold") return "sold";
+  return "active";
+}
+
 export async function getAdminPropertyFormData(slug: string): Promise<AdminPropertyFormData | null> {
   const property = await getPropertyBySlug(slug);
   if (!property) return null;
@@ -250,6 +261,7 @@ export async function getAdminPropertyFormData(slug: string): Promise<AdminPrope
     id: property.id,
     slug: property.slug,
     title: property.title,
+    listingStatus: adminListingStatusFromStored(raw.status),
     transactionType,
     websiteUrl: asString(rawLinks.websiteUrl || meta.websiteUrl || intake.website_url || intake["Website URL (If applicable)"]),
     leadBroker: asString(intake.lead_broker || intake["Lead Broker"]),
@@ -312,7 +324,7 @@ export async function saveAdminProperty(input: AdminPropertyFormData) {
   const payload = {
     slug,
     title: input.title.trim(),
-    status: "active",
+    status: input.listingStatus,
     visibility,
     address: {
       full: input.addressFull.trim() || input.addressStreet.trim(),
@@ -399,5 +411,13 @@ export async function saveAdminProperty(input: AdminPropertyFormData) {
 
   const cleanPayload = JSON.parse(JSON.stringify(payload));
   await db.collection(PROPERTIES_COLLECTION).doc(docId).set(cleanPayload, { merge: true });
-  return { ok: true, documentId: docId, slug };
+
+  const syncResult = await syncPropertyToAscendix(docId);
+
+  return {
+    ok: true,
+    documentId: docId,
+    slug,
+    sync: syncResult,
+  };
 }

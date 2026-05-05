@@ -336,6 +336,15 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
     }
 
     setSaveState("saved");
+    if (payload.sync?.success === false) {
+      setErrorMessage(`Saved to Listing Stream, but Ascendix sync failed: ${payload.sync.message}`);
+    } else if (payload.sync?.success) {
+      setErrorMessage(
+        `Saved and synced to Ascendix (${payload.sync.listingStatus ?? "listing"}${payload.sync.dealStage ? ` / ${payload.sync.dealStage}` : ""}).`,
+      );
+    } else if (payload.sync?.skipped) {
+      setErrorMessage(`Saved to Listing Stream. Ascendix sync skipped: ${payload.sync.message}`);
+    }
     router.push(`/admin/properties/${payload.slug}/edit?saved=1`);
     router.refresh();
   }
@@ -365,6 +374,14 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                   <option value="sale">For Sale</option>
                   <option value="lease">For Lease</option>
                   <option value="sale-lease">For Sale / Lease</option>
+                </select>
+              </Field>
+              <Field label="Listing Status">
+                <select className={inputClassName()} value={formData.listingStatus} onChange={(e) => update("listingStatus", e.target.value as AdminPropertyFormData["listingStatus"])}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="leased">Leased</option>
+                  <option value="sold">Sold</option>
                 </select>
               </Field>
               <Field label="Lead Broker">
@@ -765,8 +782,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
             <p className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">Save status</p>
             <p className="mt-3 text-sm text-zinc-600">
               {saveState === "idle" && `${mode === "new" ? "Create" : "Update"} the property record directly in Firestore.`}
-              {saveState === "saving" && "Saving to Firestore…"}
-              {saveState === "saved" && "Saved successfully."}
+              {saveState === "saving" && "Saving to Listing Stream and syncing downstream to Ascendix…"}
+              {saveState === "saved" && (errorMessage ?? "Saved successfully.")}
               {saveState === "error" && (errorMessage ?? "Save failed.")}
             </p>
             <div className="mt-6 space-y-3">
