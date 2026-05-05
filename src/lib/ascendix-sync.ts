@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
@@ -16,13 +15,12 @@ type SyncResult = {
 };
 
 const API_VERSION = "v61.0";
-const CONFIG_PATH = "/data/.openclaw/workspace/tools/salesforce_ascendix/config.json";
 
 type SalesforceConfig = {
-  sf_login_url: string;
-  sf_username: string;
-  sf_password: string;
-  sf_security_token: string;
+  loginUrl: string;
+  username: string;
+  password: string;
+  securityToken: string;
 };
 
 type PortalListingStatus = "active" | "inactive" | "leased" | "sold";
@@ -36,8 +34,21 @@ function xmlEscape(value: string) {
     .replace(/'/g, "&apos;");
 }
 
+function requireEnv(key: string): string {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`Missing required Ascendix env var: ${key}`);
+  }
+  return value;
+}
+
 function loadConfig(): SalesforceConfig {
-  return JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as SalesforceConfig;
+  return {
+    loginUrl: process.env.SF_LOGIN_URL?.trim() || "https://login.salesforce.com",
+    username: requireEnv("SF_USERNAME"),
+    password: requireEnv("SF_PASSWORD"),
+    securityToken: requireEnv("SF_SECURITY_TOKEN"),
+  };
 }
 
 async function salesforceLogin() {
@@ -48,13 +59,13 @@ async function salesforceLogin() {
               xmlns:env="http://schemas.xmlsoap.org/soap/envelope/">
   <env:Body>
     <n1:login xmlns:n1="urn:partner.soap.sforce.com">
-      <n1:username>${xmlEscape(config.sf_username)}</n1:username>
-      <n1:password>${xmlEscape(config.sf_password + config.sf_security_token)}</n1:password>
+      <n1:username>${xmlEscape(config.username)}</n1:username>
+      <n1:password>${xmlEscape(config.password + config.securityToken)}</n1:password>
     </n1:login>
   </env:Body>
 </env:Envelope>`;
 
-  const response = await fetch(`${config.sf_login_url}/services/Soap/u/${API_VERSION}`, {
+  const response = await fetch(`${config.loginUrl}/services/Soap/u/${API_VERSION}`, {
     method: "POST",
     headers: {
       "Content-Type": "text/xml; charset=UTF-8",
