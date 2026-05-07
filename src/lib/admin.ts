@@ -268,8 +268,10 @@ export async function getBrokerCountyHealthSnapshot(): Promise<BrokerCountyHealt
   }).slice(0, 6);
 
   const healthyCount = items.filter((item) => item.health === "healthy").length;
-  const degradedCount = items.filter((item) => item.health === "degraded").length;
-  const pendingCount = items.filter((item) => item.health === "pending").length;
+  const degradedItems = items.filter((item) => item.health === "degraded");
+  const pendingItems = items.filter((item) => item.health === "pending");
+  const degradedCount = degradedItems.length;
+  const pendingCount = pendingItems.length;
 
   const overallHealth = degradedCount
     ? "degraded"
@@ -279,13 +281,24 @@ export async function getBrokerCountyHealthSnapshot(): Promise<BrokerCountyHealt
         ? "pending"
         : "unknown";
 
-  const headline = items.length
-    ? `County enrichment: ${healthyCount} healthy${degradedCount ? ` · ${degradedCount} needs attention` : ""}${!degradedCount && pendingCount ? ` · ${pendingCount} pending` : ""}`
-    : "County enrichment: no live checks yet";
+  const namedDegraded = degradedItems.map((item) => `${item.county} (${item.assessorSource})`);
+  const namedPending = pendingItems.map((item) => `${item.county} (${item.assessorSource})`);
 
-  const detail = items.length
-    ? "Latest county scraper results from recent listing drafts."
-    : "No broker draft has produced a county scraper result yet.";
+  const headline = !items.length
+    ? "County enrichment: no live checks yet"
+    : degradedItems.length
+      ? `County enrichment alert: ${namedDegraded.slice(0, 2).join(", ")}${namedDegraded.length > 2 ? ` +${namedDegraded.length - 2} more` : ""}`
+      : pendingItems.length
+        ? `County enrichment pending: ${namedPending.slice(0, 2).join(", ")}${namedPending.length > 2 ? ` +${namedPending.length - 2} more` : ""}`
+        : `County enrichment healthy: ${healthyCount} recent county check${healthyCount === 1 ? "" : "s"}`;
+
+  const detail = !items.length
+    ? "No broker draft has produced a county scraper result yet."
+    : degradedItems.length
+      ? `${namedDegraded.slice(0, 3).join(", ")} needs attention or may be offline based on the latest live scraper result.`
+      : pendingItems.length
+        ? `${namedPending.slice(0, 3).join(", ")} is still pending mapper coverage or a fresh successful county check.`
+        : "Latest county scraper results from recent listing drafts look healthy.";
 
   return { overallHealth, headline, detail, items };
 }

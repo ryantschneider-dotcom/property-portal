@@ -49,6 +49,8 @@ export function BrokerHubHome({ countyHealth }: BrokerHubHomeProps) {
               >
                 <span>{item.county}</span>
                 <span className="opacity-70">·</span>
+                <span>{item.assessorSource}</span>
+                <span className="opacity-70">·</span>
                 <span>{item.liveStatus || item.routingStatus}</span>
               </span>
             ))}
