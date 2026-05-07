@@ -4,6 +4,28 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const session = request.cookies.get('admin_session');
+  const host = request.headers.get('host')?.toLowerCase() ?? '';
+
+  const isBrokerHost = host === 'broker.piercommercial.com' || host === 'www.broker.piercommercial.com';
+
+  if (isBrokerHost) {
+    if (path === '/' || path === '') {
+      return NextResponse.redirect(new URL('/broker', request.url));
+    }
+
+    if (path === '/new') {
+      return NextResponse.redirect(new URL('/broker/new', request.url));
+    }
+
+    if (path === '/revisions') {
+      return NextResponse.redirect(new URL('/broker/revisions', request.url));
+    }
+
+    const allowedBrokerPaths = new Set(['/broker', '/broker/new', '/broker/revisions']);
+    if (!allowedBrokerPaths.has(path) && !path.startsWith('/api/')) {
+      return NextResponse.redirect(new URL('/broker', request.url));
+    }
+  }
 
   // 1. Let the login API through unconditionally
   if (path.includes('/api/admin/auth')) {
@@ -29,5 +51,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)'],
 };

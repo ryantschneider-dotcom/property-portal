@@ -23,9 +23,38 @@ type AdminPropertyFormProps = {
     intakeStatus: string | null;
     uploadedPhotoCount: number;
     updatedAt: string | null;
+    enrichmentStatus?: string | null;
     enrichmentSummary?: string | null;
     enrichmentLastRunAt?: string | null;
     missingFields?: string[];
+    countyRoutingStatus?: string | null;
+    countyRoutingSource?: string | null;
+    countyRoutingNotes?: string | null;
+    launchpadErrors?: string[];
+    extractedFields?: {
+      buildingSizeSf: boolean;
+      lotSizeAcres: boolean;
+      zoning: boolean;
+      aiDraft: boolean;
+    };
+    researchSummary?: {
+      publicRecordsStatus: string | null;
+      placesStatus: string | null;
+      parcelNumber: string | null;
+      buildingSizeSf: string | null;
+      lotSizeAcres: string | null;
+      zoning: string | null;
+      propertyClass: string | null;
+      assessorImprovements: string[];
+    };
+    generatedCopy?: {
+      saleTitle: string | null;
+      saleDescription: string | null;
+      locationDescription: string | null;
+      exteriorDescription: string | null;
+      saleBullets: string[];
+      generator: string | null;
+    };
     approvalStatus?: string | null;
     approvalSubmittedAt?: string | null;
     approvalSubmittedBy?: string | null;
@@ -108,6 +137,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [exportWarnings, setExportWarnings] = useState<string[]>(workflow?.buildoutWarnings ?? []);
 
   const isAdmin = userRole === "admin";
+  const hasEnrichmentErrors = Boolean(workflow?.launchpadErrors?.length);
 
   useEffect(() => {
     console.log("[enrich][client] admin form hydrated", {
@@ -652,19 +682,79 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               </div>
             </div>
             <div className="mt-5 space-y-4">
-              <button
-                type="button"
-                onClick={handleEnrichDraft}
-                disabled={!formData.slug || enrichState === "running"}
-                className="inline-flex w-full items-center justify-center rounded-2xl border border-blue-700 bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {enrichState === "running" ? "Generating draft enrichment…" : "Generate Draft Enrichment"}
-              </button>
-              {(enrichMessage || workflow?.enrichmentLastRunAt || workflow?.missingFields?.length) && (
+              {(workflow?.enrichmentStatus || workflow?.countyRoutingSource || workflow?.researchSummary || workflow?.generatedCopy) ? (
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700 space-y-3">
+                  <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                    {workflow?.enrichmentStatus ? <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">Enrichment: {workflow.enrichmentStatus}</span> : null}
+                    {workflow?.countyRoutingSource ? <span className="rounded-full bg-cyan-100 px-2.5 py-1 text-cyan-700">County source: {workflow.countyRoutingSource}{workflow?.countyRoutingStatus ? ` · ${workflow.countyRoutingStatus}` : ""}</span> : null}
+                    {workflow?.generatedCopy?.generator ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">AI: {workflow.generatedCopy.generator}</span> : null}
+                  </div>
+                  {workflow?.countyRoutingNotes ? <p>{workflow.countyRoutingNotes}</p> : null}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-white bg-white p-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Assessor pull</p>
+                      <div className="mt-2 space-y-1">
+                        <p>Parcel: {workflow?.researchSummary?.parcelNumber || formData.parcelId || "—"}</p>
+                        <p>Total SF: {workflow?.researchSummary?.buildingSizeSf || formData.buildingSizeSf || "—"}</p>
+                        <p>Acreage: {workflow?.researchSummary?.lotSizeAcres || formData.lotSizeAcres || "—"}</p>
+                        <p>Zoning: {workflow?.researchSummary?.zoning || formData.zoning || "—"}</p>
+                        <p>Property class: {workflow?.researchSummary?.propertyClass || formData.propertyClass || "—"}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white bg-white p-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Extraction flags</p>
+                      <div className="mt-2 space-y-1">
+                        <p>Building SF: {workflow?.extractedFields?.buildingSizeSf ? "pulled" : "missing"}</p>
+                        <p>Acreage: {workflow?.extractedFields?.lotSizeAcres ? "pulled" : "missing"}</p>
+                        <p>Zoning: {workflow?.extractedFields?.zoning ? "pulled" : "missing"}</p>
+                        <p>AI draft: {workflow?.extractedFields?.aiDraft ? "generated" : "missing"}</p>
+                      </div>
+                    </div>
+                  </div>
+                  {workflow?.researchSummary?.assessorImprovements?.length ? (
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Assessor improvements</p>
+                      <ul className="mt-2 list-disc space-y-1 pl-5">
+                        {workflow.researchSummary.assessorImprovements.slice(0, 6).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {workflow?.generatedCopy?.saleDescription || workflow?.generatedCopy?.locationDescription ? (
+                    <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-3 space-y-2">
+                      <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Generated copy snapshot</p>
+                      {workflow.generatedCopy.saleTitle ? <p><span className="font-semibold text-zinc-900">Title:</span> {workflow.generatedCopy.saleTitle}</p> : null}
+                      {workflow.generatedCopy.saleDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Sale:</span> {workflow.generatedCopy.saleDescription}</p> : null}
+                      {workflow.generatedCopy.locationDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Location:</span> {workflow.generatedCopy.locationDescription}</p> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleEnrichDraft}
+                  disabled={!formData.slug || enrichState === "running"}
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-blue-700 bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {enrichState === "running" ? "Generating draft enrichment…" : "Generate Draft Enrichment"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEnrichDraft}
+                  disabled={!formData.slug || enrichState === "running"}
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-zinc-900 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {enrichState === "running" ? "Retrying county pull…" : hasEnrichmentErrors ? "Retry County Enrichment" : "Re-run County Enrichment"}
+                </button>
+              </div>
+              {(enrichMessage || workflow?.enrichmentLastRunAt || workflow?.missingFields?.length || workflow?.launchpadErrors?.length) && (
                 <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600 space-y-2">
                   {enrichMessage ? <p>{enrichMessage}</p> : null}
                   {workflow?.enrichmentLastRunAt ? <p>Last enrichment run: {workflow.enrichmentLastRunAt}</p> : null}
                   {workflow?.missingFields?.length ? <p>Missing fields: {workflow.missingFields.join(", ")}</p> : null}
+                  {workflow?.launchpadErrors?.length ? <p className="text-red-600">Last errors: {workflow.launchpadErrors.join(" | ")}</p> : null}
                 </div>
               )}
               <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">

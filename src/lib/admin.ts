@@ -23,6 +23,9 @@ export type AdminPropertyListItem = {
   approvalStatus: string | null;
   rejectionReason: string | null;
   decisionNote: string | null;
+  enrichmentStatus: string | null;
+  countyRoutingStatus: string | null;
+  countyRoutingSource: string | null;
 };
 
 export type AdminPropertyFormData = {
@@ -142,6 +145,8 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       const meta = (data.meta as Record<string, unknown> | undefined) ?? {};
       const media = (data.media as Record<string, unknown> | undefined) ?? {};
       const approval = (meta.approval as Record<string, unknown> | undefined) ?? {};
+      const enrichment = (meta.enrichment as Record<string, unknown> | undefined) ?? {};
+      const countyRouting = (enrichment.countyRouting as Record<string, unknown> | undefined) ?? {};
       const images = (media.images as Array<Record<string, unknown>> | undefined) ?? [];
       const primaryImage = images.find((image) => image?.isPrimary === true) ?? images[0] ?? {};
       const primaryUrls = (primaryImage.urls as Record<string, unknown> | undefined) ?? {};
@@ -163,6 +168,9 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
         approvalStatus: asString(approval.status) || null,
         rejectionReason: asString(approval.rejectionReason) || null,
         decisionNote: asString(approval.decisionNote) || null,
+        enrichmentStatus: asString(enrichment.status) || null,
+        countyRoutingStatus: asString(countyRouting.status) || null,
+        countyRoutingSource: asString(countyRouting.assessorSource) || null,
       } satisfies AdminPropertyListItem;
     })
     .filter((property) => {

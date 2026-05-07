@@ -805,10 +805,17 @@ export async function enrichPropertyDraft(slug: string) {
     meta: {
       updatedAt: FieldValue.serverTimestamp(),
       enrichment: {
+        status: missing.hasCriticalGaps ? "partial" : "completed",
         lastRunAt: FieldValue.serverTimestamp(),
         version: "v2",
         mode: asString(aiCopy.generator) ? `node-native+${asString(aiCopy.generator)}` : "node-native+deterministic",
         missingFields: missing.missing,
+        extractedFields: {
+          buildingSizeSf: Boolean(property.buildingSizeSf ?? parseOptionalNumber(publicRecords.building_size_sf)),
+          lotSizeAcres: Boolean(property.lotSizeAcres ?? parseOptionalNumber(publicRecords.lot_size_acres)),
+          zoning: Boolean(property.zoning ?? asString(publicRecords.zoning)),
+          aiDraft: Boolean(generatedSaleDescription || generatedLocationDescription || generatedSaleBullets.length),
+        },
         summary: missing.missing.length
           ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
           : "Draft enrichment completed with no critical missing fields.",

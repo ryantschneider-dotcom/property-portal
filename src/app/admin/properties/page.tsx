@@ -105,6 +105,16 @@ export default async function PropertiesDashboard() {
                 <span className={`rounded-full px-2.5 py-1 ${property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
                   {property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "Changes Requested" : formatWorkflowStatus(property.workflowStatus)}
                 </span>
+                {property.enrichmentStatus ? (
+                  <span className={`rounded-full px-2.5 py-1 ${property.enrichmentStatus === "completed" ? "bg-emerald-50 text-emerald-700" : property.enrichmentStatus === "partial" ? "bg-amber-50 text-amber-700" : "bg-zinc-100 text-zinc-700"}`}>
+                    Enrichment: {formatWorkflowStatus(property.enrichmentStatus)}
+                  </span>
+                ) : null}
+                {property.countyRoutingSource ? (
+                  <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-cyan-700">
+                    {property.countyRoutingSource}{property.countyRoutingStatus ? ` · ${formatWorkflowStatus(property.countyRoutingStatus)}` : ""}
+                  </span>
+                ) : null}
                 {!isBroker && property.ownerEmail && (
                   <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">
                     {property.ownerEmail}

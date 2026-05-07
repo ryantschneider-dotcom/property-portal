@@ -1,12 +1,39 @@
+import { headers } from "next/headers";
+
+import { BrokerHubHome } from "@/components/broker-hub-home";
 import { FilterToggle } from "@/components/filter-toggle";
 import { PropertyGrid } from "@/components/property-grid";
 import { listPropertyCards } from "@/lib/properties";
+
+function BrokerHostHome() {
+  return (
+    <div className="min-h-screen bg-zinc-100 text-zinc-950">
+      <header className="border-b border-zinc-300 bg-zinc-950 text-white">
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-400">Internal Admin</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">PIER Internal Broker Hub</h1>
+        </div>
+      </header>
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <BrokerHubHome />
+      </div>
+    </div>
+  );
+}
 
 export default async function HomePage({
   searchParams,
 }: {
   searchParams: Promise<{ transaction?: string }>;
 }) {
+  const headerStore = await headers();
+  const host = (headerStore.get("x-forwarded-host") || headerStore.get("host") || "").toLowerCase();
+  const isBrokerHost = host === "broker.piercommercial.com" || host === "www.broker.piercommercial.com";
+
+  if (isBrokerHost) {
+    return <BrokerHostHome />;
+  }
+
   const params = await searchParams;
   const transaction = params.transaction === "sale" || params.transaction === "lease" ? params.transaction : "all";
   const properties = await listPropertyCards(transaction);
