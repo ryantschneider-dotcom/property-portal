@@ -4,7 +4,9 @@ import { randomUUID } from "crypto";
 
 import { FieldValue } from "firebase-admin/firestore";
 
+import { getCountyEnrichmentPlan } from "@/lib/broker-hub-shared";
 import { db, PROPERTIES_COLLECTION, storage } from "@/lib/firestore";
+import { runLaunchpadEnrichment } from "@/lib/launchpad-enrichment";
 
 function asString(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -588,19 +590,29 @@ export async function enrichPropertyDraft(slug: string) {
   let launchpadFailure: string | null = null;
 
   try {
-    console.log("[enrich] running native node enrichment", {
+    console.log("[enrich] running launchpad enrichment", {
       slug,
       hasExistingLocation: Boolean(raw.location),
       hasMapsKey: Boolean(getMapsApiKey()),
       hasOpenAiKey: Boolean(getOpenAiApiKey()),
     });
-    launchpad = await buildNativeEnrichment(row, raw.location ?? null);
+    launchpad = await runLaunchpadEnrichment(row, raw.location ?? null);
   } catch (error) {
     launchpadFailure = error instanceof Error ? error.message : String(error);
-    console.error("[enrich] Native node enrichment failed; falling back to deterministic draft enrichment", {
+    console.error("[enrich] Launchpad enrichment failed; falling back to native node enrichment", {
       slug,
       error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
     });
+    try {
+      launchpad = await buildNativeEnrichment(row, raw.location ?? null);
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      launchpadFailure = [launchpadFailure, fallbackMessage].filter(Boolean).join(" | ");
+      console.error("[enrich] Native node enrichment fallback failed", {
+        slug,
+        error: fallbackError instanceof Error ? { message: fallbackError.message, stack: fallbackError.stack } : fallbackError,
+      });
+    }
   }
 
   const publicRecords = ((launchpad.public_records as Record<string, unknown> | undefined) ?? (existingResearch.public_records as Record<string, unknown> | undefined)) ?? {};
@@ -758,6 +770,12 @@ export async function enrichPropertyDraft(slug: string) {
   });
 
   const previousGenerated = (meta.copy ?? {}) as Record<string, unknown>;
+  const countyRouting = {
+    ...getCountyEnrichmentPlan(county),
+    lastCheckedAt: FieldValue.serverTimestamp(),
+    liveStatus: asString(publicRecords.assessor_status || publicRecords.status) || null,
+    liveError: asString((publicRecords as Record<string, unknown>).error) || null,
+  };
 
   const updatePayload: Record<string, unknown> = {
     workflowStatus,
@@ -808,7 +826,8 @@ export async function enrichPropertyDraft(slug: string) {
         status: missing.hasCriticalGaps ? "partial" : "completed",
         lastRunAt: FieldValue.serverTimestamp(),
         version: "v2",
-        mode: asString(aiCopy.generator) ? `node-native+${asString(aiCopy.generator)}` : "node-native+deterministic",
+        mode: asString(aiCopy.generator) ? `launchpad+${asString(aiCopy.generator)}` : "launchpad+deterministic",
+        countyRouting,
         missingFields: missing.missing,
         extractedFields: {
           buildingSizeSf: Boolean(property.buildingSizeSf ?? parseOptionalNumber(publicRecords.building_size_sf)),

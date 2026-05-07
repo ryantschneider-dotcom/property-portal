@@ -3,9 +3,12 @@ import { headers } from "next/headers";
 import { BrokerHubHome } from "@/components/broker-hub-home";
 import { FilterToggle } from "@/components/filter-toggle";
 import { PropertyGrid } from "@/components/property-grid";
+import { getBrokerCountyHealthSnapshot } from "@/lib/admin";
 import { listPropertyCards } from "@/lib/properties";
 
-function BrokerHostHome() {
+async function BrokerHostHome() {
+  const countyHealth = await getBrokerCountyHealthSnapshot();
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-950">
       <header className="border-b border-zinc-300 bg-zinc-950 text-white">
@@ -15,7 +18,7 @@ function BrokerHostHome() {
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <BrokerHubHome />
+        <BrokerHubHome countyHealth={countyHealth} />
       </div>
     </div>
   );

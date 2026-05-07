@@ -3,6 +3,7 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 
 import { syncPropertyToAscendix } from "@/lib/ascendix-sync";
+import { getCountyEnrichmentPlan } from "@/lib/broker-hub-shared";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import type { PortalSession } from "@/lib/portal-session";
 import { getPropertyBySlug } from "@/lib/properties";
@@ -26,6 +27,23 @@ export type AdminPropertyListItem = {
   enrichmentStatus: string | null;
   countyRoutingStatus: string | null;
   countyRoutingSource: string | null;
+};
+
+export type BrokerCountyHealthItem = {
+  county: string;
+  assessorSource: string;
+  routingStatus: string;
+  liveStatus: string | null;
+  health: "healthy" | "degraded" | "pending" | "unknown";
+  detail: string;
+  updatedAt: string | null;
+};
+
+export type BrokerCountyHealthSnapshot = {
+  overallHealth: "healthy" | "degraded" | "pending" | "unknown";
+  headline: string;
+  detail: string;
+  items: BrokerCountyHealthItem[];
 };
 
 export type AdminPropertyFormData = {
@@ -178,6 +196,98 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       return property.ownerEmail?.toLowerCase() === session.email.toLowerCase();
     })
     .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function healthFromLiveStatus(input: {
+  routingStatus: string;
+  canScrapeTaxCard: boolean;
+  liveStatus: string | null;
+  enrichmentStatus: string | null;
+  hasError: boolean;
+}) {
+  if (!input.canScrapeTaxCard || input.routingStatus === "pending-mapper") return "pending" as const;
+  if (input.hasError) return "degraded" as const;
+  if (["ok", "completed"].includes((input.liveStatus || "").toLowerCase())) return "healthy" as const;
+  if (["error", "blocked", "login_gated", "no_results"].includes((input.liveStatus || "").toLowerCase())) return "degraded" as const;
+  if (["queued", "partial"].includes((input.enrichmentStatus || "").toLowerCase())) return "pending" as const;
+  return "unknown" as const;
+}
+
+export async function getBrokerCountyHealthSnapshot(): Promise<BrokerCountyHealthSnapshot> {
+  const snapshot = await db.collection(PROPERTIES_COLLECTION).get();
+  const byCounty = new Map<string, BrokerCountyHealthItem>();
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const address = (data.address as Record<string, unknown> | undefined) ?? {};
+    const meta = (data.meta as Record<string, unknown> | undefined) ?? {};
+    const enrichment = (meta.enrichment as Record<string, unknown> | undefined) ?? {};
+    const research = (meta.research as Record<string, unknown> | undefined) ?? {};
+    const publicRecords = (research.public_records as Record<string, unknown> | undefined) ?? {};
+    const county = asString(address.county || ((meta.intake as Record<string, unknown> | undefined) ?? {}).county);
+    if (!county) continue;
+
+    const existing = byCounty.get(county);
+    const updatedAt = asString(meta.updatedAt) || asString(data.updatedAt);
+    if (existing?.updatedAt && updatedAt && existing.updatedAt > updatedAt) {
+      continue;
+    }
+
+    const plan = getCountyEnrichmentPlan(county);
+    const liveStatus = asString(publicRecords.assessor_status || publicRecords.status);
+    const hasError = Boolean(asString(publicRecords.error)) || (Array.isArray(enrichment.launchpadErrors) && enrichment.launchpadErrors.length > 0);
+    const health = healthFromLiveStatus({
+      routingStatus: plan.status,
+      canScrapeTaxCard: plan.canScrapeTaxCard,
+      liveStatus,
+      enrichmentStatus: asString(enrichment.status),
+      hasError,
+    });
+
+    const detail = [
+      plan.assessorSource !== "unmapped" ? plan.assessorSource : null,
+      liveStatus || plan.status,
+      asString(publicRecords.error),
+    ].filter(Boolean).join(" · ");
+
+    byCounty.set(county, {
+      county,
+      assessorSource: plan.assessorSource,
+      routingStatus: plan.status,
+      liveStatus,
+      health,
+      detail: detail || plan.notes,
+      updatedAt,
+    });
+  }
+
+  const items = Array.from(byCounty.values()).sort((a, b) => {
+    const aTime = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+    const bTime = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+    return bTime - aTime || a.county.localeCompare(b.county);
+  }).slice(0, 6);
+
+  const healthyCount = items.filter((item) => item.health === "healthy").length;
+  const degradedCount = items.filter((item) => item.health === "degraded").length;
+  const pendingCount = items.filter((item) => item.health === "pending").length;
+
+  const overallHealth = degradedCount
+    ? "degraded"
+    : healthyCount
+      ? "healthy"
+      : pendingCount
+        ? "pending"
+        : "unknown";
+
+  const headline = items.length
+    ? `County enrichment: ${healthyCount} healthy${degradedCount ? ` · ${degradedCount} needs attention` : ""}${!degradedCount && pendingCount ? ` · ${pendingCount} pending` : ""}`
+    : "County enrichment: no live checks yet";
+
+  const detail = items.length
+    ? "Latest county scraper results from recent listing drafts."
+    : "No broker draft has produced a county scraper result yet.";
+
+  return { overallHealth, headline, detail, items };
 }
 
 export function buildEmptyAdminFormData(): AdminPropertyFormData {

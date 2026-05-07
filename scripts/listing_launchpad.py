@@ -136,6 +136,7 @@ QPUBLIC_COUNTY_APPS = {
     "bulloch": "BullochCountyGA",
     "camden": "CamdenCountyGA",
     "glynn": "GlynnCountyGA",
+    "jasper": "JasperCountySC",
     "mcintosh": "McIntoshCountyGA",
     "mc intosh": "McIntoshCountyGA",
 }
@@ -885,6 +886,12 @@ const { chromium } = require('playwright');
     const landRow = findRowContaining('GENERAL COMMERCIAL', 'land use', 'land') || [];
     const buildingRow = findRowContaining('Neighborhood Shopping Ctr', 'total sq footage', 'year built') || [];
     const accessoryRows = rows.filter(r => r.join(' ').includes('PAVING') || r.join(' ').includes('CANOPY'));
+    const likelyImprovementRows = rows.filter(r => {
+      const joined = r.join(' | ');
+      const hasSqFt = /\b\d{2,6}\b/.test(joined) && /(sq\s*ft|sqft|square\s*feet|building|warehouse|office|retail|store|commercial|residential|living\s*area|improvement)/i.test(joined);
+      const hasYear = /\b(18|19|20)\d{2}\b/.test(joined);
+      return r.length >= 4 && (hasSqFt || hasYear);
+    });
     const lotSizeSf = extractPairValue('Square Feet', 'Land Square Feet') ? parseIntNumber(extractPairValue('Square Feet', 'Land Square Feet')) : (landRow.length >= 4 ? parseIntNumber(landRow[3]) : null);
     const lotSizeAcresRaw = extractPairValue('Acres', 'Land Acres');
     const lotSizeAcresFromBody = (() => {
@@ -899,6 +906,49 @@ const { chromium } = require('playwright');
       return null;
     })();
     const lotSizeAcres = parseNumber(lotSizeAcresRaw) || lotSizeAcresFromBody || (lotSizeSf ? Number((lotSizeSf / 43560).toFixed(2)) : null);
+    const propertyClassFromRow = (() => {
+      const candidates = [
+        extractPairValue('Property Class', 'Class Description', 'Property Type', 'Building Type', 'Improvement Type', 'Use Description'),
+        findLineContaining('property class', 'class description', 'building type', 'improvement type', 'use description', 'property type'),
+        likelyImprovementRows[0]?.[0] || null,
+      ].filter(Boolean);
+      for (const candidate of candidates) {
+        const text = normalize(candidate)
+          .replace(/^property class\s*[:\-]?/i, '')
+          .replace(/^class description\s*[:\-]?/i, '')
+          .replace(/^property type\s*[:\-]?/i, '')
+          .replace(/^building type\s*[:\-]?/i, '')
+          .replace(/^improvement type\s*[:\-]?/i, '')
+          .replace(/^use description\s*[:\-]?/i, '')
+          .split('|')[0]
+          .trim();
+        if (text && !/^\d+$/.test(text) && !/year built/i.test(text)) return text;
+      }
+      return null;
+    })();
+    const buildingSizeFromImprovements = (() => {
+      const values = likelyImprovementRows
+        .flatMap(row => row)
+        .map(cell => parseIntNumber(cell))
+        .filter(value => value && value >= 200 && value <= 2000000);
+      return values.length ? Math.max(...values) : null;
+    })();
+    const buildingSizeFromBody = (() => {
+      const patterns = [
+        /(?:total\s+sq\.?\s*footage|total\s+square\s+feet|building\s+size|gross\s+building\s+area|gross\s+area|heated\s+area|finished\s+area|living\s+area)\s*[:\-]?\s*([0-9,]+)/i,
+        /([0-9,]+)\s*(?:sq\.?\s*ft|square\s*feet)\b/i,
+      ];
+      for (const pattern of patterns) {
+        const match = bodyText.match(pattern);
+        if (match) return parseIntNumber(match[1]);
+      }
+      return null;
+    })();
+    const buildingSizeSf =
+      parseIntNumber(extractPairValue('Total Sq Footage', 'Building Size', 'Gross Building Area', 'Gross Area', 'Heated Area', 'Finished Area', 'Total Living Area')) ||
+      parseIntNumber(findLineContaining('total sq footage', 'building size', 'gross building area', 'gross area', 'heated area', 'finished area', 'total living area')) ||
+      buildingSizeFromBody ||
+      buildingSizeFromImprovements;
 
     const result = {
       status: 'ok',
@@ -908,15 +958,15 @@ const { chromium } = require('playwright');
       address,
       parcel_number: extractPairValue('Parcel Number', 'Parcel', 'Map/Parcel') || parcelFromUrl || parcelFromTitle || null,
       location_address: extractPairValue('Location Address', 'Property Address') || null,
-      property_class: extractPairValue('Property Class') || null,
+      property_class: propertyClassFromRow,
       zoning: extractPairValue('Zoning', 'Zone') || zoningFromLine || zoningFromBody || null,
       lot_size_acres: lotSizeAcres,
       year_built: parseIntNumber(extractPairValue('Year Built')) || parseIntNumber(findLineContaining('year built')),
-      building_size_sf: parseIntNumber(extractPairValue('Total Sq Footage', 'Building Size')) || parseIntNumber(findLineContaining('total sq footage', 'building size')),
+      building_size_sf: buildingSizeSf,
       lot_size_sf: lotSizeSf,
       exterior_construction_type: buildingRow.length >= 8 ? `${buildingRow[6]} ${buildingRow[7]}` : null,
       parking: accessoryRows.map(r => r[0]).filter(Boolean).join('; ') || null,
-      assessor_improvements: accessoryRows.map(r => r[0]).filter(Boolean),
+      assessor_improvements: Array.from(new Set([...accessoryRows.map(r => r[0]).filter(Boolean), ...likelyImprovementRows.map(r => r[0]).filter(Boolean)])).slice(0, 12),
       navigation,
       notes: [
         `URL: ${page.url()}`,
@@ -924,6 +974,8 @@ const { chromium } = require('playwright');
         zoningLine ? `Zoning line: ${zoningLine}` : 'Zoning line: none',
         zoningFromBody ? `Zoning body match: ${zoningFromBody}` : 'Zoning body match: none',
         lotSizeAcresFromBody ? `Acres body match: ${lotSizeAcresFromBody}` : 'Acres body match: none',
+        buildingSizeFromBody ? `Building SF body match: ${buildingSizeFromBody}` : 'Building SF body match: none',
+        propertyClassFromRow ? `Property class match: ${propertyClassFromRow}` : 'Property class match: none',
       ],
     };
     console.log(JSON.stringify(result));
