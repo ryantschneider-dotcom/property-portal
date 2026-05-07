@@ -70,8 +70,9 @@ export function BrokerHubIntakeForm() {
   const [suites, setSuites] = useState<SuiteRow[]>([createSuite()]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
 
   const isSale = formData.transactionType === "Sale" || formData.transactionType === "Both";
   const isLease = formData.transactionType === "Lease" || formData.transactionType === "Both";
@@ -110,6 +111,7 @@ export function BrokerHubIntakeForm() {
     event.preventDefault();
     setStatus("saving");
     setErrorMessage(null);
+    setCreatedSlug(null);
 
     try {
       const body = new FormData();
@@ -131,7 +133,11 @@ export function BrokerHubIntakeForm() {
         return;
       }
 
-      router.push(`/admin/properties/${payload.slug}/edit?brokerHub=1`);
+      setStatus("success");
+      setCreatedSlug(payload.slug ?? null);
+      setFormData(initialState);
+      setSuites([createSuite()]);
+      setFiles([]);
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -288,7 +294,7 @@ export function BrokerHubIntakeForm() {
         </div>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-zinc-700">Broker notes / brain dump</span>
-          <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, politics, tenant status, pricing reality, missing facts." required />
+          <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, politics, tenant status, pricing reality, missing facts." />
         </label>
         <div className="mt-4 space-y-3">
           <span className="text-sm font-medium text-zinc-700">Lead broker</span>
@@ -354,6 +360,7 @@ export function BrokerHubIntakeForm() {
             <p className="mt-2 text-sm text-zinc-200">
               {status === "idle" && "Creates the draft listing, uploads files, and starts enrichment + copy generation."}
               {status === "saving" && "Creating intake draft now…"}
+              {status === "success" && `Draft created${createdSlug ? `: ${createdSlug}` : ""}. You can run another intake now while enrichment continues.`}
               {status === "error" && (errorMessage ?? "Failed to create intake draft.")}
             </p>
           </div>

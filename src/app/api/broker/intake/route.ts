@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import {
@@ -53,8 +53,19 @@ function visibilityFromTransaction(transactionType: IntakePayload["transactionTy
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
+    const headerStore = await headers();
     const session = parsePortalSession(cookieStore.get("admin_session")?.value);
-    if (!session) {
+    const host = (headerStore.get("x-forwarded-host") || headerStore.get("host") || "").toLowerCase();
+    const isBrokerHost = host === "broker.piercommercial.com" || host === "www.broker.piercommercial.com";
+    const actor = session ?? (isBrokerHost
+      ? {
+          email: "broker-hub@pier.internal",
+          role: "broker",
+          name: "Broker Hub",
+        }
+      : null);
+
+    if (!actor) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -68,8 +79,8 @@ export async function POST(request: Request) {
     const normalizedParcelId = normalizeParcelId(payload.parcelId, payload.county);
     const suites = (payload.suites ?? []).filter((suite) => suite.suiteNumber?.trim() || suite.availableSqFt?.trim());
 
-    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId || !payload.propertyType || !payload.brokerNotes.trim()) {
-      return NextResponse.json({ error: "Address, county, parcel number, property type, and broker notes are required." }, { status: 400 });
+    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId || !payload.propertyType) {
+      return NextResponse.json({ error: "Address, county, parcel number, and property type are required." }, { status: 400 });
     }
 
     if (!payload.leadBrokers?.length) {
@@ -105,11 +116,11 @@ export async function POST(request: Request) {
         title,
         status: "draft",
         workflowStatus: "needs_input",
-        ownerUserId: session.email,
-        ownerEmail: session.email,
+        ownerUserId: actor.email,
+        ownerEmail: actor.email,
         leadBroker: payload.leadBrokers.join(", "),
-        createdByUserId: session.email,
-        updatedByUserId: session.email,
+        createdByUserId: actor.email,
+        updatedByUserId: actor.email,
         createdAt: now,
         updatedAt: now,
         visibility,
@@ -206,8 +217,9 @@ export async function POST(request: Request) {
           },
           brokerHub: {
             source: "broker-hub",
-            submittedByName: session.name,
-            submittedByEmail: session.email,
+            submittedByName: actor.name,
+            submittedByEmail: actor.email,
+            authMode: session ? "session" : "broker-host-anonymous",
           },
         },
       },
