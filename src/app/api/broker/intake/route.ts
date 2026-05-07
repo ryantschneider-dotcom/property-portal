@@ -75,20 +75,12 @@ export async function POST(request: Request) {
 
     const isSale = payload.transactionType === "Sale" || payload.transactionType === "Both";
     const isLease = payload.transactionType === "Lease" || payload.transactionType === "Both";
-    const slug = payload.slug?.trim() || buildListingSlug(payload.addressStreet, payload.city, payload.propertyType);
+    const slug = payload.slug?.trim() || buildListingSlug(payload.addressStreet, payload.city, payload.propertyType || "property");
     const normalizedParcelId = normalizeParcelId(payload.parcelId, payload.county);
     const suites = (payload.suites ?? []).filter((suite) => suite.suiteNumber?.trim() || suite.availableSqFt?.trim());
 
-    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId || !payload.propertyType) {
-      return NextResponse.json({ error: "Address, county, parcel number, and property type are required." }, { status: 400 });
-    }
-
-    if (!payload.leadBrokers?.length) {
-      return NextResponse.json({ error: "Select at least one lead broker." }, { status: 400 });
-    }
-
-    if (isSale && !payload.salePrice.trim()) {
-      return NextResponse.json({ error: "Sale price is required for sale listings." }, { status: 400 });
+    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId) {
+      return NextResponse.json({ error: "Address, county, and parcel number are required." }, { status: 400 });
     }
 
     if (payload.propertyType === "Land" && !payload.grossAcres.trim()) {
@@ -118,7 +110,7 @@ export async function POST(request: Request) {
         workflowStatus: "needs_input",
         ownerUserId: actor.email,
         ownerEmail: actor.email,
-        leadBroker: payload.leadBrokers.join(", "),
+        leadBroker: payload.leadBrokers.join(", ") || null,
         createdByUserId: actor.email,
         updatedByUserId: actor.email,
         createdAt: now,
@@ -134,7 +126,7 @@ export async function POST(request: Request) {
           hideAddress: false,
         },
         property: {
-          category: payload.propertyType,
+          category: payload.propertyType || null,
           buildingSizeSf: null,
           lotSizeAcres: parseOptionalNumber(payload.grossAcres),
           yearBuilt: null,
@@ -183,8 +175,8 @@ export async function POST(request: Request) {
         admin: {
           leaseType: payload.leaseType || null,
           suites,
-          propertyTypeLabel: payload.propertyType,
-          intakeNotes: payload.brokerNotes,
+          propertyTypeLabel: payload.propertyType || null,
+          intakeNotes: payload.brokerNotes || null,
           leadBrokerChecklist: payload.leadBrokers,
         },
         meta: {

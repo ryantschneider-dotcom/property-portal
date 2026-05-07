@@ -196,7 +196,7 @@ export function BrokerHubIntakeForm() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-700">Property type</span>
-              <select className={inputClassName()} value={formData.propertyType} onChange={(event) => update("propertyType", event.target.value)} required>
+              <select className={inputClassName()} value={formData.propertyType} onChange={(event) => update("propertyType", event.target.value)}>
                 <option value="">Select type</option>
                 {BROKER_HUB_PROPERTY_TYPES.map((propertyType) => (
                   <option key={propertyType} value={propertyType}>{propertyType}</option>
@@ -228,7 +228,7 @@ export function BrokerHubIntakeForm() {
           {isSale ? (
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-700">Sale price</span>
-              <input className={inputClassName()} value={formData.salePrice} onChange={(event) => update("salePrice", event.target.value)} inputMode="decimal" required={isSale} />
+              <input className={inputClassName()} value={formData.salePrice} onChange={(event) => update("salePrice", event.target.value)} inputMode="decimal" />
             </label>
           ) : null}
           {isLand ? (
@@ -297,7 +297,7 @@ export function BrokerHubIntakeForm() {
           <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, politics, tenant status, pricing reality, missing facts." />
         </label>
         <div className="mt-4 space-y-3">
-          <span className="text-sm font-medium text-zinc-700">Lead broker</span>
+          <span className="text-sm font-medium text-zinc-700">Lead broker (optional)</span>
           <div className="grid gap-2 sm:grid-cols-3">
             {BROKER_HUB_BROKERS.map((broker) => {
               const checked = formData.leadBrokers.includes(broker);
