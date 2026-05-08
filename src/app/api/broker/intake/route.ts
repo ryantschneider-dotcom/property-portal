@@ -12,6 +12,7 @@ import {
   parseOptionalNumber,
   uploadBrokerAsset,
 } from "@/lib/broker-hub";
+import { findDuplicateListings, restoreProperty } from "@/lib/property-lifecycle";
 import { getAdminWorkflowSnapshot } from "@/lib/admin-workflow";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { enrichPropertyDraft } from "@/lib/property-enrichment";
@@ -41,6 +42,8 @@ type IntakePayload = {
   grossAcres: string;
   brokerNotes: string;
   leadBroker: string;
+  duplicateDecision?: "restore_existing" | "create_duplicate";
+  duplicateSlug?: string;
   suites: SuiteRow[];
 };
 
@@ -74,7 +77,7 @@ export async function POST(request: Request) {
     const payload = JSON.parse(String(formData.get("payload") ?? "{}")) as IntakePayload;
     const files = formData.getAll("assets").filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-    const slug = payload.slug?.trim() || buildListingSlug(payload.addressStreet, payload.city, payload.propertyType || "property");
+    const baseSlug = payload.slug?.trim() || buildListingSlug(payload.addressStreet, payload.city, payload.propertyType || "property");
     const normalizedParcelId = normalizeParcelId(payload.parcelId, payload.county);
     const suites = (payload.suites ?? []).filter((suite) => suite.suiteNumber?.trim() || suite.availableSqFt?.trim() || suite.baseRent?.trim());
 
@@ -104,6 +107,53 @@ export async function POST(request: Request) {
         }
       }
     }
+
+    const duplicateMatches = await findDuplicateListings({
+      addressStreet: payload.addressStreet,
+      city: payload.city,
+      state: payload.state,
+      normalizedParcelId,
+    });
+
+    const chosenDuplicate = payload.duplicateSlug
+      ? duplicateMatches.find((match) => match.slug === payload.duplicateSlug || match.id === payload.duplicateSlug)
+      : duplicateMatches[0];
+
+    if (chosenDuplicate && payload.duplicateDecision !== "create_duplicate" && payload.duplicateDecision !== "restore_existing") {
+      return NextResponse.json(
+        {
+          error: `Potential duplicate found for ${chosenDuplicate.address || chosenDuplicate.title || chosenDuplicate.slug}.`,
+          duplicateMatch: chosenDuplicate,
+          duplicateMatches,
+        },
+        { status: 409 },
+      );
+    }
+
+    if (chosenDuplicate && payload.duplicateDecision === "restore_existing") {
+      if (chosenDuplicate.archived) {
+        await restoreProperty(chosenDuplicate.slug, actor.email);
+      }
+
+      revalidatePath("/broker");
+      revalidatePath("/broker/new");
+      revalidatePath("/broker/revisions");
+      revalidatePath("/admin/properties");
+      revalidatePath(`/admin/properties/${chosenDuplicate.slug}/edit`);
+
+      return NextResponse.json({
+        ok: true,
+        restoredExisting: chosenDuplicate.archived,
+        reusedExisting: true,
+        slug: chosenDuplicate.slug,
+        id: chosenDuplicate.id,
+        duplicateMatch: chosenDuplicate,
+      });
+    }
+
+    const slug = chosenDuplicate && payload.duplicateDecision === "create_duplicate"
+      ? `${baseSlug}-${Date.now().toString().slice(-6)}`
+      : baseSlug;
 
     const uploadedAssets = await Promise.all(files.map((file, index) => uploadBrokerAsset("intake", slug, file, index)));
     const imageAssets = uploadedAssets.filter((asset) => asset.documentType === "photo");

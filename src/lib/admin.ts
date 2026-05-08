@@ -455,7 +455,7 @@ export async function getAdminPropertyFormData(slug: string): Promise<AdminPrope
     listingStatus: adminListingStatusFromStored(raw.status),
     transactionType,
     websiteUrl: asString(rawLinks.websiteUrl || meta.websiteUrl || intake.website_url || intake["Website URL (If applicable)"]),
-    leadBroker: asString(intake.lead_broker || intake["Lead Broker"]),
+    leadBroker: asString(raw.leadBroker || raw.admin?.leadBroker || intake.lead_broker || intake["Lead Broker"]),
 
     addressStreet: property.address.street ?? asString(intake.street_number && intake.street_name ? `${intake.street_number} ${intake.street_name}` : ""),
     addressFull: property.address.full ?? asString(rawProperty.address),
@@ -517,6 +517,7 @@ export async function saveAdminProperty(input: AdminPropertyFormData) {
     title: input.title.trim(),
     status: input.listingStatus,
     visibility,
+    leadBroker: input.leadBroker.trim() || null,
     address: {
       full: input.addressFull.trim() || input.addressStreet.trim(),
       street: input.addressStreet.trim(),
@@ -580,6 +581,9 @@ export async function saveAdminProperty(input: AdminPropertyFormData) {
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: existing ? undefined : FieldValue.serverTimestamp(),
       adminLastEditedAt: FieldValue.serverTimestamp(),
+      intake: {
+        lead_broker: input.leadBroker.trim() || null,
+      },
       launchPackage: {
         status: existing ? "stale" : "not_built",
       },

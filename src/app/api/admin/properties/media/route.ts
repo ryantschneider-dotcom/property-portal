@@ -48,6 +48,7 @@ async function uploadPhoto(slug: string, file: File, index: number) {
     sortOrder: index,
     uploadedByUserId: null,
     uploadedAt: new Date().toISOString(),
+    path: storagePath,
     urls: {
       original: publicUrl,
       full: publicUrl,

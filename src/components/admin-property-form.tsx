@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { BROKER_HUB_BROKERS } from "@/lib/broker-hub-shared";
 import type { AdminPropertyFormData } from "@/lib/admin";
 import type { PortalRole } from "@/lib/users";
 import type { PropertyDetail } from "@/lib/types";
@@ -302,12 +303,17 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [revisionStatusMessage, setRevisionStatusMessage] = useState<string | null>(null);
   const [exportMissingFields, setExportMissingFields] = useState<string[]>(workflow?.buildoutMissingFields ?? []);
   const [exportWarnings, setExportWarnings] = useState<string[]>(workflow?.buildoutWarnings ?? []);
+  const [lifecycleState, setLifecycleState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
 
   const isAdmin = userRole === "admin";
   const isSeniorBroker = userRole === "senior_broker";
   const hasEnrichmentErrors = Boolean(workflow?.launchpadErrors?.length);
   const hasPreflightBlockers = Boolean(workflow?.preflight?.blockers.length);
   const canSeniorFastTrack = !isAdmin && isSeniorBroker && !hasPreflightBlockers;
+  const isSaleListing = formData.transactionType === "sale" || formData.transactionType === "sale-lease";
+  const isLeaseListing = formData.transactionType === "lease" || formData.transactionType === "sale-lease";
+  const isArchivedListing = workflow?.workflowStatus === "archived";
 
   useEffect(() => {
     console.log("[enrich][client] admin form hydrated", {
@@ -623,6 +629,57 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
     router.refresh();
   }
 
+  async function handleLifecycle(action: "archive" | "restore" | "delete") {
+    if (!formData.slug) return;
+
+    const confirmed = typeof window === "undefined"
+      ? true
+      : window.confirm(
+          action === "delete"
+            ? "Hard delete this listing and its stored media? This cannot be undone."
+            : action === "archive"
+              ? "Archive this listing and remove it from active queues?"
+              : "Restore this archived listing back into the active workflow?",
+        );
+    if (!confirmed) return;
+
+    setLifecycleState("saving");
+    setLifecycleMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/properties/lifecycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: formData.slug, action }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setLifecycleState("error");
+        setLifecycleMessage(payload.error ?? "Unable to update listing lifecycle");
+        return;
+      }
+
+      setLifecycleState("done");
+      setLifecycleMessage(
+        action === "delete"
+          ? "Listing deleted permanently."
+          : action === "archive"
+            ? "Listing archived and removed from active queues."
+            : "Archived listing restored.",
+      );
+
+      if (action === "delete") {
+        router.push("/admin/properties");
+      } else {
+        router.refresh();
+      }
+    } catch (error) {
+      console.error(error);
+      setLifecycleState("error");
+      setLifecycleMessage("Unable to update listing lifecycle");
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       <div className="grid gap-8 xl:grid-cols-[1.4fr_0.8fr]">
@@ -659,14 +716,19 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 </select>
               </Field>
               <Field label="Lead Broker">
-                <input className={inputClassName()} value={formData.leadBroker} onChange={(e) => update("leadBroker", e.target.value)} />
+                <select className={inputClassName()} value={formData.leadBroker} onChange={(e) => update("leadBroker", e.target.value)}>
+                  <option value="">Select broker</option>
+                  {BROKER_HUB_BROKERS.map((broker) => <option key={broker} value={broker}>{broker}</option>)}
+                </select>
               </Field>
               <Field label="Website URL">
                 <input className={inputClassName()} value={formData.websiteUrl} onChange={(e) => update("websiteUrl", e.target.value)} />
               </Field>
-              <Field label="Sale Title">
-                <input className={inputClassName()} value={formData.saleTitle} onChange={(e) => update("saleTitle", e.target.value)} />
-              </Field>
+              {isSaleListing ? (
+                <Field label="Sale Title">
+                  <input className={inputClassName()} value={formData.saleTitle} onChange={(e) => update("saleTitle", e.target.value)} />
+                </Field>
+              ) : null}
             </div>
           </Section>
 
@@ -707,24 +769,32 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
 
           <Section title="Descriptions & bullets" description="Primary copy blocks used for listing output and Buildout-ready content.">
             <div className="space-y-5">
-              <Field label="Sale Description">
-                <textarea className={`${inputClassName()} min-h-36`} value={formData.saleDescription} onChange={(e) => update("saleDescription", e.target.value)} />
-              </Field>
-              <Field label="Lease Description">
-                <textarea className={`${inputClassName()} min-h-36`} value={formData.leaseDescription} onChange={(e) => update("leaseDescription", e.target.value)} />
-              </Field>
+              {isSaleListing ? (
+                <Field label="Sale Description">
+                  <textarea className={`${inputClassName()} min-h-36`} value={formData.saleDescription} onChange={(e) => update("saleDescription", e.target.value)} />
+                </Field>
+              ) : null}
+              {isLeaseListing ? (
+                <Field label="Lease Description">
+                  <textarea className={`${inputClassName()} min-h-36`} value={formData.leaseDescription} onChange={(e) => update("leaseDescription", e.target.value)} />
+                </Field>
+              ) : null}
               <Field label="Location Description">
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.locationDescription} onChange={(e) => update("locationDescription", e.target.value)} />
               </Field>
               <Field label="Exterior Description">
                 <textarea className={`${inputClassName()} min-h-28`} value={formData.exteriorDescription} onChange={(e) => update("exteriorDescription", e.target.value)} />
               </Field>
-              <Field label="Sale Bullets (one per line)">
-                <textarea className={`${inputClassName()} min-h-28`} value={formData.saleBullets} onChange={(e) => update("saleBullets", e.target.value)} />
-              </Field>
-              <Field label="Lease Bullets (one per line)">
-                <textarea className={`${inputClassName()} min-h-28`} value={formData.leaseBullets} onChange={(e) => update("leaseBullets", e.target.value)} />
-              </Field>
+              {isSaleListing ? (
+                <Field label="Sale Bullets (one per line)">
+                  <textarea className={`${inputClassName()} min-h-28`} value={formData.saleBullets} onChange={(e) => update("saleBullets", e.target.value)} />
+                </Field>
+              ) : null}
+              {isLeaseListing ? (
+                <Field label="Lease Bullets (one per line)">
+                  <textarea className={`${inputClassName()} min-h-28`} value={formData.leaseBullets} onChange={(e) => update("leaseBullets", e.target.value)} />
+                </Field>
+              ) : null}
             </div>
           </Section>
 
@@ -829,28 +899,36 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
         <div className="space-y-8 xl:sticky xl:top-6 xl:self-start">
           <Section title="Pricing & facts" description="Operator-facing price controls, property facts, and Buildout classification IDs.">
             <div className="space-y-5">
-              <Field label="Sale Price ($)">
-                <input className={inputClassName()} value={formData.salePriceDollars} onChange={(e) => update("salePriceDollars", e.target.value)} />
-              </Field>
-              <Field label="Hidden Price Label">
-                <input className={inputClassName()} value={formData.hiddenPriceLabel} onChange={(e) => update("hiddenPriceLabel", e.target.value)} />
-              </Field>
-              <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
-                <input type="checkbox" checked={formData.hideSalePrice} onChange={(e) => update("hideSalePrice", e.target.checked)} />
-                Hide Sale Price
-              </label>
+              {isSaleListing ? (
+                <>
+                  <Field label="Sale Price ($)">
+                    <input className={inputClassName()} value={formData.salePriceDollars} onChange={(e) => update("salePriceDollars", e.target.value)} />
+                  </Field>
+                  <Field label="Hidden Price Label">
+                    <input className={inputClassName()} value={formData.hiddenPriceLabel} onChange={(e) => update("hiddenPriceLabel", e.target.value)} />
+                  </Field>
+                  <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-700">
+                    <input type="checkbox" checked={formData.hideSalePrice} onChange={(e) => update("hideSalePrice", e.target.checked)} />
+                    Hide Sale Price
+                  </label>
+                </>
+              ) : null}
               <Field label="Listing Price Visibility">
                 <input className={inputClassName()} value={formData.listingPriceVisibility} onChange={(e) => update("listingPriceVisibility", e.target.value)} />
               </Field>
-              <Field label="Asking Price / Lease Rate per SF">
-                <input className={inputClassName()} value={formData.askingPriceRate} onChange={(e) => update("askingPriceRate", e.target.value)} />
-              </Field>
+              {isLeaseListing ? (
+                <Field label="Asking Price / Lease Rate per SF">
+                  <input className={inputClassName()} value={formData.askingPriceRate} onChange={(e) => update("askingPriceRate", e.target.value)} />
+                </Field>
+              ) : null}
               <Field label="Available SF">
                 <input className={inputClassName()} value={formData.availableSf} onChange={(e) => update("availableSf", e.target.value)} />
               </Field>
-              <Field label="Lease Type">
-                <input className={inputClassName()} value={formData.leaseType} onChange={(e) => update("leaseType", e.target.value)} />
-              </Field>
+              {isLeaseListing ? (
+                <Field label="Lease Type">
+                  <input className={inputClassName()} value={formData.leaseType} onChange={(e) => update("leaseType", e.target.value)} />
+                </Field>
+              ) : null}
               <Field label="Square Footage">
                 <input className={inputClassName()} value={formData.buildingSizeSf} onChange={(e) => update("buildingSizeSf", e.target.value)} />
               </Field>
@@ -965,12 +1043,13 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                       </ul>
                     </div>
                   ) : null}
-                  {workflow?.generatedCopy?.saleDescription || workflow?.generatedCopy?.locationDescription ? (
+                  {workflow?.generatedCopy?.saleDescription || workflow?.generatedCopy?.locationDescription || formData.leaseDescription ? (
                     <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-3 space-y-2">
                       <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Generated copy snapshot</p>
-                      {workflow.generatedCopy.saleTitle ? <p><span className="font-semibold text-zinc-900">Title:</span> {workflow.generatedCopy.saleTitle}</p> : null}
-                      {workflow.generatedCopy.saleDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Sale:</span> {workflow.generatedCopy.saleDescription}</p> : null}
-                      {workflow.generatedCopy.locationDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Location:</span> {workflow.generatedCopy.locationDescription}</p> : null}
+                      {isSaleListing && workflow?.generatedCopy?.saleTitle ? <p><span className="font-semibold text-zinc-900">Title:</span> {workflow.generatedCopy.saleTitle}</p> : null}
+                      {isSaleListing && workflow?.generatedCopy?.saleDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Sale:</span> {workflow.generatedCopy.saleDescription}</p> : null}
+                      {isLeaseListing && formData.leaseDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Lease:</span> {formData.leaseDescription}</p> : null}
+                      {workflow?.generatedCopy?.locationDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Location:</span> {workflow.generatedCopy.locationDescription}</p> : null}
                     </div>
                   ) : null}
                 </div>
@@ -1367,7 +1446,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                     <div className="space-y-3">
                       {revisionCategories.map((category, index) => (
                         <div key={`${category.code}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                          <div className="grid gap-3 md:grid-cols-[minmax(16rem,1.4fr)_minmax(12rem,1fr)_auto]">
                             <label className="block space-y-2">
                               <span className="text-sm font-medium text-zinc-700">Category</span>
                               <select className={inputClassName()} value={category.code} onChange={(e) => updateRevisionCategory(index, { code: e.target.value as RevisionCategoryFormRow["code"] })}>
@@ -1482,10 +1561,30 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               >
                 Save Property
               </button>
+              {isAdmin ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleLifecycle(isArchivedListing ? "restore" : "archive")}
+                    disabled={!formData.slug || lifecycleState === "saving"}
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-amber-700 bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {lifecycleState === "saving" ? "Updating lifecycle…" : isArchivedListing ? "Restore Archived Listing" : "Archive Listing"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLifecycle("delete")}
+                    disabled={!formData.slug || lifecycleState === "saving"}
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-red-700 bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {lifecycleState === "saving" ? "Updating lifecycle…" : "Hard Delete Listing"}
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 onClick={canSeniorFastTrack ? () => handleApproval("approve") : handleMarkReady}
-                disabled={!formData.slug || readyState === "saving" || approvalState === "saving" || hasPreflightBlockers}
+                disabled={!formData.slug || readyState === "saving" || approvalState === "saving" || hasPreflightBlockers || isArchivedListing}
                 className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {canSeniorFastTrack
@@ -1494,6 +1593,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               </button>
             </div>
             {readyMessage ? <p className={`mt-3 text-sm ${readyState === "error" ? "text-red-600" : "text-emerald-700"}`}>{readyMessage}</p> : null}
+            {lifecycleMessage ? <p className={`mt-3 text-sm ${lifecycleState === "error" ? "text-red-600" : "text-amber-700"}`}>{lifecycleMessage}</p> : null}
           </section>
         </div>
       </div>

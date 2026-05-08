@@ -51,6 +51,18 @@ type ReviewChecklist = {
   checklistState: "ready" | "needs_manual_followup" | "blocked";
 };
 
+type DuplicateMatch = {
+  id: string;
+  slug: string;
+  title: string | null;
+  address: string | null;
+  parcelId: string | null;
+  workflowStatus: string | null;
+  status: string | null;
+  archived: boolean;
+  matchedOn: Array<"address" | "parcel">;
+};
+
 const initialState: IntakeState = {
   addressStreet: "",
   city: "",
@@ -94,6 +106,7 @@ export function BrokerHubIntakeForm() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
   const [reviewChecklist, setReviewChecklist] = useState<ReviewChecklist | null>(null);
+  const [duplicateMatch, setDuplicateMatch] = useState<DuplicateMatch | null>(null);
 
   const isSale = formData.transactionType === "Sale";
   const isLease = formData.transactionType === "Lease";
@@ -151,12 +164,14 @@ export function BrokerHubIntakeForm() {
     setSuites((current) => (current.length === 1 ? current : current.filter((suite) => suite.id !== id)));
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitIntake(duplicateDecision?: "restore_existing" | "create_duplicate") {
     setStatus("saving");
     setErrorMessage(null);
     setCreatedSlug(null);
     setReviewChecklist(null);
+    if (!duplicateDecision) {
+      setDuplicateMatch(null);
+    }
 
     try {
       const body = new FormData();
@@ -166,6 +181,8 @@ export function BrokerHubIntakeForm() {
           ...formData,
           slug: suggestedSlug,
           heroPhotoKey: imageFiles[0] ? fileKey(imageFiles[0]) : null,
+          duplicateDecision,
+          duplicateSlug: duplicateMatch?.slug ?? null,
           suites: suites.filter((suite) => suite.suiteNumber.trim() || suite.availableSqFt.trim() || suite.baseRent.trim()),
         }),
       );
@@ -174,12 +191,19 @@ export function BrokerHubIntakeForm() {
       const response = await fetch("/api/broker/intake", { method: "POST", body });
       const payload = await response.json();
       if (!response.ok) {
+        if (response.status === 409 && payload.duplicateMatch) {
+          setStatus("error");
+          setDuplicateMatch(payload.duplicateMatch as DuplicateMatch);
+          setErrorMessage(payload.error ?? "Potential duplicate found.");
+          return;
+        }
         setStatus("error");
         setErrorMessage(payload.error ?? "Failed to create broker intake draft.");
         return;
       }
 
       setStatus("success");
+      setDuplicateMatch(null);
       setCreatedSlug(payload.slug ?? null);
       setReviewChecklist(payload.reviewChecklist ?? null);
       setFormData(initialState);
@@ -191,6 +215,11 @@ export function BrokerHubIntakeForm() {
       setStatus("error");
       setErrorMessage("Failed to create broker intake draft.");
     }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await submitIntake();
   }
 
   return (
@@ -409,6 +438,30 @@ export function BrokerHubIntakeForm() {
           })}
         </div>
       </section>
+
+      {duplicateMatch ? (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-700">Potential duplicate found</p>
+          <p className="mt-2 font-semibold">{duplicateMatch.title || duplicateMatch.address || duplicateMatch.slug}</p>
+          <div className="mt-2 space-y-1 text-amber-800">
+            <p>Address: {duplicateMatch.address || "—"}</p>
+            <p>Parcel: {duplicateMatch.parcelId || "—"}</p>
+            <p>Status: {duplicateMatch.archived ? "Archived" : (duplicateMatch.workflowStatus || duplicateMatch.status || "Active")}</p>
+            <p>Matched on: {duplicateMatch.matchedOn.join(", ")}</p>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <button type="button" onClick={() => submitIntake("restore_existing")} className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-700">
+              {duplicateMatch.archived ? "Restore existing listing" : "Use existing listing"}
+            </button>
+            <button type="button" onClick={() => submitIntake("create_duplicate")} className="inline-flex items-center justify-center rounded-lg border border-amber-700 bg-white px-4 py-2.5 font-semibold text-amber-800 transition hover:bg-amber-100">
+              Create duplicate anyway
+            </button>
+            <button type="button" onClick={() => setDuplicateMatch(null)} className="inline-flex items-center justify-center rounded-lg border border-zinc-300 bg-white px-4 py-2.5 font-semibold text-zinc-800 transition hover:bg-zinc-100">
+              Dismiss warning
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {status === "success" && reviewChecklist ? (
         <section className={`rounded-xl border p-4 ${reviewChecklist.checklistState === "blocked" ? "border-rose-200 bg-rose-50" : reviewChecklist.checklistState === "needs_manual_followup" ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
