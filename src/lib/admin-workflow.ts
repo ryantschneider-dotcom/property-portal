@@ -2,6 +2,19 @@ import "server-only";
 
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 
+export type AdminPreflightSnapshot = {
+  status: "blocked" | "publish_ready_with_warnings" | "publish_ready";
+  blockers: string[];
+  warnings: string[];
+  sections: {
+    identity: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+    pricing: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+    media: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+    copy: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+    buildout: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+  };
+};
+
 export type AdminWorkflowSnapshot = {
   documentId: string;
   slug: string;
@@ -58,6 +71,7 @@ export type AdminWorkflowSnapshot = {
   buildoutSyncError: string | null;
   buildoutMissingFields: string[];
   buildoutWarnings: string[];
+  preflight: AdminPreflightSnapshot;
   reviewChecklist: {
     successfulScrapes: string[];
     partialScrapes: string[];
@@ -85,6 +99,120 @@ function uniq(values: Array<string | null | undefined | false>): string[] {
 
 function present(value: unknown) {
   return Boolean(asString(value));
+}
+
+function labelBuildoutField(field: string) {
+  return ({
+    title: "Title",
+    "address.street": "Street address",
+    "address.city": "City",
+    "address.state": "State",
+    "property.category": "Property category",
+    "content.saleTitle": "Buildout title",
+    "content.saleDescription": "Sale description",
+    "content.locationDescription": "Location description",
+  }[field] || field);
+}
+
+function makeSection(blockers: string[], warnings: string[]) {
+  return {
+    status: blockers.length ? "blocked" : warnings.length ? "warning" : "ok",
+    blockers,
+    warnings,
+  } as const;
+}
+
+export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflightSnapshot {
+  const meta = raw.meta ?? {};
+  const exportMeta = meta.export ?? {};
+  const media = raw.media ?? {};
+  const address = raw.address ?? {};
+  const property = raw.property ?? {};
+  const pricing = raw.pricing ?? {};
+  const content = raw.content ?? {};
+  const visibility = raw.visibility ?? {};
+  const admin = raw.admin ?? {};
+  const images = Array.isArray(media.images) ? media.images : [];
+  const suites = Array.isArray(admin.suites) ? admin.suites : [];
+  const buildoutMissingFields = Array.isArray(exportMeta.missingRequiredFields)
+    ? exportMeta.missingRequiredFields.map((field: unknown) => asString(field)).filter(Boolean)
+    : [];
+  const buildoutWarnings = Array.isArray(exportMeta.warnings)
+    ? exportMeta.warnings.map((field: unknown) => asString(field)).filter(Boolean)
+    : [];
+  const transactionLabel = asString(visibility.transactionLabel) || "";
+  const saleActive = visibility.saleActive === true || transactionLabel.toLowerCase().includes("sale");
+  const leaseActive = visibility.leaseActive === true || transactionLabel.toLowerCase().includes("lease");
+
+  const identityBlockers = uniq([
+    present(raw.title) ? null : "Title missing",
+    present(address.street) ? null : "Street address missing",
+    present(address.city) ? null : "City missing",
+    present(address.state) ? null : "State missing",
+    present(address.county) ? null : "County missing",
+    present(property.category) ? null : "Property type missing",
+    saleActive || leaseActive ? null : "Transaction visibility missing",
+    present(property.parcelId) ? null : "Parcel ID missing",
+  ]);
+  const identityWarnings = uniq([
+    present(raw.leadBroker) || present(raw.ownerEmail) || present(raw.ownerUserId) ? null : "Lead broker / owner not assigned",
+    present(address.zip) ? null : "ZIP not set",
+  ]);
+
+  const hasSalePrice = present(pricing.salePriceDollars) || pricing.salePriceIsCallForPrice === true || present(pricing.hiddenPriceLabel);
+  const completeSuites = suites.filter((suite: Record<string, any>) => present(suite.suiteNumber) && present(suite.availableSqFt) && (present(suite.baseRent) || suite.unpriced === true) && present(suite.rentType));
+  const pricingBlockers = uniq([
+    saleActive && !hasSalePrice ? "Sale pricing missing" : null,
+    leaseActive && completeSuites.length === 0 ? "Lease suite pricing missing" : null,
+    leaseActive && !present(pricing.availableSqFt) && completeSuites.length === 0 ? "Available SF missing for lease" : null,
+  ]);
+  const pricingWarnings = uniq([
+    present(property.buildingSizeSf) ? null : "Building size missing",
+    present(property.lotSizeAcres) ? null : "Lot size missing",
+    present(property.yearBuilt) ? null : "Year built missing",
+    present(property.zoning) ? null : "Zoning missing",
+    present(admin.parking) || present(property.parking) ? null : "Parking details missing",
+  ]);
+
+  const mediaBlockers = uniq([]);
+  const mediaWarnings = uniq([
+    images.length > 0 ? null : "No property photos uploaded",
+    images.some((image: Record<string, any>) => image?.isPrimary === true) || images.length <= 1 ? null : "Hero image flag not set on gallery",
+  ]);
+
+  const copyBlockers = uniq([
+    present(content.saleTitle) || present(raw.title) ? null : "Listing title not finalized",
+    saleActive && !present(content.saleDescription) ? "Sale description missing" : null,
+    leaseActive && !present(content.leaseDescription) ? "Lease description missing" : null,
+    present(content.locationDescription) ? null : "Location description missing",
+  ]);
+  const copyWarnings = uniq([
+    present(content.exteriorDescription) ? null : "Exterior description missing",
+    (Array.isArray(content.saleBullets) && content.saleBullets.length > 0) || (Array.isArray(content.leaseBullets) && content.leaseBullets.length > 0)
+      ? null
+      : "Bullets not finalized",
+  ]);
+
+  const buildoutBlockers = uniq(buildoutMissingFields.map((field: string) => labelBuildoutField(field)));
+  const buildoutSectionWarnings = uniq(buildoutWarnings.map((field: string) => labelBuildoutField(field)));
+
+  const sections = {
+    identity: makeSection(identityBlockers, identityWarnings),
+    pricing: makeSection(pricingBlockers, pricingWarnings),
+    media: makeSection(mediaBlockers, mediaWarnings),
+    copy: makeSection(copyBlockers, copyWarnings),
+    buildout: makeSection(buildoutBlockers, buildoutSectionWarnings),
+  };
+
+  const blockers = uniq(Object.values(sections).flatMap((section) => section.blockers));
+  const warnings = uniq(Object.values(sections).flatMap((section) => section.warnings));
+
+  return {
+    status: blockers.length ? "blocked" : warnings.length ? "publish_ready_with_warnings" : "publish_ready",
+    blockers,
+    warnings,
+    sections,
+  };
 }
 
 export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkflowSnapshot | null> {
@@ -188,18 +316,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     !buildoutMissingFields.includes("content.locationDescription") ? "Location description" : null,
   ]);
 
-  const buildoutMissingFieldLabels = uniq(
-    buildoutMissingFields.map((field: string) => ({
-      "title": "Title",
-      "address.street": "Street address",
-      "address.city": "City",
-      "address.state": "State",
-      "property.category": "Property category",
-      "content.saleTitle": "Buildout title",
-      "content.saleDescription": "Sale description",
-      "content.locationDescription": "Location description",
-    }[field] || field)),
-  );
+  const buildoutMissingFieldLabels = uniq(buildoutMissingFields.map((field: string) => labelBuildoutField(field)));
 
   const manualResearchNeeded = uniq([
     ...failedAutoFillFields,
@@ -222,6 +339,8 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     : exceptionReason
       ? "needs_manual_followup"
       : "ready";
+
+  const preflight = evaluateAdminPreflight(raw);
 
   return {
     documentId: doc.id,
@@ -285,6 +404,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     buildoutSyncError: asString(exportMeta.buildoutSyncError),
     buildoutMissingFields,
     buildoutWarnings,
+    preflight,
     reviewChecklist: {
       successfulScrapes,
       partialScrapes,

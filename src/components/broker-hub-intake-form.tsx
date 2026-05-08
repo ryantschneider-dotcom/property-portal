@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -79,8 +79,8 @@ function createSuite(): SuiteRow {
   return { id: Math.random().toString(36).slice(2), suiteNumber: "", availableSqFt: "", baseRent: "", rentType: "", unpriced: false };
 }
 
-function RequiredLabel({ children }: { children: React.ReactNode }) {
-  return <span className="text-sm font-medium text-zinc-700">{children} <span className="text-red-600">*</span></span>;
+function RequiredLabel({ children, required = true }: { children: React.ReactNode; required?: boolean }) {
+  return <span className="text-sm font-medium text-zinc-700">{children}{required ? <span className="text-red-600"> *</span> : null}</span>;
 }
 
 export function BrokerHubIntakeForm() {
@@ -89,7 +89,6 @@ export function BrokerHubIntakeForm() {
   const [formData, setFormData] = useState<IntakeState>(initialState);
   const [suites, setSuites] = useState<SuiteRow[]>([createSuite()]);
   const [files, setFiles] = useState<File[]>([]);
-  const [heroPhotoKey, setHeroPhotoKey] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -132,26 +131,28 @@ export function BrokerHubIntakeForm() {
   function addFiles(nextFiles: File[]) {
     setFiles((current) => {
       const existing = new Set(current.map((file) => fileKey(file)));
-      const merged = [...current, ...nextFiles.filter((file) => !existing.has(fileKey(file)))];
-      const images = merged.filter((file) => file.type.startsWith("image/"));
-      if (!heroPhotoKey && images[0]) setHeroPhotoKey(fileKey(images[0]));
-      return merged;
+      return [...current, ...nextFiles.filter((file) => !existing.has(fileKey(file)))];
     });
   }
 
   function removeFile(target: File) {
-    setFiles((current) => {
-      const next = current.filter((entry) => entry !== target);
-      const nextImages = next.filter((file) => file.type.startsWith("image/"));
-      if (heroPhotoKey === fileKey(target)) {
-        setHeroPhotoKey(nextImages[0] ? fileKey(nextImages[0]) : null);
-      }
-      return next;
-    });
+    setFiles((current) => current.filter((entry) => entry !== target));
   }
 
+  useEffect(() => {
+    if (formData.saleUnpriced && formData.salePrice) {
+      update("salePrice", "");
+    }
+  }, [formData.saleUnpriced]);
+
   function updateSuite(id: string, key: keyof Omit<SuiteRow, "id">, value: string | boolean) {
-    setSuites((current) => current.map((suite) => (suite.id === id ? { ...suite, [key]: value } : suite)));
+    setSuites((current) => current.map((suite) => {
+      if (suite.id !== id) return suite;
+      if (key === "unpriced") {
+        return { ...suite, unpriced: value as boolean, baseRent: value ? "" : suite.baseRent };
+      }
+      return { ...suite, [key]: value };
+    }));
   }
 
   function removeSuite(id: string) {
@@ -172,7 +173,7 @@ export function BrokerHubIntakeForm() {
         JSON.stringify({
           ...formData,
           slug: suggestedSlug,
-          heroPhotoKey,
+          heroPhotoKey: imageFiles[0] ? fileKey(imageFiles[0]) : null,
           suites: suites.filter((suite) => suite.suiteNumber.trim() || suite.availableSqFt.trim() || suite.baseRent.trim()),
         }),
       );
@@ -192,7 +193,6 @@ export function BrokerHubIntakeForm() {
       setFormData(initialState);
       setSuites([createSuite()]);
       setFiles([]);
-      setHeroPhotoKey(null);
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -285,7 +285,7 @@ export function BrokerHubIntakeForm() {
         {isSale ? (
           <div className="space-y-4">
             <label className="space-y-2">
-              <RequiredLabel>Sale price</RequiredLabel>
+              <RequiredLabel required={!formData.saleUnpriced}>Sale price</RequiredLabel>
               <input className={inputClassName(true, !formData.saleUnpriced && !formData.salePrice)} value={formData.salePrice} onChange={(event) => update("salePrice", event.target.value)} inputMode="decimal" disabled={formData.saleUnpriced} required={!formData.saleUnpriced} />
             </label>
             <label className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800">
@@ -317,7 +317,7 @@ export function BrokerHubIntakeForm() {
                     <input className={inputClassName(true)} value={suite.availableSqFt} onChange={(event) => updateSuite(suite.id, "availableSqFt", event.target.value)} placeholder="Square feet" inputMode="numeric" required={index === 0} />
                   </label>
                   <label className="space-y-2">
-                    <RequiredLabel>Base rent</RequiredLabel>
+                    <RequiredLabel required={!suite.unpriced}>Base rent</RequiredLabel>
                     <input className={inputClassName(true)} value={suite.baseRent} onChange={(event) => updateSuite(suite.id, "baseRent", event.target.value)} placeholder="$/SF or monthly" inputMode="decimal" disabled={suite.unpriced} required={index === 0 && !suite.unpriced} />
                   </label>
                   <label className="space-y-2">
@@ -371,7 +371,7 @@ export function BrokerHubIntakeForm() {
       <section className={sectionCardClassName()}>
         <div className="mb-4 border-b border-zinc-200 pb-3">
           <h3 className="text-base font-semibold text-zinc-950">4. Photos and files</h3>
-          <p className="mt-1 text-sm text-zinc-500">Photos are strongly recommended but not required. If you upload images, mark one as the HERO / Main Photo.</p>
+          <p className="mt-1 text-sm text-zinc-500">Photos are strongly recommended but not required. The first image you upload will automatically be used as the HERO / Main Photo.</p>
         </div>
         <div
           className={`rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${dragActive ? "border-zinc-950 bg-zinc-100" : "border-zinc-300 bg-white"}`}
@@ -397,7 +397,7 @@ export function BrokerHubIntakeForm() {
           {files.length === 0 ? <p className="text-sm text-zinc-500">No files selected.</p> : null}
           {files.map((file) => {
             const isImage = file.type.startsWith("image/");
-            const isHero = heroPhotoKey === fileKey(file);
+            const isHero = isImage && imageFiles[0] ? fileKey(imageFiles[0]) === fileKey(file) : false;
             return (
               <div key={fileKey(file)} className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
@@ -411,10 +411,9 @@ export function BrokerHubIntakeForm() {
                 </div>
                 {isImage ? (
                   <div className="mt-3 flex items-center gap-3 text-xs">
-                    <label className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-semibold ${isHero ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-zinc-300 bg-zinc-50 text-zinc-700"}`}>
-                      <input type="radio" name="hero-photo" checked={isHero} onChange={() => setHeroPhotoKey(fileKey(file))} />
-                      <span>{isHero ? "HERO / Main Photo" : "Set as HERO / Main Photo"}</span>
-                    </label>
+                    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-semibold ${isHero ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-zinc-300 bg-zinc-50 text-zinc-700"}`}>
+                      <span>{isHero ? "HERO / Main Photo" : "Additional Photo"}</span>
+                    </span>
                     {!isHero ? <span className="text-zinc-500">Additional Photo</span> : null}
                   </div>
                 ) : (

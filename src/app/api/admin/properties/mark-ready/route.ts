@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
+import { evaluateAdminPreflight } from "@/lib/admin-workflow";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { parsePortalSession } from "@/lib/portal-session";
 
@@ -33,6 +34,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const preflight = evaluateAdminPreflight(raw as Record<string, any>);
+    if (preflight.blockers.length) {
+      return NextResponse.json(
+        {
+          error: `Cannot mark ready until blockers are resolved: ${preflight.blockers.join(", ")}`,
+          preflight,
+        },
+        { status: 400 },
+      );
+    }
+
     await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
       {
         workflowStatus: "ready_for_approval",
@@ -41,6 +53,14 @@ export async function POST(request: Request) {
           updatedAt: FieldValue.serverTimestamp(),
           reviewReadyAt: FieldValue.serverTimestamp(),
           reviewReadyBy: session.email,
+          preflight: {
+            status: preflight.status,
+            blockers: preflight.blockers,
+            warnings: preflight.warnings,
+            sections: preflight.sections,
+            lastEvaluatedAt: FieldValue.serverTimestamp(),
+            lastEvaluatedBy: session.email,
+          },
           approval: {
             status: "pending",
             submittedAt: FieldValue.serverTimestamp(),
@@ -51,7 +71,7 @@ export async function POST(request: Request) {
       { merge: true },
     );
 
-    return NextResponse.json({ success: true, slug, workflowStatus: "ready_for_approval" });
+    return NextResponse.json({ success: true, slug, workflowStatus: "ready_for_approval", preflight });
   } catch (error) {
     console.error("Mark ready error:", error);
     return NextResponse.json(

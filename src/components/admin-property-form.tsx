@@ -68,6 +68,18 @@ type AdminPropertyFormProps = {
     buildoutSyncError?: string | null;
     buildoutMissingFields?: string[];
     buildoutWarnings?: string[];
+    preflight?: {
+      status: "blocked" | "publish_ready_with_warnings" | "publish_ready";
+      blockers: string[];
+      warnings: string[];
+      sections: {
+        identity: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+        pricing: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+        media: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+        copy: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+        buildout: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
+      };
+    };
     reviewChecklist?: {
       successfulScrapes: string[];
       partialScrapes: string[];
@@ -123,6 +135,17 @@ function checklistTone(state: "ready" | "needs_manual_followup" | "blocked" | un
 
 function getMediaImageSrc(image: MediaImage | null | undefined) {
   return image?.urls?.large ?? image?.urls?.xlarge ?? image?.urls?.full ?? image?.urls?.original ?? null;
+}
+
+function preflightTone(state: "blocked" | "publish_ready_with_warnings" | "publish_ready" | undefined) {
+  switch (state) {
+    case "publish_ready":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "blocked":
+      return "border-red-200 bg-red-50 text-red-800";
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-800";
+  }
 }
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -299,7 +322,11 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
         return;
       }
       setReadyState("done");
-      setReadyMessage("Draft marked ready for approval.");
+      setReadyMessage(
+        payload.preflight?.warnings?.length
+          ? `Draft marked ready for approval with warnings: ${payload.preflight.warnings.join(", ")}`
+          : "Draft marked ready for approval.",
+      );
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -331,7 +358,13 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
         return;
       }
       setApprovalState("done");
-      setApprovalMessage(action === "approve" ? "Property approved." : "Property sent back for changes.");
+      setApprovalMessage(
+        action === "approve"
+          ? payload.preflight?.warnings?.length
+            ? `Property approved with warnings: ${payload.preflight.warnings.join(", ")}`
+            : "Property approved."
+          : "Property sent back for changes.",
+      );
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -884,6 +917,59 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 </div>
               </div>
 
+              {workflow?.preflight ? (
+                <div className={`rounded-2xl border p-4 text-sm ${preflightTone(workflow.preflight.status)}`}>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em]">Checkpoint 4 publish preflight</p>
+                      <p className="mt-2 text-base font-semibold text-zinc-900">
+                        {workflow.preflight.status === "blocked"
+                          ? "Approval gate is blocked until the listed issues are fixed."
+                          : workflow.preflight.status === "publish_ready_with_warnings"
+                            ? "Approval gate is open, but this draft still carries warnings."
+                            : "Approval gate is clear. This draft is publish-ready."}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                      {workflow.preflight.status.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    {Object.entries(workflow.preflight.sections).map(([key, section]) => (
+                      <div key={key} className="rounded-2xl border border-white/70 bg-white/70 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{key}</p>
+                        <p className="mt-2 font-medium text-zinc-900">{section.status}</p>
+                        {section.blockers.length ? (
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
+                            {section.blockers.slice(0, 3).map((item) => <li key={`${key}-block-${item}`}>{item}</li>)}
+                          </ul>
+                        ) : section.warnings.length ? (
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
+                            {section.warnings.slice(0, 3).map((item) => <li key={`${key}-warn-${item}`}>{item}</li>)}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-zinc-600">Clean</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Blockers</p>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
+                        {(workflow.preflight.blockers.length ? workflow.preflight.blockers : ["None"]).map((item) => <li key={`preflight-blocker-${item}`}>{item}</li>)}
+                      </ul>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Warnings</p>
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
+                        {(workflow.preflight.warnings.length ? workflow.preflight.warnings : ["None"]).map((item) => <li key={`preflight-warning-${item}`}>{item}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {(workflow?.approvalRejectionReason || workflow?.approvalDecisionNote) ? (
                 <div className={`rounded-2xl border p-4 text-sm space-y-2 ${workflow?.approvalStatus === "rejected" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em]">{workflow?.approvalStatus === "rejected" ? "Changes requested" : "Admin decision note"}</p>
@@ -909,7 +995,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                     <button
                       type="button"
                       onClick={() => handleApproval("approve")}
-                      disabled={!formData.slug || approvalState === "saving"}
+                      disabled={!formData.slug || approvalState === "saving" || Boolean(workflow?.preflight?.blockers.length)}
                       className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {approvalState === "saving" ? "Saving decision…" : "Approve Property"}
@@ -994,7 +1080,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               <button
                 type="button"
                 onClick={handleMarkReady}
-                disabled={!formData.slug || readyState === "saving"}
+                disabled={!formData.slug || readyState === "saving" || Boolean(workflow?.preflight?.blockers.length)}
                 className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {readyState === "saving" ? "Submitting for approval…" : "Mark Ready for Approval"}

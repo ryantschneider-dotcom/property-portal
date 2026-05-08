@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
+import { evaluateAdminPreflight } from "@/lib/admin-workflow";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { parsePortalSession } from "@/lib/portal-session";
 
@@ -27,12 +28,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Property not found" }, { status: 404 });
     }
 
+    const raw = (doc.data() as Record<string, unknown> | undefined) ?? {};
+    const preflight = evaluateAdminPreflight(raw as Record<string, any>);
+    if (preflight.blockers.length) {
+      return NextResponse.json(
+        {
+          error: `Cannot approve until blockers are resolved: ${preflight.blockers.join(", ")}`,
+          preflight,
+        },
+        { status: 400 },
+      );
+    }
+
     await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
       {
         workflowStatus: "approved",
         updatedByUserId: session.email,
         meta: {
           updatedAt: FieldValue.serverTimestamp(),
+          preflight: {
+            status: preflight.status,
+            blockers: preflight.blockers,
+            warnings: preflight.warnings,
+            sections: preflight.sections,
+            lastEvaluatedAt: FieldValue.serverTimestamp(),
+            lastEvaluatedBy: session.email,
+          },
           approval: {
             status: "approved",
             decidedAt: FieldValue.serverTimestamp(),
@@ -44,7 +65,7 @@ export async function POST(request: Request) {
       { merge: true },
     );
 
-    return NextResponse.json({ success: true, slug, workflowStatus: "approved", approvalStatus: "approved" });
+    return NextResponse.json({ success: true, slug, workflowStatus: "approved", approvalStatus: "approved", preflight });
   } catch (error) {
     console.error("Approve property error:", error);
     return NextResponse.json(
