@@ -33,9 +33,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Property not found." }, { status: 404 });
     }
 
+    const raw = (snapshot.data() as Record<string, any> | undefined) ?? {};
     const slug = String(snapshot.get("slug") ?? propertyId);
+    const revisionWorkflow = raw.meta?.revisionWorkflow ?? {};
+    const currentRequest = revisionWorkflow.currentRequest ?? null;
+
     const uploadedAssets = await Promise.all(files.map((file, index) => uploadBrokerAsset("revision", slug, file, index)));
     const now = new Date().toISOString();
+    const responseId = randomUUID();
     const documentEntries = uploadedAssets
       .filter((asset) => asset.documentType !== "photo")
       .map((asset) => ({
@@ -58,20 +63,26 @@ export async function POST(request: Request) {
         urls: asset.urls,
       }));
 
+    const brokerResponse = {
+      id: responseId,
+      createdAt: now,
+      createdByEmail: session.email,
+      createdByName: session.name,
+      instructions,
+      uploadedAssets,
+      uploadedAssetCount: uploadedAssets.length,
+      status: "broker_updated",
+    };
+
     const updatePayload: Record<string, unknown> = {
       updatedAt: now,
       updatedByUserId: session.email,
-      workflowStatus: "needs_input",
+      workflowStatus: "broker_updated_pending_review",
       meta: {
         updatedAt: now,
         revisionQueue: FieldValue.arrayUnion({
-          id: randomUUID(),
-          createdAt: now,
-          createdByEmail: session.email,
-          createdByName: session.name,
-          instructions,
-          uploadedAssets,
-          status: "pending",
+          ...brokerResponse,
+          requestId: currentRequest?.id ?? null,
         }),
         latestRevisionRequest: {
           createdAt: now,
@@ -79,7 +90,37 @@ export async function POST(request: Request) {
           createdByName: session.name,
           instructions,
           uploadedAssetCount: uploadedAssets.length,
+          requestId: currentRequest?.id ?? null,
         },
+        revisionWorkflow: currentRequest
+          ? {
+              currentRequest: {
+                ...currentRequest,
+                status: "broker_updated",
+                brokerResponse,
+                brokerUpdatedAt: now,
+                brokerUpdatedBy: session.email,
+              },
+              history: FieldValue.arrayUnion({
+                ...currentRequest,
+                status: "broker_updated",
+                brokerResponse,
+                brokerUpdatedAt: now,
+                brokerUpdatedBy: session.email,
+              }),
+            }
+          : {
+              history: FieldValue.arrayUnion({
+                id: responseId,
+                createdAt: now,
+                createdBy: session.email,
+                createdByName: session.name,
+                status: "broker_updated",
+                summary: instructions,
+                categories: [],
+                brokerResponse,
+              }),
+            },
       },
     };
 
@@ -93,10 +134,19 @@ export async function POST(request: Request) {
     await propertyRef.set(updatePayload, { merge: true });
 
     revalidatePath("/broker/revisions");
+    revalidatePath("/broker");
     revalidatePath("/admin/properties");
     revalidatePath(`/admin/properties/${slug}/edit`);
 
-    return NextResponse.json({ ok: true, propertyId, slug, uploadedAssetCount: uploadedAssets.length });
+    return NextResponse.json({
+      ok: true,
+      propertyId,
+      slug,
+      uploadedAssetCount: uploadedAssets.length,
+      workflowStatus: "broker_updated_pending_review",
+      revisionRequestId: currentRequest?.id ?? null,
+      responseId,
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Failed to save revision request." }, { status: 500 });

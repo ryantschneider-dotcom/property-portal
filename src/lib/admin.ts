@@ -31,6 +31,21 @@ export type AdminPropertyListItem = {
   missingFieldCount: number;
   blockedIssueCount: number;
   buildoutReady: boolean;
+  revisionWorkflow: {
+    currentRequest: {
+      id: string | null;
+      status: string | null;
+      summary: string | null;
+      createdAt: string | null;
+      categories: Array<{
+        code: string;
+        title: string;
+        severity: "warning" | "blocker";
+        items: string[];
+      }>;
+    } | null;
+    historyCount: number;
+  };
 };
 
 export type BrokerCountyHealthItem = {
@@ -175,6 +190,8 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       const places = (research.places as Record<string, unknown> | undefined) ?? {};
       const streetView = (research.street_view as Record<string, unknown> | undefined) ?? {};
       const exportMeta = (meta.export as Record<string, unknown> | undefined) ?? {};
+      const revisionWorkflow = (meta.revisionWorkflow as Record<string, unknown> | undefined) ?? {};
+      const currentRevisionRequest = (revisionWorkflow.currentRequest as Record<string, unknown> | undefined) ?? null;
       const primaryImage = images.find((image) => image?.isPrimary === true) ?? images[0] ?? {};
       const primaryUrls = (primaryImage.urls as Record<string, unknown> | undefined) ?? {};
       const imageUrl = cleanDisplayText(
@@ -210,6 +227,27 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
         missingFieldCount,
         blockedIssueCount,
         buildoutReady,
+        revisionWorkflow: {
+          currentRequest: currentRevisionRequest
+            ? {
+                id: asString(currentRevisionRequest.id) || null,
+                status: asString(currentRevisionRequest.status) || null,
+                summary: asString(currentRevisionRequest.summary) || null,
+                createdAt: asString(currentRevisionRequest.createdAt) || null,
+                categories: Array.isArray(currentRevisionRequest.categories)
+                  ? currentRevisionRequest.categories.map((category) => ({
+                      code: asString((category as Record<string, unknown>).code) || "",
+                      title: asString((category as Record<string, unknown>).title) || asString((category as Record<string, unknown>).code) || "",
+                      severity: (category as Record<string, unknown>).severity === "warning" ? "warning" : "blocker",
+                      items: Array.isArray((category as Record<string, unknown>).items)
+                        ? ((category as Record<string, unknown>).items as unknown[]).map((item) => asString(item)).filter(Boolean)
+                        : [],
+                    }))
+                  : [],
+              }
+            : null,
+          historyCount: Array.isArray(revisionWorkflow.history) ? revisionWorkflow.history.length : 0,
+        },
       } satisfies AdminPropertyListItem;
     })
     .filter((property) => {

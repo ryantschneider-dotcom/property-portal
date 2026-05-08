@@ -27,6 +27,7 @@ export async function GET() {
       blockedIssueCount: item.blockedIssueCount,
       buildoutReady: item.buildoutReady,
       enrichmentStatus: item.enrichmentStatus,
+      revisionWorkflow: item.revisionWorkflow,
     }));
 
   return NextResponse.json({ items });
