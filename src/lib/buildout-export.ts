@@ -6,22 +6,63 @@ import { evaluateAdminPreflight } from "@/lib/admin-workflow";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { getPropertyBySlug } from "@/lib/properties";
 
+const BUILDOUT_FIELD_MAP_VERSION = "v2.2-locked";
+
+const BUILDOUT_FIELD_MAP = {
+  slug: "listing.slug",
+  title: "listing.title",
+  transactionType: "listing.transaction_type",
+  "address.full": "location.address_full",
+  "address.street": "location.address_street",
+  "address.city": "location.city",
+  "address.state": "location.state",
+  "address.zip": "location.zip",
+  "address.county": "location.county",
+  "property.category": "property.category",
+  "property.parcelId": "property.parcel_id",
+  "property.zoning": "property.zoning",
+  "property.buildingSizeSf": "property.building_size_sf",
+  "property.lotSizeAcres": "property.lot_size_acres",
+  "property.yearBuilt": "property.year_built",
+  "property.parking": "property.parking",
+  "property.leaseType": "property.lease_type",
+  "property.availableSqFt": "property.available_sq_ft",
+  "pricing.salePriceDollars": "pricing.sale_price_dollars",
+  "pricing.salePriceIsCallForPrice": "pricing.sale_price_call_for_price",
+  "pricing.askingPriceRatePerSf": "pricing.asking_price_rate_per_sf",
+  "pricing.listingPriceVisibility": "pricing.listing_price_visibility",
+  "content.saleTitle": "content.sale_title",
+  "content.saleDescription": "content.sale_description",
+  "content.leaseDescription": "content.lease_description",
+  "content.locationDescription": "content.location_description",
+  "content.exteriorDescription": "content.exterior_description",
+  "content.saleBullets": "content.sale_bullets",
+  "content.leaseBullets": "content.lease_bullets",
+  suites: "spaces.suites",
+  broker: "broker.primary_contact",
+  media: "media.gallery",
+} as const;
+
+const MARKETING_SUPPRESSION_PATTERNS: Array<{ pattern: RegExp; replace: string | ((value: string, context?: { street: string | null }) => string) }> = [
+  { pattern: /\bexceptional opportunit(?:y|ies)\b/gi, replace: "opportunity" },
+  { pattern: /\bthriving corridor\b/gi, replace: (_value, context) => (context?.street ? `corridor near ${context.street}` : "corridor") },
+  { pattern: /\bdynamic retail destination\b/gi, replace: "retail area" },
+  { pattern: /\bideal for visionary users\b/gi, replace: "suited for commercial users" },
+  { pattern: /\brare find\b/gi, replace: "available property" },
+  { pattern: /\bmust-see\b/gi, replace: "available for review" },
+  { pattern: /\bboasting\b/gi, replace: "with" },
+  { pattern: /\bnestled on (?:a |an )?thriving corridor\b/gi, replace: (_value, context) => (context?.street ? `located on ${context.street}` : "located on the corridor") },
+  { pattern: /\bnestled along (?:a |an )?thriving corridor\b/gi, replace: (_value, context) => (context?.street ? `located on ${context.street}` : "located along the corridor") },
+  { pattern: /\bnestled\b/gi, replace: "located" },
+  { pattern: /\bexceptional\b/gi, replace: "" },
+];
+
 function asString(value: unknown): string {
   return value == null ? "" : String(value).trim();
 }
 
 function compact<T>(values: Array<T | null | undefined | false | "">): T[] {
   return values.filter(Boolean) as T[];
-}
-
-function normalizeBullets(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizePlainSpeak(asString(item))).filter(Boolean);
-  }
-  return asString(value)
-    .split(/\n+/)
-    .map((item) => sanitizePlainSpeak(item))
-    .filter(Boolean);
 }
 
 function parseNumber(value: unknown): number | null {
@@ -36,15 +77,39 @@ function collapseWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function sanitizePlainSpeak(value: string): string {
-  if (!value) return "";
+function cleanupPunctuation(value: string) {
   return collapseWhitespace(
     value
-      .replace(/\b(premier|stunning|exceptional|incredible|amazing|rare opportunity|must-see|one-of-a-kind|best-in-class|beautiful|fantastic|gorgeous|unmatched|trophy|world-class|spectacular)\b/gi, "")
-      .replace(/[!]{2,}/g, "")
       .replace(/\s+,/g, ",")
-      .replace(/\s+\./g, "."),
+      .replace(/\s+\./g, ".")
+      .replace(/\s+;/g, ";")
+      .replace(/[!]{1,}/g, "")
+      .replace(/\b,\b/g, "")
+      .replace(/\(\s*\)/g, "")
+      .replace(/\s{2,}/g, " "),
   );
+}
+
+function sanitizePlainSpeak(value: string, context?: { street: string | null }): string {
+  if (!value) return "";
+  let output = value;
+  for (const rule of MARKETING_SUPPRESSION_PATTERNS) {
+    output = output.replace(rule.pattern, (match) =>
+      typeof rule.replace === "function" ? rule.replace(match, context) : rule.replace,
+    );
+  }
+  output = output.replace(/\b(premier|stunning|incredible|amazing|rare opportunity|one-of-a-kind|best-in-class|beautiful|fantastic|gorgeous|unmatched|trophy|world-class|spectacular)\b/gi, "");
+  return cleanupPunctuation(output);
+}
+
+function normalizeBullets(value: unknown, context?: { street: string | null }): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizePlainSpeak(asString(item), context)).filter(Boolean);
+  }
+  return asString(value)
+    .split(/\n+/)
+    .map((item) => sanitizePlainSpeak(item, context))
+    .filter(Boolean);
 }
 
 function firstPresent(...values: unknown[]) {
@@ -96,6 +161,8 @@ export type BuildoutExportPreview = {
   slug: string;
   title: string;
   transactionType: string | null;
+  fieldMapVersion: string;
+  fieldMap: typeof BUILDOUT_FIELD_MAP;
   address: {
     full: string | null;
     street: string | null;
@@ -172,14 +239,18 @@ export async function generateBuildoutExportPreview(slug: string): Promise<Build
   const transactionType = normalizeTransactionLabel(visibility);
   const saleActive = visibility.saleActive === true || transactionType?.toLowerCase().includes("sale");
   const leaseActive = visibility.leaseActive === true || transactionType?.toLowerCase().includes("lease");
+  const street = firstPresent(property.address.street, raw.address?.street);
+  const textContext = { street };
 
   const payload: BuildoutExportPreview = {
     slug: property.slug,
-    title: sanitizePlainSpeak(property.title),
+    title: sanitizePlainSpeak(property.title, textContext),
     transactionType,
+    fieldMapVersion: BUILDOUT_FIELD_MAP_VERSION,
+    fieldMap: BUILDOUT_FIELD_MAP,
     address: {
       full: firstPresent(property.address.full, raw.address?.full),
-      street: firstPresent(property.address.street, raw.address?.street),
+      street,
       city: firstPresent(property.address.city, raw.address?.city),
       state: firstPresent(property.address.state, raw.address?.state),
       zip: firstPresent(property.address.zip, raw.address?.zip),
@@ -203,13 +274,13 @@ export async function generateBuildoutExportPreview(slug: string): Promise<Build
       listingPriceVisibility: firstPresent(pricing.listingPriceVisibility, property.pricing.hiddenPriceLabel),
     },
     content: {
-      saleTitle: sanitizePlainSpeak(firstPresent(property.content.saleTitle, content.saleTitle) || "") || null,
-      saleDescription: sanitizePlainSpeak(firstPresent(property.content.saleDescription, content.saleDescription) || "") || null,
-      leaseDescription: sanitizePlainSpeak(firstPresent(property.content.leaseDescription, content.leaseDescription) || "") || null,
-      locationDescription: sanitizePlainSpeak(firstPresent(property.content.locationDescription, content.locationDescription) || "") || null,
-      exteriorDescription: sanitizePlainSpeak(firstPresent(property.content.exteriorDescription, content.exteriorDescription) || "") || null,
-      saleBullets: normalizeBullets(property.content.saleBullets ?? content.saleBullets),
-      leaseBullets: normalizeBullets(property.content.leaseBullets ?? content.leaseBullets),
+      saleTitle: sanitizePlainSpeak(firstPresent(property.content.saleTitle, content.saleTitle) || "", textContext) || null,
+      saleDescription: sanitizePlainSpeak(firstPresent(property.content.saleDescription, content.saleDescription) || "", textContext) || null,
+      leaseDescription: sanitizePlainSpeak(firstPresent(property.content.leaseDescription, content.leaseDescription) || "", textContext) || null,
+      locationDescription: sanitizePlainSpeak(firstPresent(property.content.locationDescription, content.locationDescription) || "", textContext) || null,
+      exteriorDescription: sanitizePlainSpeak(firstPresent(property.content.exteriorDescription, content.exteriorDescription) || "", textContext) || null,
+      saleBullets: normalizeBullets(property.content.saleBullets ?? content.saleBullets, textContext),
+      leaseBullets: normalizeBullets(property.content.leaseBullets ?? content.leaseBullets, textContext),
     },
     suites,
     broker: {
@@ -276,7 +347,8 @@ export async function persistBuildoutExportPreview(slug: string, generatedBy: st
       meta: {
         export: {
           buildoutReady: result.ready,
-          buildoutPayloadVersion: "v2-structured",
+          buildoutPayloadVersion: BUILDOUT_FIELD_MAP_VERSION,
+          buildoutFieldMap: BUILDOUT_FIELD_MAP,
           buildoutLastGeneratedAt: FieldValue.serverTimestamp(),
           buildoutLastGeneratedBy: generatedBy,
           buildoutSyncStatus: result.ready ? "ready" : "not_ready",
