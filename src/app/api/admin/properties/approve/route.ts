@@ -9,6 +9,7 @@ import { evaluateAdminPreflight } from "@/lib/admin-workflow";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { parsePortalSession } from "@/lib/portal-session";
 import { isAdminPortalRole, isSeniorBrokerRole } from "@/lib/users";
+import { persistLaunchExecutionState } from "@/lib/launch-package";
 
 export async function POST(request: Request) {
   try {
@@ -73,12 +74,21 @@ export async function POST(request: Request) {
             decisionNote: typeof note === "string" ? note.trim() || null : null,
             decisionSource: canSeniorSelfApprove ? "senior_fast_track" : "admin_review",
           },
+          exportWorkflow: {
+            status: "not_ready",
+            destination: "buildout",
+          },
+          launchPackage: {
+            status: "not_built",
+          },
         },
       },
       { merge: true },
     );
 
-    return NextResponse.json({ success: true, slug, workflowStatus: "approved", approvalStatus: "approved", preflight, decisionSource: canSeniorSelfApprove ? "senior_fast_track" : "admin_review" });
+    const launchState = await persistLaunchExecutionState(slug, session.email);
+
+    return NextResponse.json({ success: true, slug, workflowStatus: "approved", approvalStatus: "approved", preflight, decisionSource: canSeniorSelfApprove ? "senior_fast_track" : "admin_review", ...launchState });
   } catch (error) {
     console.error("Approve property error:", error);
     return NextResponse.json(

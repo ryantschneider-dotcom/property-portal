@@ -103,6 +103,31 @@ export type AdminWorkflowSnapshot = {
   buildoutSyncError: string | null;
   buildoutMissingFields: string[];
   buildoutWarnings: string[];
+  launchPackage: {
+    status: string | null;
+    builtAt: string | null;
+    builtBy: string | null;
+    version: string | null;
+    warnings: string[];
+    notes: string[];
+  };
+  exportWorkflow: {
+    status: string | null;
+    destination: string | null;
+    readyReasons: string[];
+    blockingReasons: string[];
+    warningReasons: string[];
+    packageStatus: string | null;
+    packageVersion: string | null;
+    lastPackagedAt: string | null;
+    lastPackagedBy: string | null;
+  };
+  exportArtifacts: {
+    buildoutPayloadVersion: string | null;
+    launchSummaryVersion: string | null;
+    mediaManifestVersion: string | null;
+    packageBuiltAt: string | null;
+  };
   preflight: AdminPreflightSnapshot;
   revisionWorkflow: {
     currentRequest: WorkflowRequest | null;
@@ -299,6 +324,9 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
   const approval = meta.approval ?? {};
   const revisionWorkflow = meta.revisionWorkflow ?? {};
   const exportMeta = meta.export ?? {};
+  const launchPackage = meta.launchPackage ?? {};
+  const exportWorkflow = meta.exportWorkflow ?? {};
+  const exportArtifacts = meta.exportArtifacts ?? {};
   const research = meta.research ?? {};
   const copy = meta.copy ?? {};
   const publicRecords = research.public_records ?? {};
@@ -439,6 +467,31 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     buildoutSyncError: asString(exportMeta.buildoutSyncError),
     buildoutMissingFields,
     buildoutWarnings,
+    launchPackage: {
+      status: asString(launchPackage.status),
+      builtAt: asString(launchPackage.builtAt),
+      builtBy: asString(launchPackage.builtBy),
+      version: asString(launchPackage.version),
+      warnings: Array.isArray(launchPackage.warnings) ? launchPackage.warnings.map((item: unknown) => asString(item)).filter(Boolean) : [],
+      notes: Array.isArray(launchPackage.notes) ? launchPackage.notes.map((item: unknown) => asString(item)).filter(Boolean) : [],
+    },
+    exportWorkflow: {
+      status: asString(exportWorkflow.status),
+      destination: asString(exportWorkflow.destination),
+      readyReasons: Array.isArray(exportWorkflow.readyReasons) ? exportWorkflow.readyReasons.map((item: unknown) => asString(item)).filter(Boolean) : [],
+      blockingReasons: Array.isArray(exportWorkflow.blockingReasons) ? exportWorkflow.blockingReasons.map((item: unknown) => asString(item)).filter(Boolean) : [],
+      warningReasons: Array.isArray(exportWorkflow.warningReasons) ? exportWorkflow.warningReasons.map((item: unknown) => asString(item)).filter(Boolean) : [],
+      packageStatus: asString(exportWorkflow.packageStatus),
+      packageVersion: asString(exportWorkflow.packageVersion),
+      lastPackagedAt: asString(exportWorkflow.lastPackagedAt),
+      lastPackagedBy: asString(exportWorkflow.lastPackagedBy),
+    },
+    exportArtifacts: {
+      buildoutPayloadVersion: asString(exportArtifacts.buildoutPayloadVersion),
+      launchSummaryVersion: asString(exportArtifacts.launchSummaryVersion),
+      mediaManifestVersion: asString(exportArtifacts.mediaManifestVersion),
+      packageBuiltAt: asString(exportArtifacts.packageBuiltAt),
+    },
     preflight,
     revisionWorkflow: {
       currentRequest: currentRevisionRequest,

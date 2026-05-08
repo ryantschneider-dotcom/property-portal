@@ -66,6 +66,15 @@ export async function POST(request: Request) {
             submittedAt: FieldValue.serverTimestamp(),
             submittedBy: session.email,
           },
+          exportWorkflow: {
+            status: "not_ready",
+            destination: "buildout",
+            lastEvaluatedAt: FieldValue.serverTimestamp(),
+            lastEvaluatedBy: session.email,
+          },
+          launchPackage: {
+            status: "not_built",
+          },
         },
       },
       { merge: true },

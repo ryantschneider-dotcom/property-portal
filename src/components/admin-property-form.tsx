@@ -68,6 +68,31 @@ type AdminPropertyFormProps = {
     buildoutSyncError?: string | null;
     buildoutMissingFields?: string[];
     buildoutWarnings?: string[];
+    launchPackage?: {
+      status: string | null;
+      builtAt: string | null;
+      builtBy: string | null;
+      version: string | null;
+      warnings: string[];
+      notes: string[];
+    };
+    exportWorkflow?: {
+      status: string | null;
+      destination: string | null;
+      readyReasons: string[];
+      blockingReasons: string[];
+      warningReasons: string[];
+      packageStatus: string | null;
+      packageVersion: string | null;
+      lastPackagedAt: string | null;
+      lastPackagedBy: string | null;
+    };
+    exportArtifacts?: {
+      buildoutPayloadVersion: string | null;
+      launchSummaryVersion: string | null;
+      mediaManifestVersion: string | null;
+      packageBuiltAt: string | null;
+    };
     preflight?: {
       status: "blocked" | "publish_ready_with_warnings" | "publish_ready";
       blockers: string[];
@@ -1126,6 +1151,52 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Warnings</p>
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
                         {(workflow.preflight.warnings.length ? workflow.preflight.warnings : ["None"]).map((item) => <li key={`preflight-warning-${item}`}>{item}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {(workflow?.launchPackage?.status || workflow?.exportWorkflow?.status) ? (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 space-y-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em]">Checkpoint 5 foundation</p>
+                      <p className="mt-2 text-base font-semibold text-zinc-900">Launch package: {workflow?.launchPackage?.status || "not_built"}</p>
+                      <p className="mt-1 text-zinc-700">Export workflow: {workflow?.exportWorkflow?.status || "not_ready"}</p>
+                    </div>
+                    <div className="text-xs text-zinc-600">
+                      {workflow?.launchPackage?.builtAt ? <p>Built: {workflow.launchPackage.builtAt}</p> : null}
+                      {workflow?.launchPackage?.builtBy ? <p>Built by: {workflow.launchPackage.builtBy}</p> : null}
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-white/70 bg-white/80 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Artifacts</p>
+                      <ul className="mt-2 space-y-1 text-zinc-700">
+                        <li>Buildout payload: {workflow?.exportArtifacts?.buildoutPayloadVersion || "—"}</li>
+                        <li>Launch summary: {workflow?.exportArtifacts?.launchSummaryVersion || "—"}</li>
+                        <li>Media manifest: {workflow?.exportArtifacts?.mediaManifestVersion || "—"}</li>
+                      </ul>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/80 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Ready reasons</p>
+                      <ul className="mt-2 list-disc pl-5 text-zinc-700">
+                        {(workflow?.exportWorkflow?.readyReasons?.length ? workflow.exportWorkflow.readyReasons : ["None yet"]).map((item) => <li key={`ready-reason-${item}`}>{item}</li>)}
+                      </ul>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/80 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Blocking / warning reasons</p>
+                      <ul className="mt-2 list-disc pl-5 text-zinc-700">
+                        {(
+                          workflow?.exportWorkflow?.blockingReasons?.length
+                            ? workflow.exportWorkflow.blockingReasons
+                            : workflow?.exportWorkflow?.warningReasons?.length
+                              ? workflow.exportWorkflow.warningReasons
+                              : workflow?.launchPackage?.warnings?.length
+                                ? workflow.launchPackage.warnings
+                                : ["None"]
+                        ).map((item) => <li key={`export-reason-${item}`}>{item}</li>)}
                       </ul>
                     </div>
                   </div>

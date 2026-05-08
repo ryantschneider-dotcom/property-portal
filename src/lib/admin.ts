@@ -580,6 +580,12 @@ export async function saveAdminProperty(input: AdminPropertyFormData) {
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: existing ? undefined : FieldValue.serverTimestamp(),
       adminLastEditedAt: FieldValue.serverTimestamp(),
+      launchPackage: {
+        status: existing ? "stale" : "not_built",
+      },
+      exportWorkflow: {
+        status: "not_ready",
+      },
       adminOverrides: {
         listingPriceVisibility: input.listingPriceVisibility.trim() || null,
         askingPriceRate: parseOptionalNumber(input.askingPriceRate),
