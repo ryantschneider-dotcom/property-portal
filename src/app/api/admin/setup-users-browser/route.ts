@@ -16,13 +16,13 @@ const DEFAULT_USERS = [
   {
     email: "anthony@piercommercial.com",
     name: "Anthony",
-    role: "broker",
+    role: "senior_broker",
     passwordEnv: "SETUP_ANTHONY_PASSWORD",
   },
   {
     email: "joel@piercommercial.com",
     name: "Joel",
-    role: "broker",
+    role: "senior_broker",
     passwordEnv: "SETUP_JOEL_PASSWORD",
   },
 ] as const;

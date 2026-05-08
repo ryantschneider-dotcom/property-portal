@@ -4,9 +4,9 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { verifyPortalUser } from "@/lib/users";
+import { verifyPortalUser, type PortalRole } from "@/lib/users";
 
-function encodeSession(value: { email: string; role: string; name: string }) {
+function encodeSession(value: { email: string; role: PortalRole; name: string }) {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 

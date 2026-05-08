@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     const actor = session ?? (isBrokerHost
       ? {
           email: "broker-hub@pier.internal",
-          role: "broker",
+          role: "junior_broker",
           name: "Broker Hub",
         }
       : null);

@@ -6,6 +6,7 @@ import { syncPropertyToAscendix } from "@/lib/ascendix-sync";
 import { getCountyEnrichmentPlan } from "@/lib/broker-hub-shared";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import type { PortalSession } from "@/lib/portal-session";
+import { isAdminPortalRole } from "@/lib/users";
 import { getPropertyBySlug } from "@/lib/properties";
 import type { PropertyDetail } from "@/lib/types";
 
@@ -251,7 +252,7 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       } satisfies AdminPropertyListItem;
     })
     .filter((property) => {
-      if (!session || session.role === "admin") return true;
+      if (!session || isAdminPortalRole(session.role)) return true;
       return property.ownerEmail?.toLowerCase() === session.email.toLowerCase();
     })
     .sort((a, b) => a.title.localeCompare(b.title));

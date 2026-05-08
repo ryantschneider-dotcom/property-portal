@@ -1,10 +1,11 @@
 import Link from "next/link";
 
 import { getPortalSession } from "@/lib/portal-session";
+import { isAdminPortalRole } from "@/lib/users";
 
 export async function AdminShell({ children }: { children: React.ReactNode }) {
   const session = await getPortalSession();
-  const isBroker = session?.role === "broker";
+  const isBroker = session ? !isAdminPortalRole(session.role) : false;
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">

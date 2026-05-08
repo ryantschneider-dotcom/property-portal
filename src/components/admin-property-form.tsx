@@ -279,7 +279,10 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [exportWarnings, setExportWarnings] = useState<string[]>(workflow?.buildoutWarnings ?? []);
 
   const isAdmin = userRole === "admin";
+  const isSeniorBroker = userRole === "senior_broker";
   const hasEnrichmentErrors = Boolean(workflow?.launchpadErrors?.length);
+  const hasPreflightBlockers = Boolean(workflow?.preflight?.blockers.length);
+  const canSeniorFastTrack = !isAdmin && isSeniorBroker && !hasPreflightBlockers;
 
   useEffect(() => {
     console.log("[enrich][client] admin form hydrated", {
@@ -442,8 +445,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       setReadyState("done");
       setReadyMessage(
         payload.preflight?.warnings?.length
-          ? `Draft marked ready for approval with warnings: ${payload.preflight.warnings.join(", ")}`
-          : "Draft marked ready for approval.",
+          ? `Draft submitted for admin approval with warnings: ${payload.preflight.warnings.join(", ")}`
+          : "Draft submitted for admin approval.",
       );
       router.refresh();
     } catch (error) {
@@ -490,8 +493,10 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       setApprovalMessage(
         action === "approve"
           ? payload.preflight?.warnings?.length
-            ? `Property approved with warnings: ${payload.preflight.warnings.join(", ")}`
-            : "Property approved."
+            ? `${payload.decisionSource === "senior_fast_track" ? "Property self-approved" : "Property approved"} with warnings: ${payload.preflight.warnings.join(", ")}`
+            : payload.decisionSource === "senior_fast_track"
+              ? "Property self-approved and ready to export."
+              : "Property approved."
           : "Property sent back for changes.",
       );
       router.refresh();
@@ -1372,7 +1377,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 </>
               ) : (
                 <div className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
-                  If admin requested changes, update the draft, save, and click <span className="font-semibold text-zinc-900">Mark Ready for Approval</span> again when it is clean.
+                  If admin requested changes, update the draft, save, and click <span className="font-semibold text-zinc-900">{canSeniorFastTrack ? "Approve & Ready to Export" : "Submit for Approval"}</span> again when it is clean.
                 </div>
               )}
             </div>
@@ -1408,11 +1413,13 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               </button>
               <button
                 type="button"
-                onClick={handleMarkReady}
-                disabled={!formData.slug || readyState === "saving" || Boolean(workflow?.preflight?.blockers.length)}
+                onClick={canSeniorFastTrack ? () => handleApproval("approve") : handleMarkReady}
+                disabled={!formData.slug || readyState === "saving" || approvalState === "saving" || hasPreflightBlockers}
                 className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {readyState === "saving" ? "Submitting for approval…" : "Mark Ready for Approval"}
+                {canSeniorFastTrack
+                  ? (approvalState === "saving" ? "Approving…" : "Approve & Ready to Export")
+                  : (readyState === "saving" ? "Submitting for approval…" : "Submit for Approval")}
               </button>
             </div>
             {readyMessage ? <p className={`mt-3 text-sm ${readyState === "error" ? "text-red-600" : "text-emerald-700"}`}>{readyMessage}</p> : null}

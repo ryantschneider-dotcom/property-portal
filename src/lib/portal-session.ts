@@ -2,7 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
-import type { PortalRole } from "@/lib/users";
+import { normalizePortalRole, type PortalRole } from "@/lib/users";
 
 export type PortalSession = {
   email: string;
@@ -23,7 +23,7 @@ export function parsePortalSession(value: string | undefined | null): PortalSess
 
     return {
       email: parsed.email,
-      role: parsed.role,
+      role: normalizePortalRole(parsed.role, parsed.email),
       name: parsed.name ?? parsed.email,
     };
   } catch {

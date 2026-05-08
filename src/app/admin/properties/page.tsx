@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { listAdminProperties } from "@/lib/admin";
 import { getPortalSession } from "@/lib/portal-session";
+import { isAdminPortalRole } from "@/lib/users";
 
 function displayValue(value: string | null | undefined, fallback = "—") {
   if (value == null || value === "") return fallback;
@@ -18,7 +19,7 @@ function formatWorkflowStatus(value: string | null | undefined) {
 export default async function PropertiesDashboard() {
   const session = await getPortalSession();
   const properties = await listAdminProperties(session);
-  const isBroker = session?.role === "broker";
+  const isBroker = session ? !isAdminPortalRole(session.role) : false;
   const readyForApproval = properties.filter((property) => property.workflowStatus === "ready_for_approval");
   const inReview = properties.filter((property) => property.workflowStatus === "review");
   const approved = properties.filter((property) => property.workflowStatus === "approved");
