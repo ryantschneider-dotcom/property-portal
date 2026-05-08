@@ -18,6 +18,7 @@ function initFirebaseAdmin() {
     process.env.FIREBASE_STORAGE_BUCKET ||
     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     serviceAccount.storage_bucket ||
+    (serviceAccount.project_id ? `${serviceAccount.project_id}.firebasestorage.app` : undefined) ||
     (serviceAccount.project_id ? `${serviceAccount.project_id}.appspot.com` : undefined);
 
   return initializeApp({
