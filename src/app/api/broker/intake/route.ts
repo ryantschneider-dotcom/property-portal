@@ -246,6 +246,15 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error(error);
-    return NextResponse.json({ error: "Failed to create broker intake draft." }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to create broker intake draft.";
+    const isStorageError = /bucket does not exist|storage|upload/i.test(message);
+    return NextResponse.json(
+      {
+        error: isStorageError
+          ? `File upload failed: ${message}`
+          : message || "Failed to create broker intake draft.",
+      },
+      { status: 500 },
+    );
   }
 }
