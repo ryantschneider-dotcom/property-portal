@@ -40,7 +40,7 @@ type IntakePayload = {
   saleUnpriced?: boolean;
   grossAcres: string;
   brokerNotes: string;
-  leadBrokers: string[];
+  leadBroker: string;
   suites: SuiteRow[];
 };
 
@@ -78,8 +78,8 @@ export async function POST(request: Request) {
     const normalizedParcelId = normalizeParcelId(payload.parcelId, payload.county);
     const suites = (payload.suites ?? []).filter((suite) => suite.suiteNumber?.trim() || suite.availableSqFt?.trim() || suite.baseRent?.trim());
 
-    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId || !payload.propertyType || !payload.transactionType) {
-      return NextResponse.json({ error: "Street address, city, state, county, parcel ID, property type, and transaction type are required." }, { status: 400 });
+    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId || !payload.propertyType || !payload.transactionType || !payload.leadBroker?.trim()) {
+      return NextResponse.json({ error: "Lead broker, street address, city, state, county, parcel ID, property type, and transaction type are required." }, { status: 400 });
     }
 
     if (!["GA", "SC"].includes(payload.state)) {
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
         workflowStatus: "needs_input",
         ownerUserId: actor.email,
         ownerEmail: actor.email,
-        leadBroker: payload.leadBrokers.join(", ") || null,
+        leadBroker: payload.leadBroker.trim() || null,
         createdByUserId: actor.email,
         updatedByUserId: actor.email,
         createdAt: now,
@@ -192,7 +192,7 @@ export async function POST(request: Request) {
           suites,
           propertyTypeLabel: payload.propertyType || null,
           intakeNotes: payload.brokerNotes || null,
-          leadBrokerChecklist: payload.leadBrokers,
+          leadBrokerChecklist: payload.leadBroker ? [payload.leadBroker.trim()] : [],
         },
         meta: {
           updatedAt: now,
@@ -212,7 +212,8 @@ export async function POST(request: Request) {
             gross_acres: payload.grossAcres,
             suites,
             broker_notes: payload.brokerNotes,
-            lead_brokers: payload.leadBrokers,
+            lead_brokers: payload.leadBroker ? [payload.leadBroker.trim()] : [],
+            lead_broker: payload.leadBroker.trim(),
             uploaded_asset_count: uploadedAssets.length,
             hero_photo_key: payload.heroPhotoKey || null,
           },

@@ -7,20 +7,32 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = process.cwd();
-const LAUNCHPAD_PATH = path.join(PROJECT_ROOT, "scripts", "listing_launchpad.py");
+const WORKSPACE_ROOT = path.resolve(PROJECT_ROOT, "..");
+const LAUNCHPAD_PATH_CANDIDATES = [
+  path.join(PROJECT_ROOT, "scripts", "listing_launchpad.py"),
+  path.join(WORKSPACE_ROOT, "scripts", "listing_launchpad.py"),
+  "/data/.openclaw/workspace/property-portal/scripts/listing_launchpad.py",
+  "/data/.openclaw/workspace/scripts/listing_launchpad.py",
+];
 const PYTHON_CANDIDATES = [
   process.env.PYTHON_BIN,
   process.env.OPENCLAW_PYTHON_BIN,
   "/opt/homebrew/bin/python3",
+  "/opt/homebrew/bin/python3.13",
   "/usr/local/bin/python3",
+  "/usr/local/bin/python3.13",
   "/usr/bin/python3",
+  "/usr/bin/python3.13",
   "python3",
+  "python3.13",
+  "python",
 ].filter(Boolean) as string[];
 const ENV_CANDIDATES = [
   "/data/.openclaw/workspace/scripts/.env",
   path.join(PROJECT_ROOT, ".env.local"),
   path.join(PROJECT_ROOT, ".env"),
   path.join(PROJECT_ROOT, "scripts", ".env"),
+  path.join(WORKSPACE_ROOT, "scripts", ".env"),
 ];
 
 type LaunchpadResearchResult = {
@@ -59,16 +71,33 @@ function loadScriptEnv() {
   }
 }
 
+function resolveLaunchpadPath() {
+  return LAUNCHPAD_PATH_CANDIDATES.find((candidate) => existsSync(candidate)) ?? LAUNCHPAD_PATH_CANDIDATES[0];
+}
+
 function resolvePythonBinary() {
+  const searchDirs = Array.from(new Set([
+    ...((process.env.PATH || "").split(":").filter(Boolean)),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ]));
+
   for (const candidate of PYTHON_CANDIDATES) {
     if (!candidate) continue;
     if (candidate.includes("/")) {
       if (existsSync(candidate)) return candidate;
       continue;
     }
-    return candidate;
+
+    for (const dir of searchDirs) {
+      const fullPath = path.join(dir, candidate);
+      if (existsSync(fullPath)) return fullPath;
+    }
   }
-  return "python3";
+
+  return null;
 }
 
 function parseJsonBlock(stdout: string) {
@@ -91,7 +120,12 @@ export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCo
   };
 
   const envPath = resolveEnvPath();
+  const launchpadPath = resolveLaunchpadPath();
   const pythonBin = resolvePythonBinary();
+
+  if (!pythonBin) {
+    throw new Error("Python runtime not found for Launchpad enrichment. Set PYTHON_BIN or install python3 in the runtime image.");
+  }
 
   console.log("[enrich][launchpad] starting python enrichment", {
     address: row.street_name,
@@ -100,8 +134,8 @@ export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCo
     zip: row.zip_code,
     projectRoot: PROJECT_ROOT,
     cwdExists: existsSync(PROJECT_ROOT),
-    launchpadPath: LAUNCHPAD_PATH,
-    launchpadExists: existsSync(LAUNCHPAD_PATH),
+    launchpadPath,
+    launchpadExists: existsSync(launchpadPath),
     envPath,
     hasInputCoordinates: Boolean(mapCoordinates?.lat != null && mapCoordinates?.lng != null),
     hasOpenAiKey: Boolean(env.OPENAI_API_KEY),
@@ -114,7 +148,7 @@ export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCo
 import importlib.util, json, os
 from pathlib import Path
 
-launchpad_path = ${JSON.stringify(LAUNCHPAD_PATH)}
+launchpad_path = ${JSON.stringify(launchpadPath)}
 env_path = ${JSON.stringify(envPath)}
 if env_path and Path(env_path).exists():
     try:
@@ -149,8 +183,11 @@ print(json.dumps({
 `.trim();
 
   const { stdout, stderr } = await execFileAsync(pythonBin, ["-c", script], {
-    cwd: PROJECT_ROOT,
-    env,
+    cwd: path.dirname(launchpadPath),
+    env: {
+      ...env,
+      PATH: process.env.PATH || "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    },
     maxBuffer: 1024 * 1024 * 8,
   });
 

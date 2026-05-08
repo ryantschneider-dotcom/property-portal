@@ -106,7 +106,9 @@ async function generateOpenAiCopyFallback(input: {
   }
 
   const model = normalizeOpenAiModelName(process.env.OPENAI_MODEL);
-  const prompt = `You are writing CRE broker-facing enrichment copy. Return strict JSON with keys sale_title, sale_description, location_description, sale_bullets, exterior_description.\n\nRules:\n- factual, polished, no fluff\n- no placeholders like unknown/unspecified/not available\n- use local context only when supported by research\n- sale_bullets must be an array of 3 to 5 short bullets\n\nListing:\n${JSON.stringify({
+  const transactionLabelLower = input.transactionLabel.toLowerCase();
+  const isLease = transactionLabelLower.includes("lease") && !transactionLabelLower.includes("sale");
+  const prompt = `You are writing CRE broker-facing enrichment copy. Return strict JSON.\n\nRequired keys:\n- sale_title\n- sale_description\n- lease_description\n- location_description\n- sale_bullets\n- lease_bullets\n- exterior_description\n\nRules:\n- factual, polished, no fluff\n- no placeholders like unknown/unspecified/not available\n- use local context only when supported by research\n- for a lease listing, populate lease_description and lease_bullets, and leave sale_description empty\n- for a sale listing, populate sale_description and sale_bullets, and leave lease_description empty\n- title should fit the actual transaction type\n- bullets must be an array of 3 to 5 short bullets\n\nListing:\n${JSON.stringify({
     title: input.title,
     transactionLabel: input.transactionLabel,
     propertyType: input.propertyType,
@@ -160,10 +162,20 @@ async function generateOpenAiCopyFallback(input: {
   const parsed = JSON.parse(asString(content)) as Record<string, unknown>;
   return {
     sale_title: asString(parsed.sale_title),
-    sale_description: asString(parsed.sale_description),
+    sale_description: isLease ? "" : asString(parsed.sale_description),
+    lease_description: isLease ? asString(parsed.lease_description || parsed.sale_description) : asString(parsed.lease_description),
     location_description: asString(parsed.location_description),
     exterior_description: asString(parsed.exterior_description),
-    sale_bullets: Array.isArray(parsed.sale_bullets) ? parsed.sale_bullets.map((item) => asString(item)).filter(Boolean) : [],
+    sale_bullets: isLease ? [] : Array.isArray(parsed.sale_bullets) ? parsed.sale_bullets.map((item) => asString(item)).filter(Boolean) : [],
+    lease_bullets: isLease
+      ? Array.isArray(parsed.lease_bullets)
+        ? parsed.lease_bullets.map((item) => asString(item)).filter(Boolean)
+        : Array.isArray(parsed.sale_bullets)
+          ? parsed.sale_bullets.map((item) => asString(item)).filter(Boolean)
+          : []
+      : Array.isArray(parsed.lease_bullets)
+        ? parsed.lease_bullets.map((item) => asString(item)).filter(Boolean)
+        : [],
     generator: `node-openai:${model}`,
   };
 }
@@ -502,6 +514,10 @@ function detectMissingFields(raw: Record<string, any>) {
   const property = raw.property ?? {};
   const pricing = raw.pricing ?? {};
   const content = raw.content ?? {};
+  const visibility = raw.visibility ?? {};
+  const transactionLabel = asString(visibility.transactionLabel) || "";
+  const saleActive = visibility.saleActive === true || transactionLabel.toLowerCase().includes("sale");
+  const leaseActive = visibility.leaseActive === true || transactionLabel.toLowerCase().includes("lease");
 
   const fields = [
     ["title", asString(raw.title)],
@@ -512,8 +528,9 @@ function detectMissingFields(raw: Record<string, any>) {
     ["lotSizeAcres", asString(property.lotSizeAcres)],
     ["yearBuilt", asString(property.yearBuilt)],
     ["zoning", asString(property.zoning)],
-    ["salePrice", asString(pricing.salePriceDollars)],
-    ["saleDescription", asString(content.saleDescription)],
+    ["salePrice", saleActive ? asString(pricing.salePriceDollars || pricing.hiddenPriceLabel) : "ok"],
+    ["saleDescription", saleActive ? asString(content.saleDescription) : "ok"],
+    ["leaseDescription", leaseActive ? asString(content.leaseDescription) : "ok"],
     ["locationDescription", asString(content.locationDescription)],
   ] as const;
 
@@ -685,8 +702,9 @@ export async function enrichPropertyDraft(slug: string) {
     }
   }
 
-  const generatedSaleTitle = asString(aiCopy.sale_title) || buildSaleTitle(asString(raw.title), transactionLabel, city);
-  const generatedSaleDescription = asString(aiCopy.sale_description) || buildSaleDescription({
+  const isLeaseOnly = transactionLabel.toLowerCase().includes("lease") && !transactionLabel.toLowerCase().includes("sale");
+  const generatedListingTitle = asString(aiCopy.sale_title) || buildSaleTitle(asString(raw.title), transactionLabel, city);
+  const generatedTransactionDescription = asString(aiCopy.sale_description) || buildSaleDescription({
     title: asString(raw.title),
     transactionLabel,
     propertyType,
@@ -698,8 +716,9 @@ export async function enrichPropertyDraft(slug: string) {
     zoning,
     notes,
   });
+  const generatedLeaseDescription = asString(aiCopy.lease_description) || (isLeaseOnly ? generatedTransactionDescription : "");
   const generatedLocationDescription = asString(aiCopy.location_description) || buildLocationDescription(asString(places.neighborhood) || neighborhood.description, anchors, restaurants, banks);
-  const generatedSaleBullets = Array.isArray(aiCopy.sale_bullets) && aiCopy.sale_bullets.length
+  const generatedTransactionBullets = Array.isArray(aiCopy.sale_bullets) && aiCopy.sale_bullets.length
     ? aiCopy.sale_bullets.map((item) => asString(item)).filter(Boolean)
     : buildBullets({
         transactionLabel,
@@ -711,6 +730,9 @@ export async function enrichPropertyDraft(slug: string) {
         zoning,
         anchors,
       });
+  const generatedLeaseBullets = Array.isArray(aiCopy.lease_bullets) && aiCopy.lease_bullets.length
+    ? aiCopy.lease_bullets.map((item) => asString(item)).filter(Boolean)
+    : (isLeaseOnly ? generatedTransactionBullets : []);
   const generatedExteriorDescription = asString(aiCopy.exterior_description) || asString(publicRecords.exterior_construction_type || publicRecords.notes);
   const resolvedCoordinates =
     ((deepResearch.street_view as Record<string, unknown> | undefined)?.map_coordinates as Record<string, unknown> | undefined) ??
@@ -742,7 +764,8 @@ export async function enrichPropertyDraft(slug: string) {
     },
     content: {
       ...content,
-      saleDescription: content.saleDescription || generatedSaleDescription,
+      saleDescription: content.saleDescription || (isLeaseOnly ? "" : generatedTransactionDescription),
+      leaseDescription: content.leaseDescription || generatedLeaseDescription,
       locationDescription: content.locationDescription || generatedLocationDescription,
     },
   });
@@ -790,18 +813,33 @@ export async function enrichPropertyDraft(slug: string) {
       propertyClass: asString(property.propertyClass) || asString(publicRecords.property_class) || null,
     },
     content: {
-      saleTitle: shouldReplaceAutoContent(content.saleTitle, previousGenerated.sale_title) ? generatedSaleTitle : asString(content.saleTitle),
-      saleDescription: shouldReplaceAutoContent(content.saleDescription, previousGenerated.sale_description) ? generatedSaleDescription : asString(content.saleDescription),
+      saleTitle: shouldReplaceAutoContent(content.saleTitle, previousGenerated.sale_title) ? generatedListingTitle : asString(content.saleTitle),
+      saleDescription: isLeaseOnly
+        ? null
+        : shouldReplaceAutoContent(content.saleDescription, previousGenerated.sale_description)
+          ? generatedTransactionDescription
+          : asString(content.saleDescription),
+      leaseDescription: shouldReplaceAutoContent(content.leaseDescription, previousGenerated.lease_description)
+        ? (generatedLeaseDescription || null)
+        : asString(content.leaseDescription) || null,
       locationDescription: shouldReplaceAutoContent(content.locationDescription, previousGenerated.location_description) ? generatedLocationDescription : asString(content.locationDescription),
       exteriorDescription: shouldReplaceAutoContent(content.exteriorDescription, previousGenerated.exterior_description)
         ? generatedExteriorDescription || null
         : asString(content.exteriorDescription) || null,
       saleBullets:
-        Array.isArray(content.saleBullets) && content.saleBullets.length
-          ? JSON.stringify(content.saleBullets) === JSON.stringify(previousGenerated.sale_bullets ?? [])
-            ? generatedSaleBullets
-            : content.saleBullets
-          : generatedSaleBullets,
+        isLeaseOnly
+          ? []
+          : Array.isArray(content.saleBullets) && content.saleBullets.length
+            ? JSON.stringify(content.saleBullets) === JSON.stringify(previousGenerated.sale_bullets ?? [])
+              ? generatedTransactionBullets
+              : content.saleBullets
+            : generatedTransactionBullets,
+      leaseBullets:
+        Array.isArray(content.leaseBullets) && content.leaseBullets.length
+          ? JSON.stringify(content.leaseBullets) === JSON.stringify(previousGenerated.lease_bullets ?? [])
+            ? generatedLeaseBullets
+            : content.leaseBullets
+          : generatedLeaseBullets,
     },
     address: {
       county: county || null,
@@ -833,7 +871,7 @@ export async function enrichPropertyDraft(slug: string) {
           buildingSizeSf: Boolean(property.buildingSizeSf ?? parseOptionalNumber(publicRecords.building_size_sf)),
           lotSizeAcres: Boolean(property.lotSizeAcres ?? parseOptionalNumber(publicRecords.lot_size_acres)),
           zoning: Boolean(property.zoning ?? asString(publicRecords.zoning)),
-          aiDraft: Boolean(generatedSaleDescription || generatedLocationDescription || generatedSaleBullets.length),
+          aiDraft: Boolean(generatedTransactionDescription || generatedLeaseDescription || generatedLocationDescription || generatedTransactionBullets.length || generatedLeaseBullets.length),
         },
         summary: missing.missing.length
           ? `Draft enrichment completed with ${missing.missing.length} missing field(s): ${missing.missing.join(", ")}`
@@ -851,11 +889,13 @@ export async function enrichPropertyDraft(slug: string) {
         streetViewGalleryInjected: Boolean(generatedStreetViewImage),
       },
       copy: {
-        sale_title: generatedSaleTitle,
-        sale_description: generatedSaleDescription,
+        sale_title: generatedListingTitle,
+        sale_description: isLeaseOnly ? "" : generatedTransactionDescription,
+        lease_description: generatedLeaseDescription,
         location_description: generatedLocationDescription,
         exterior_description: generatedExteriorDescription,
-        sale_bullets: generatedSaleBullets,
+        sale_bullets: isLeaseOnly ? [] : generatedTransactionBullets,
+        lease_bullets: generatedLeaseBullets,
         generator: asString(aiCopy.generator) || "deterministic",
       },
       research: {
@@ -905,7 +945,7 @@ export async function enrichPropertyDraft(slug: string) {
     documentId: doc.id,
     workflowStatus,
     savedLocation: updatePayload.location ?? null,
-    generatedSaleTitle,
+    generatedSaleTitle: generatedListingTitle,
     hasMapsKey: Boolean(getMapsApiKey()),
     hasOpenAiKey: Boolean(getOpenAiApiKey()),
     streetViewStatus: (streetViewResearch as Record<string, unknown> | undefined)?.status ?? null,
@@ -920,10 +960,12 @@ export async function enrichPropertyDraft(slug: string) {
     workflowStatus,
     missingFields: missing.missing,
     generated: {
-      saleTitle: generatedSaleTitle,
-      saleDescription: generatedSaleDescription,
+      saleTitle: generatedListingTitle,
+      saleDescription: isLeaseOnly ? "" : generatedTransactionDescription,
+      leaseDescription: generatedLeaseDescription,
       locationDescription: generatedLocationDescription,
-      saleBullets: generatedSaleBullets,
+      saleBullets: isLeaseOnly ? [] : generatedTransactionBullets,
+      leaseBullets: generatedLeaseBullets,
     },
   };
 }

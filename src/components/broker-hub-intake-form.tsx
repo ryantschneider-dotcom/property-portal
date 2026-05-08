@@ -34,7 +34,7 @@ type IntakeState = {
   saleUnpriced: boolean;
   grossAcres: string;
   brokerNotes: string;
-  leadBrokers: string[];
+  leadBroker: string;
 };
 
 type ReviewChecklist = {
@@ -64,7 +64,7 @@ const initialState: IntakeState = {
   saleUnpriced: false,
   grossAcres: "",
   brokerNotes: "",
-  leadBrokers: [],
+  leadBroker: "",
 };
 
 function inputClassName(required = false, invalid = false) {
@@ -108,6 +108,7 @@ export function BrokerHubIntakeForm() {
     "Parcel ID",
     "Property Type",
     "Transaction Type",
+    "Lead Broker",
     ...(isSale ? ["Sale Price or Unpriced / Inquire"] : ["At least one complete suite row"]),
   ];
 
@@ -117,15 +118,6 @@ export function BrokerHubIntakeForm() {
 
   function update<K extends keyof IntakeState>(key: K, value: IntakeState[K]) {
     setFormData((current) => ({ ...current, [key]: value }));
-  }
-
-  function toggleLeadBroker(name: string) {
-    setFormData((current) => ({
-      ...current,
-      leadBrokers: current.leadBrokers.includes(name)
-        ? current.leadBrokers.filter((broker) => broker !== name)
-        : [...current.leadBrokers, name],
-    }));
   }
 
   function addFiles(nextFiles: File[]) {
@@ -248,7 +240,14 @@ export function BrokerHubIntakeForm() {
               <input className={inputClassName(true)} value={formData.parcelId} onChange={(event) => update("parcelId", event.target.value)} required />
             </label>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="space-y-2">
+              <RequiredLabel>Lead broker</RequiredLabel>
+              <select className={inputClassName(true)} value={formData.leadBroker} onChange={(event) => update("leadBroker", event.target.value)} required>
+                <option value="">Select broker</option>
+                {BROKER_HUB_BROKERS.map((broker) => <option key={broker} value={broker}>{broker}</option>)}
+              </select>
+            </label>
             <label className="space-y-2">
               <RequiredLabel>Property type</RequiredLabel>
               <select className={inputClassName(true)} value={formData.propertyType} onChange={(event) => update("propertyType", event.target.value)} required>
@@ -352,20 +351,6 @@ export function BrokerHubIntakeForm() {
           <span className="text-sm font-medium text-zinc-700">Broker notes / brain dump</span>
           <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, tenant status, pricing reality, missing facts." />
         </label>
-        <div className="mt-4 space-y-3">
-          <span className="text-sm font-medium text-zinc-700">Lead broker (optional)</span>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {BROKER_HUB_BROKERS.map((broker) => {
-              const checked = formData.leadBrokers.includes(broker);
-              return (
-                <label key={broker} className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium transition ${checked ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-950"}`}>
-                  <input type="checkbox" className="sr-only" checked={checked} onChange={() => toggleLeadBroker(broker)} />
-                  <span>{broker}</span>
-                </label>
-              );
-            })}
-          </div>
-        </div>
       </section>
 
       <section className={sectionCardClassName()}>
