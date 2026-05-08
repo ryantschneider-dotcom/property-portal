@@ -7,8 +7,15 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = process.cwd();
-const PYTHON = process.env.PYTHON_BIN || "python3";
 const LAUNCHPAD_PATH = path.join(PROJECT_ROOT, "scripts", "listing_launchpad.py");
+const PYTHON_CANDIDATES = [
+  process.env.PYTHON_BIN,
+  process.env.OPENCLAW_PYTHON_BIN,
+  "/opt/homebrew/bin/python3",
+  "/usr/local/bin/python3",
+  "/usr/bin/python3",
+  "python3",
+].filter(Boolean) as string[];
 const ENV_CANDIDATES = [
   "/data/.openclaw/workspace/scripts/.env",
   path.join(PROJECT_ROOT, ".env.local"),
@@ -52,6 +59,18 @@ function loadScriptEnv() {
   }
 }
 
+function resolvePythonBinary() {
+  for (const candidate of PYTHON_CANDIDATES) {
+    if (!candidate) continue;
+    if (candidate.includes("/")) {
+      if (existsSync(candidate)) return candidate;
+      continue;
+    }
+    return candidate;
+  }
+  return "python3";
+}
+
 function parseJsonBlock(stdout: string) {
   const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
   for (let i = lines.length - 1; i >= 0; i -= 1) {
@@ -72,6 +91,7 @@ export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCo
   };
 
   const envPath = resolveEnvPath();
+  const pythonBin = resolvePythonBinary();
 
   console.log("[enrich][launchpad] starting python enrichment", {
     address: row.street_name,
@@ -87,6 +107,7 @@ export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCo
     hasOpenAiKey: Boolean(env.OPENAI_API_KEY),
     hasMapsKey: Boolean(env.Maps_API_KEY),
     openAiModel: env.OPENAI_MODEL || null,
+    pythonBin,
   });
 
   const script = `
@@ -127,7 +148,7 @@ print(json.dumps({
 }, default=str))
 `.trim();
 
-  const { stdout, stderr } = await execFileAsync(PYTHON, ["-c", script], {
+  const { stdout, stderr } = await execFileAsync(pythonBin, ["-c", script], {
     cwd: PROJECT_ROOT,
     env,
     maxBuffer: 1024 * 1024 * 8,

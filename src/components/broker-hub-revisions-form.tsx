@@ -9,6 +9,11 @@ type ListingOption = {
   address: string | null;
   transactionLabel: string | null;
   ownerEmail: string | null;
+  reviewState: "ready" | "needs_manual_followup" | "blocked";
+  missingFieldCount: number;
+  blockedIssueCount: number;
+  buildoutReady: boolean;
+  enrichmentStatus: string | null;
 };
 
 function inputClassName() {
@@ -110,10 +115,29 @@ export function BrokerHubRevisionsForm() {
           <div className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">Selected Listing</p>
             {selectedListing ? (
-              <div className="mt-3 space-y-2 text-sm text-zinc-700">
-                <p className="text-lg font-semibold text-zinc-950">{selectedListing.title}</p>
-                <p>{selectedListing.address || "No address on file"}</p>
-                <p className="text-zinc-500">{selectedListing.transactionLabel || "No transaction label"}</p>
+              <div className="mt-3 space-y-3 text-sm text-zinc-700">
+                <div>
+                  <p className="text-lg font-semibold text-zinc-950">{selectedListing.title}</p>
+                  <p>{selectedListing.address || "No address on file"}</p>
+                  <p className="text-zinc-500">{selectedListing.transactionLabel || "No transaction label"}</p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                  <span className={`rounded-full px-2.5 py-1 ${selectedListing.reviewState === "blocked" ? "bg-rose-50 text-rose-700" : selectedListing.reviewState === "needs_manual_followup" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    {selectedListing.reviewState === "blocked" ? "Blocked scrape" : selectedListing.reviewState === "needs_manual_followup" ? "Needs manual follow-up" : "Review layer healthy"}
+                  </span>
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">Missing fields: {selectedListing.missingFieldCount}</span>
+                  <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">Blocked issues: {selectedListing.blockedIssueCount}</span>
+                  <span className={`rounded-full px-2.5 py-1 ${selectedListing.buildoutReady ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-700"}`}>
+                    Buildout {selectedListing.buildoutReady ? "ready" : "pending"}
+                  </span>
+                </div>
+                {(selectedListing.reviewState !== "ready" || selectedListing.missingFieldCount > 0) ? (
+                  <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    Research-needed summary: {selectedListing.reviewState === "blocked" ? "county/source scrape blocked" : "thin extraction / manual cleanup still needed"}
+                    {selectedListing.missingFieldCount > 0 ? ` · ${selectedListing.missingFieldCount} missing field${selectedListing.missingFieldCount === 1 ? "" : "s"}` : ""}
+                    {selectedListing.blockedIssueCount > 0 ? ` · ${selectedListing.blockedIssueCount} blocked issue${selectedListing.blockedIssueCount === 1 ? "" : "s"}` : ""}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <p className="mt-3 text-sm text-zinc-500">Choose a property from the search list.</p>

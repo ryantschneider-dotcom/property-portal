@@ -1,9 +1,10 @@
 import Link from "next/link";
 
-import type { BrokerCountyHealthSnapshot } from "@/lib/admin";
+import type { AdminPropertyListItem, BrokerCountyHealthSnapshot } from "@/lib/admin";
 
 type BrokerHubHomeProps = {
   countyHealth: BrokerCountyHealthSnapshot;
+  listings: AdminPropertyListItem[];
 };
 
 function badgeClasses(health: BrokerCountyHealthSnapshot["overallHealth"] | BrokerCountyHealthSnapshot["items"][number]["health"]) {
@@ -19,11 +20,14 @@ function badgeClasses(health: BrokerCountyHealthSnapshot["overallHealth"] | Brok
   }
 }
 
-export function BrokerHubHome({ countyHealth }: BrokerHubHomeProps) {
+export function BrokerHubHome({ countyHealth, listings }: BrokerHubHomeProps) {
   const cards = [
     { href: "/broker/new", title: "New Listing Entry" },
     { href: "/broker/revisions", title: "Listing Revisions" },
   ];
+  const reviewQueue = listings.filter((item) => item.reviewState !== "ready").slice(0, 6);
+  const blockedCount = listings.filter((item) => item.reviewState === "blocked").length;
+  const manualCount = listings.filter((item) => item.reviewState === "needs_manual_followup").length;
 
   return (
     <div className="space-y-4">
@@ -68,6 +72,44 @@ export function BrokerHubHome({ countyHealth }: BrokerHubHomeProps) {
             {card.title}
           </Link>
         ))}
+      </section>
+
+      <section className="rounded-[2rem] border border-zinc-300 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-zinc-500">Checkpoint 3 review queue</p>
+            <h2 className="mt-2 text-xl font-semibold text-zinc-950">Research-needed drafts</h2>
+            <p className="mt-1 text-sm text-zinc-500">Thin extractions and blocked county pulls show up here before anyone wastes time assuming the draft is ready.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700">Manual follow-up: {manualCount}</span>
+            <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-700">Blocked: {blockedCount}</span>
+          </div>
+        </div>
+
+        {reviewQueue.length ? (
+          <div className="mt-4 grid gap-3">
+            {reviewQueue.map((item) => (
+              <Link key={item.id} href={`/admin/properties/${item.slug || item.id}/edit`} className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-4 transition hover:border-zinc-400 hover:bg-white">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-base font-semibold text-zinc-950">{item.title}</p>
+                    <p className="mt-1 text-sm text-zinc-500">{item.address || item.slug}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                    <span className={`rounded-full px-2.5 py-1 ${item.reviewState === "blocked" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
+                      {item.reviewState === "blocked" ? "Blocked scrape" : "Needs manual follow-up"}
+                    </span>
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">Missing: {item.missingFieldCount}</span>
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">Buildout: {item.buildoutReady ? "ready" : "pending"}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-zinc-500">No broker drafts are currently sitting in a research-needed state.</p>
+        )}
       </section>
     </div>
   );

@@ -3,11 +3,16 @@ import { headers } from "next/headers";
 import { BrokerHubHome } from "@/components/broker-hub-home";
 import { FilterToggle } from "@/components/filter-toggle";
 import { PropertyGrid } from "@/components/property-grid";
-import { getBrokerCountyHealthSnapshot } from "@/lib/admin";
+import { getBrokerCountyHealthSnapshot, listAdminProperties } from "@/lib/admin";
+import { getPortalSession } from "@/lib/portal-session";
 import { listPropertyCards } from "@/lib/properties";
 
 async function BrokerHostHome() {
-  const countyHealth = await getBrokerCountyHealthSnapshot();
+  const session = await getPortalSession();
+  const [countyHealth, listings] = await Promise.all([
+    getBrokerCountyHealthSnapshot(),
+    listAdminProperties(session),
+  ]);
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-950">
@@ -18,7 +23,7 @@ async function BrokerHostHome() {
         </div>
       </header>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <BrokerHubHome countyHealth={countyHealth} />
+        <BrokerHubHome countyHealth={countyHealth} listings={listings} />
       </div>
     </div>
   );

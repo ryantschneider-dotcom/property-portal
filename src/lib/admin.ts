@@ -27,6 +27,10 @@ export type AdminPropertyListItem = {
   enrichmentStatus: string | null;
   countyRoutingStatus: string | null;
   countyRoutingSource: string | null;
+  reviewState: "ready" | "needs_manual_followup" | "blocked";
+  missingFieldCount: number;
+  blockedIssueCount: number;
+  buildoutReady: boolean;
 };
 
 export type BrokerCountyHealthItem = {
@@ -166,11 +170,24 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       const enrichment = (meta.enrichment as Record<string, unknown> | undefined) ?? {};
       const countyRouting = (enrichment.countyRouting as Record<string, unknown> | undefined) ?? {};
       const images = (media.images as Array<Record<string, unknown>> | undefined) ?? [];
+      const research = (meta.research as Record<string, unknown> | undefined) ?? {};
+      const publicRecords = (research.public_records as Record<string, unknown> | undefined) ?? {};
+      const places = (research.places as Record<string, unknown> | undefined) ?? {};
+      const streetView = (research.street_view as Record<string, unknown> | undefined) ?? {};
+      const exportMeta = (meta.export as Record<string, unknown> | undefined) ?? {};
       const primaryImage = images.find((image) => image?.isPrimary === true) ?? images[0] ?? {};
       const primaryUrls = (primaryImage.urls as Record<string, unknown> | undefined) ?? {};
       const imageUrl = cleanDisplayText(
         media.heroImageUrl ?? primaryUrls.large ?? primaryUrls.medium ?? primaryUrls.thumb,
       );
+      const missingFieldCount = Array.isArray(enrichment.missingFields) ? enrichment.missingFields.length : 0;
+      const blockedIssueCount = [publicRecords.status, places.status, streetView.status].filter((status) => ["blocked", "error", "login_gated", "no_results"].includes(asString(status))).length
+        + (Array.isArray(enrichment.launchpadErrors) ? enrichment.launchpadErrors.length : 0);
+      const extractedFields = (enrichment.extractedFields as Record<string, unknown> | undefined) ?? {};
+      const extractedFieldCount = [extractedFields.buildingSizeSf, extractedFields.lotSizeAcres, extractedFields.zoning, extractedFields.aiDraft].filter((value) => value === true).length;
+      const buildoutReady = exportMeta.buildoutReady === true;
+      const thinExtraction = asString(enrichment.status) === "partial" || extractedFieldCount < 2 || missingFieldCount >= 2;
+      const reviewState = blockedIssueCount > 0 ? "blocked" : (thinExtraction || !buildoutReady) ? "needs_manual_followup" : "ready";
       return {
         id: doc.id,
         slug: asString(data.slug),
@@ -189,6 +206,10 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
         enrichmentStatus: asString(enrichment.status) || null,
         countyRoutingStatus: asString(countyRouting.status) || null,
         countyRoutingSource: asString(countyRouting.assessorSource) || null,
+        reviewState,
+        missingFieldCount,
+        blockedIssueCount,
+        buildoutReady,
       } satisfies AdminPropertyListItem;
     })
     .filter((property) => {

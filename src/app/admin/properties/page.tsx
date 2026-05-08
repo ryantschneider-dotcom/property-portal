@@ -23,6 +23,8 @@ export default async function PropertiesDashboard() {
   const inReview = properties.filter((property) => property.workflowStatus === "review");
   const approved = properties.filter((property) => property.workflowStatus === "approved");
   const changesRequested = properties.filter((property) => property.workflowStatus === "needs_input" || property.approvalStatus === "rejected");
+  const manualFollowUp = properties.filter((property) => property.reviewState === "needs_manual_followup");
+  const blocked = properties.filter((property) => property.reviewState === "blocked");
 
   return (
     <div className="max-w-7xl mx-auto p-6">
@@ -44,8 +46,8 @@ export default async function PropertiesDashboard() {
         </div>
       </div>
 
-      {!isBroker && (readyForApproval.length || inReview.length || approved.length) ? (
-        <div className="mb-8 grid gap-4 md:grid-cols-3">
+      {!isBroker && (readyForApproval.length || inReview.length || approved.length || manualFollowUp.length || blocked.length) ? (
+        <div className="mb-8 grid gap-4 md:grid-cols-5">
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Ready for approval</p>
             <p className="mt-2 text-3xl font-bold text-emerald-900">{readyForApproval.length}</p>
@@ -60,6 +62,16 @@ export default async function PropertiesDashboard() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-700">Approved</p>
             <p className="mt-2 text-3xl font-bold text-zinc-900">{approved.length}</p>
             <p className="mt-2 text-sm text-zinc-800">Listings approved internally and ready for structured export/publish handoff.</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Manual follow-up</p>
+            <p className="mt-2 text-3xl font-bold text-amber-900">{manualFollowUp.length}</p>
+            <p className="mt-2 text-sm text-amber-800">Thin extractions that still need human cleanup before approval.</p>
+          </div>
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Blocked scrapes</p>
+            <p className="mt-2 text-3xl font-bold text-red-900">{blocked.length}</p>
+            <p className="mt-2 text-sm text-red-800">Drafts with blocked/error sources that need explicit intervention.</p>
           </div>
         </div>
       ) : null}
@@ -115,6 +127,22 @@ export default async function PropertiesDashboard() {
                     {property.countyRoutingSource}{property.countyRoutingStatus ? ` · ${formatWorkflowStatus(property.countyRoutingStatus)}` : ""}
                   </span>
                 ) : null}
+                <span className={`rounded-full px-2.5 py-1 ${property.reviewState === "blocked" ? "bg-red-50 text-red-700" : property.reviewState === "needs_manual_followup" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                  {property.reviewState === "blocked" ? "Blocked scrape" : property.reviewState === "needs_manual_followup" ? "Needs manual follow-up" : "Review layer healthy"}
+                </span>
+                {property.missingFieldCount ? (
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                    {property.missingFieldCount} missing field{property.missingFieldCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                {property.blockedIssueCount ? (
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 text-red-700">
+                    {property.blockedIssueCount} blocked issue{property.blockedIssueCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+                <span className={`rounded-full px-2.5 py-1 ${property.buildoutReady ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-700"}`}>
+                  {property.buildoutReady ? "Buildout-ready" : "Buildout pending"}
+                </span>
                 {!isBroker && property.ownerEmail && (
                   <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-700">
                     {property.ownerEmail}

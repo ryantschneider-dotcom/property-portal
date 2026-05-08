@@ -34,6 +34,20 @@ type IntakeState = {
   leadBrokers: string[];
 };
 
+type ReviewChecklist = {
+  successfulScrapes: string[];
+  partialScrapes: string[];
+  blockedScrapes: string[];
+  manualResearchNeeded: string[];
+  autoFilledFields: string[];
+  failedAutoFillFields: string[];
+  humanConfirmationNeeded: string[];
+  buildoutReadyFields: string[];
+  buildoutMissingFields: string[];
+  exceptionReason: string | null;
+  checklistState: "ready" | "needs_manual_followup" | "blocked";
+};
+
 const initialState: IntakeState = {
   addressStreet: "",
   city: "",
@@ -73,6 +87,7 @@ export function BrokerHubIntakeForm() {
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const [reviewChecklist, setReviewChecklist] = useState<ReviewChecklist | null>(null);
 
   const isSale = formData.transactionType === "Sale" || formData.transactionType === "Both";
   const isLease = formData.transactionType === "Lease" || formData.transactionType === "Both";
@@ -112,6 +127,7 @@ export function BrokerHubIntakeForm() {
     setStatus("saving");
     setErrorMessage(null);
     setCreatedSlug(null);
+    setReviewChecklist(null);
 
     try {
       const body = new FormData();
@@ -135,6 +151,7 @@ export function BrokerHubIntakeForm() {
 
       setStatus("success");
       setCreatedSlug(payload.slug ?? null);
+      setReviewChecklist(payload.reviewChecklist ?? null);
       setFormData(initialState);
       setSuites([createSuite()]);
       setFiles([]);
@@ -352,6 +369,27 @@ export function BrokerHubIntakeForm() {
           ))}
         </div>
       </section>
+
+      {status === "success" && reviewChecklist ? (
+        <section className={`rounded-xl border p-4 ${reviewChecklist.checklistState === "blocked" ? "border-rose-200 bg-rose-50" : reviewChecklist.checklistState === "needs_manual_followup" ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Research-needed summary</p>
+          <p className="mt-2 text-sm font-semibold text-zinc-950">{reviewChecklist.exceptionReason ?? "Draft enrichment looks healthy after intake."}</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 text-sm text-zinc-700">
+            <div>
+              <p className="font-medium text-zinc-900">Auto-filled</p>
+              <ul className="mt-1 list-disc pl-5">
+                {(reviewChecklist.autoFilledFields.length ? reviewChecklist.autoFilledFields : ["None yet"]).map((item) => <li key={`auto-${item}`}>{item}</li>)}
+              </ul>
+            </div>
+            <div>
+              <p className="font-medium text-zinc-900">Needs follow-up</p>
+              <ul className="mt-1 list-disc pl-5">
+                {(reviewChecklist.manualResearchNeeded.length ? reviewChecklist.manualResearchNeeded : ["None"]).map((item) => <li key={`manual-${item}`}>{item}</li>)}
+              </ul>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="sticky bottom-3 z-10 rounded-xl border border-zinc-900 bg-zinc-950 p-4 text-white shadow-lg">
         <div className="flex flex-col gap-4">

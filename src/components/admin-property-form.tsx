@@ -68,6 +68,19 @@ type AdminPropertyFormProps = {
     buildoutSyncError?: string | null;
     buildoutMissingFields?: string[];
     buildoutWarnings?: string[];
+    reviewChecklist?: {
+      successfulScrapes: string[];
+      partialScrapes: string[];
+      blockedScrapes: string[];
+      manualResearchNeeded: string[];
+      autoFilledFields: string[];
+      failedAutoFillFields: string[];
+      humanConfirmationNeeded: string[];
+      buildoutReadyFields: string[];
+      buildoutMissingFields: string[];
+      exceptionReason: string | null;
+      checklistState: "ready" | "needs_manual_followup" | "blocked";
+    };
   };
 };
 
@@ -95,6 +108,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function inputClassName() {
   return "w-full rounded-2xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-900";
+}
+
+function checklistTone(state: "ready" | "needs_manual_followup" | "blocked" | undefined) {
+  switch (state) {
+    case "ready":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    case "blocked":
+      return "border-red-200 bg-red-50 text-red-800";
+    default:
+      return "border-amber-200 bg-amber-50 text-amber-800";
+  }
 }
 
 function getMediaImageSrc(image: MediaImage | null | undefined) {
@@ -729,6 +753,90 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                       {workflow.generatedCopy.locationDescription ? <p className="line-clamp-4"><span className="font-semibold text-zinc-900">Location:</span> {workflow.generatedCopy.locationDescription}</p> : null}
                     </div>
                   ) : null}
+                </div>
+              ) : null}
+              {workflow?.reviewChecklist ? (
+                <div className={`rounded-2xl border p-4 text-sm ${checklistTone(workflow.reviewChecklist.checklistState)}`}>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em]">Checkpoint 3 review layer</p>
+                      <p className="mt-2 text-base font-semibold text-zinc-900">{workflow.reviewChecklist.exceptionReason ?? "Auto-fill looks healthy. Ready for human confirmation and Buildout prep."}</p>
+                    </div>
+                    <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                      {workflow.reviewChecklist.checklistState.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Scrape status</p>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <p className="font-medium text-zinc-900">Successful</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.successfulScrapes.length ? workflow.reviewChecklist.successfulScrapes : ["None yet"]).map((item) => <li key={`success-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-medium text-zinc-900">Partial</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.partialScrapes.length ? workflow.reviewChecklist.partialScrapes : ["None"] ).map((item) => <li key={`partial-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-medium text-zinc-900">Blocked</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.blockedScrapes.length ? workflow.reviewChecklist.blockedScrapes : ["None"] ).map((item) => <li key={`blocked-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/70 bg-white/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Review & manual follow-up</p>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <p className="font-medium text-zinc-900">Auto-filled</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.autoFilledFields.length ? workflow.reviewChecklist.autoFilledFields : ["None yet"]).map((item) => <li key={`autofill-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-medium text-zinc-900">Failed / missing</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.failedAutoFillFields.length ? workflow.reviewChecklist.failedAutoFillFields : ["None"] ).map((item) => <li key={`failed-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-medium text-zinc-900">Needs human confirmation</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.humanConfirmationNeeded.length ? workflow.reviewChecklist.humanConfirmationNeeded : ["None"] ).map((item) => <li key={`confirm-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-medium text-zinc-900">Manual research follow-up</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                            {(workflow.reviewChecklist.manualResearchNeeded.length ? workflow.reviewChecklist.manualResearchNeeded : ["None"] ).map((item) => <li key={`manual-${item}`}>{item}</li>)}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-2xl border border-dashed border-white/80 bg-white/60 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Structured Buildout handoff</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <p className="font-medium text-zinc-900">Normalized / ready</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                          {(workflow.reviewChecklist.buildoutReadyFields.length ? workflow.reviewChecklist.buildoutReadyFields : ["None yet"]).map((item) => <li key={`buildout-ready-${item}`}>{item}</li>)}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="font-medium text-zinc-900">Still blocking Buildout</p>
+                        <ul className="mt-1 list-disc space-y-1 pl-5 text-zinc-700">
+                          {(workflow.reviewChecklist.buildoutMissingFields.length ? workflow.reviewChecklist.buildoutMissingFields : ["No blocking fields"]).map((item) => <li key={`buildout-missing-${item}`}>{item}</li>)}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : null}
               <div className="grid gap-3 md:grid-cols-2">

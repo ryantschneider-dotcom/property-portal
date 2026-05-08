@@ -621,6 +621,14 @@ const { chromium } = require('playwright');
       return (await loginText.count()) > 0;
     };
 
+    const firstExistingLocator = async (selectors) => {
+      for (const selector of selectors) {
+        const locator = page.locator(selector);
+        if (await locator.count()) return locator.first();
+      }
+      return null;
+    };
+
     const performSearchAttempt = async (candidate, mode) => {
       await page.goto(`https://qpublic.schneidercorp.com/Application.aspx?App=${countyApp}&PageType=Search`, {waitUntil:'domcontentloaded', timeout:60000});
       await page.waitForTimeout(1500);
@@ -630,27 +638,35 @@ const { chromium } = require('playwright');
         await page.waitForTimeout(1000);
       }
 
-      const addressBox = page.locator('#ctlBodyPane_ctl02_ctl01_txtAddress');
-      const parcelBox = page.locator('#ctlBodyPane_ctl00_ctl01_txtParcelID');
-      const addressButton = page.locator('#ctlBodyPane_ctl02_ctl01_btnSearch');
-      const parcelButton = page.locator('#ctlBodyPane_ctl00_ctl01_btnSearch');
+      const addressBox = await firstExistingLocator(['#ctlBodyPane_ctl02_ctl01_txtAddress', '#ctlBodyPane_ctl01_ctl01_txtAddress']);
+      const parcelBox = await firstExistingLocator(['#ctlBodyPane_ctl00_ctl01_txtParcelID', '#ctlBodyPane_ctl02_ctl01_txtParcelID']);
+      const addressButton = await firstExistingLocator(['#ctlBodyPane_ctl02_ctl01_btnSearch', '#ctlBodyPane_ctl01_ctl01_btnSearch']);
+      const parcelButton = await firstExistingLocator(['#ctlBodyPane_ctl00_ctl01_btnSearch', '#ctlBodyPane_ctl02_ctl01_btnSearch']);
 
-      if (mode === 'parcel' && await parcelBox.count()) {
+      if (mode === 'parcel' && parcelBox) {
         await parcelBox.fill('');
         await parcelBox.fill(candidate);
         await parcelBox.press('Enter').catch(() => {});
         await page.waitForTimeout(500);
         if (/PageType=Search/i.test(page.url())) {
-          await page.evaluate(() => {
-            if (typeof __doPostBack === 'function') {
-              __doPostBack('ctlBodyPane$ctl00$ctl01$btnSearch', '');
-            }
-          }).catch(() => {});
+          if (parcelButton) {
+            await parcelButton.click({ force: true }).catch(() => {});
+          }
+          if (/PageType=Search/i.test(page.url())) {
+            await page.evaluate(() => {
+              if (typeof __doPostBack === 'function') {
+                __doPostBack('ctlBodyPane$ctl00$ctl01$btnSearch', '');
+                __doPostBack('ctlBodyPane$ctl02$ctl01$btnSearch', '');
+              }
+            }).catch(() => {});
+          }
         }
-      } else {
+      } else if (addressBox && addressButton) {
         await addressBox.fill('');
         await addressBox.fill(candidate);
         await addressButton.click({ force: true });
+      } else {
+        throw new Error(`Search controls not found for ${mode} search on ${countyApp}`);
       }
 
       await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
@@ -866,12 +882,14 @@ const { chromium } = require('playwright');
     })();
     const zoningLine = findLineContaining('zoning', 'zone');
     const zoningFromLine = (() => {
+      if (/not zoning info/i.test(zoningLine)) return null;
       const explicit = zoningLine.match(/zoning[^A-Z0-9]*([A-Z]{1,6}(?:-[A-Z0-9]{1,6})?)/i);
       if (explicit) return explicit[1].toUpperCase();
       const trailing = zoningLine.match(/\b([A-Z]{1,6}(?:-[A-Z0-9]{1,6})?)\b$/);
       return trailing ? trailing[1].toUpperCase() : null;
     })();
     const zoningFromBody = (() => {
+      if (/not zoning info/i.test(bodyText)) return null;
       const patterns = [
         /(?:zoning|zone)\s*(?:classification)?\s*[:\-]?\s*([A-Z]{1,6}(?:-[A-Z0-9]{1,6})?)/i,
         /(?:zoning|zone)\s+([A-Z]{1,6}(?:-[A-Z0-9]{1,6})?)/i,
@@ -888,9 +906,10 @@ const { chromium } = require('playwright');
     const accessoryRows = rows.filter(r => r.join(' ').includes('PAVING') || r.join(' ').includes('CANOPY'));
     const likelyImprovementRows = rows.filter(r => {
       const joined = r.join(' | ');
+      if (/sale date|grantor|deed book|plat book|price/i.test(joined)) return false;
       const hasSqFt = /\b\d{2,6}\b/.test(joined) && /(sq\s*ft|sqft|square\s*feet|building|warehouse|office|retail|store|commercial|residential|living\s*area|improvement)/i.test(joined);
       const hasYear = /\b(18|19|20)\d{2}\b/.test(joined);
-      return r.length >= 4 && (hasSqFt || hasYear);
+      return r.length >= 2 && (hasSqFt || hasYear);
     });
     const lotSizeSf = extractPairValue('Square Feet', 'Land Square Feet') ? parseIntNumber(extractPairValue('Square Feet', 'Land Square Feet')) : (landRow.length >= 4 ? parseIntNumber(landRow[3]) : null);
     const lotSizeAcresRaw = extractPairValue('Acres', 'Land Acres');
@@ -908,8 +927,8 @@ const { chromium } = require('playwright');
     const lotSizeAcres = parseNumber(lotSizeAcresRaw) || lotSizeAcresFromBody || (lotSizeSf ? Number((lotSizeSf / 43560).toFixed(2)) : null);
     const propertyClassFromRow = (() => {
       const candidates = [
-        extractPairValue('Property Class', 'Class Description', 'Property Type', 'Building Type', 'Improvement Type', 'Use Description'),
-        findLineContaining('property class', 'class description', 'building type', 'improvement type', 'use description', 'property type'),
+        extractPairValue('Record Type', 'Class Code (NOTE: Not Zoning Info)', 'Property Class', 'Class Description', 'Property Type', 'Building Type', 'Improvement Type', 'Use Description'),
+        findLineContaining('record type', 'class code', 'property class', 'class description', 'building type', 'improvement type', 'use description', 'property type'),
         likelyImprovementRows[0]?.[0] || null,
       ].filter(Boolean);
       for (const candidate of candidates) {
@@ -922,7 +941,7 @@ const { chromium } = require('playwright');
           .replace(/^use description\s*[:\-]?/i, '')
           .split('|')[0]
           .trim();
-        if (text && !/^\d+$/.test(text) && !/year built/i.test(text)) return text;
+        if (text && !/^\d+$/.test(text) && !/year built|sale date|grantor|deed book|plat book/i.test(text) && text.length < 120) return text;
       }
       return null;
     })();
@@ -944,11 +963,14 @@ const { chromium } = require('playwright');
       }
       return null;
     })();
-    const buildingSizeSf =
-      parseIntNumber(extractPairValue('Total Sq Footage', 'Building Size', 'Gross Building Area', 'Gross Area', 'Heated Area', 'Finished Area', 'Total Living Area')) ||
-      parseIntNumber(findLineContaining('total sq footage', 'building size', 'gross building area', 'gross area', 'heated area', 'finished area', 'total living area')) ||
-      buildingSizeFromBody ||
-      buildingSizeFromImprovements;
+    const buildingSizeSf = (() => {
+      const value =
+        parseIntNumber(extractPairValue('Total Sq Footage', 'Building Size', 'Gross Building Area', 'Gross Area', 'Heated Area', 'Finished Area', 'Total Living Area', 'Heated Square Footage')) ||
+        parseIntNumber(findLineContaining('total sq footage', 'building size', 'gross building area', 'gross area', 'heated area', 'finished area', 'total living area', 'heated square footage')) ||
+        buildingSizeFromBody ||
+        buildingSizeFromImprovements;
+      return value && value > 0 && value < 200000 ? value : null;
+    })();
 
     const result = {
       status: 'ok',
@@ -961,7 +983,10 @@ const { chromium } = require('playwright');
       property_class: propertyClassFromRow,
       zoning: extractPairValue('Zoning', 'Zone') || zoningFromLine || zoningFromBody || null,
       lot_size_acres: lotSizeAcres,
-      year_built: parseIntNumber(extractPairValue('Year Built')) || parseIntNumber(findLineContaining('year built')),
+      year_built: (() => {
+        const value = parseIntNumber(extractPairValue('Year Built')) || parseIntNumber(findLineContaining('year built'));
+        return value && value >= 1800 ? value : null;
+      })(),
       building_size_sf: buildingSizeSf,
       lot_size_sf: lotSizeSf,
       exterior_construction_type: buildingRow.length >= 8 ? `${buildingRow[6]} ${buildingRow[7]}` : null,

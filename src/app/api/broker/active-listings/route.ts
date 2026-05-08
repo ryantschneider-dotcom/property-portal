@@ -22,6 +22,11 @@ export async function GET() {
       address: item.address,
       transactionLabel: item.transactionLabel,
       ownerEmail: item.ownerEmail,
+      reviewState: item.reviewState,
+      missingFieldCount: item.missingFieldCount,
+      blockedIssueCount: item.blockedIssueCount,
+      buildoutReady: item.buildoutReady,
+      enrichmentStatus: item.enrichmentStatus,
     }));
 
   return NextResponse.json({ items });

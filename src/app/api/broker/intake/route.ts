@@ -12,6 +12,7 @@ import {
   parseOptionalNumber,
   uploadBrokerAsset,
 } from "@/lib/broker-hub";
+import { getAdminWorkflowSnapshot } from "@/lib/admin-workflow";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { enrichPropertyDraft } from "@/lib/property-enrichment";
 import { parsePortalSession } from "@/lib/portal-session";
@@ -225,8 +226,11 @@ export async function POST(request: Request) {
       console.error("Broker intake enrichment failed:", error);
     }
 
+    const workflowSnapshot = await getAdminWorkflowSnapshot(slug);
+
     revalidatePath("/broker");
     revalidatePath("/broker/new");
+    revalidatePath("/broker/revisions");
     revalidatePath("/admin/properties");
     revalidatePath(`/admin/properties/${slug}/edit`);
 
@@ -237,6 +241,8 @@ export async function POST(request: Request) {
       parcelId: normalizedParcelId,
       countyRouting: countyPlan,
       enrichment: enrichmentResult,
+      reviewChecklist: workflowSnapshot?.reviewChecklist ?? null,
+      workflowStatus: workflowSnapshot?.workflowStatus ?? null,
     });
   } catch (error) {
     console.error(error);
