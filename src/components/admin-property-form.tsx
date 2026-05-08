@@ -94,7 +94,47 @@ type AdminPropertyFormProps = {
           severity: "warning" | "blocker";
           items: string[];
         }>;
+        brokerResponse?: {
+          id: string | null;
+          createdAt: string | null;
+          createdByEmail: string | null;
+          createdByName: string | null;
+          instructions: string | null;
+          uploadedAssetCount: number;
+          status: string | null;
+        } | null;
+        brokerUpdatedAt?: string | null;
+        brokerUpdatedBy?: string | null;
+        closedAt?: string | null;
+        closedBy?: string | null;
       } | null;
+      history?: Array<{
+        id: string | null;
+        createdAt: string | null;
+        createdBy: string | null;
+        createdByName: string | null;
+        status: string | null;
+        summary: string | null;
+        categories: Array<{
+          code: string;
+          title: string;
+          severity: "warning" | "blocker";
+          items: string[];
+        }>;
+        brokerResponse?: {
+          id: string | null;
+          createdAt: string | null;
+          createdByEmail: string | null;
+          createdByName: string | null;
+          instructions: string | null;
+          uploadedAssetCount: number;
+          status: string | null;
+        } | null;
+        brokerUpdatedAt?: string | null;
+        brokerUpdatedBy?: string | null;
+        closedAt?: string | null;
+        closedBy?: string | null;
+      }>;
       historyCount?: number;
     };
     reviewChecklist?: {
@@ -233,6 +273,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [exportState, setExportState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportPreview, setExportPreview] = useState<Record<string, unknown> | null>(null);
+  const [revisionStatusState, setRevisionStatusState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const [revisionStatusMessage, setRevisionStatusMessage] = useState<string | null>(null);
   const [exportMissingFields, setExportMissingFields] = useState<string[]>(workflow?.buildoutMissingFields ?? []);
   const [exportWarnings, setExportWarnings] = useState<string[]>(workflow?.buildoutWarnings ?? []);
 
@@ -457,6 +499,34 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
       console.error(error);
       setApprovalState("error");
       setApprovalMessage(`Unable to ${action} property`);
+    }
+  }
+
+  async function handleRevisionStatus(status: "resolved" | "superseded") {
+    if (!formData.slug) return;
+
+    setRevisionStatusState("saving");
+    setRevisionStatusMessage(null);
+
+    try {
+      const response = await fetch("/api/admin/properties/revision-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: formData.slug, status }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setRevisionStatusState("error");
+        setRevisionStatusMessage(payload.error ?? "Unable to update revision status");
+        return;
+      }
+      setRevisionStatusState("done");
+      setRevisionStatusMessage(status === "resolved" ? "Revision request marked resolved." : "Revision request marked superseded.");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setRevisionStatusState("error");
+      setRevisionStatusMessage("Unable to update revision status");
     }
   }
 
@@ -1058,16 +1128,21 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
               ) : null}
 
               {workflow?.revisionWorkflow?.currentRequest ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-3">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em]">Current send-back request</p>
                       <p className="mt-2 text-base font-semibold text-zinc-900">{workflow.revisionWorkflow.currentRequest.summary || "Structured revisions required before approval."}</p>
+                      <div className="mt-2 space-y-1 text-xs text-zinc-600">
+                        {workflow.revisionWorkflow.currentRequest.createdAt ? <p>Requested: {workflow.revisionWorkflow.currentRequest.createdAt}</p> : null}
+                        {workflow.revisionWorkflow.currentRequest.createdByName || workflow.revisionWorkflow.currentRequest.createdBy ? <p>Requested by: {workflow.revisionWorkflow.currentRequest.createdByName || workflow.revisionWorkflow.currentRequest.createdBy}</p> : null}
+                      </div>
                     </div>
                     <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
                       {workflow.revisionWorkflow.currentRequest.status || "open"}
                     </span>
                   </div>
+
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {workflow.revisionWorkflow.currentRequest.categories.map((category) => (
                       <div key={`${category.code}-${category.title}`} className="rounded-2xl border border-white/70 bg-white/70 p-3">
@@ -1081,6 +1156,50 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                       </div>
                     ))}
                   </div>
+
+                  {workflow.revisionWorkflow.currentRequest.brokerResponse ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em]">Broker response</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">{workflow.revisionWorkflow.currentRequest.brokerResponse.instructions}</p>
+                        </div>
+                        <span className="rounded-full border border-emerald-300 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                          {workflow.revisionWorkflow.currentRequest.brokerResponse.status || "broker_updated"}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-zinc-600 md:grid-cols-2">
+                        <p>Updated: {workflow.revisionWorkflow.currentRequest.brokerResponse.createdAt || workflow.revisionWorkflow.currentRequest.brokerUpdatedAt || "—"}</p>
+                        <p>Updated by: {workflow.revisionWorkflow.currentRequest.brokerResponse.createdByName || workflow.revisionWorkflow.currentRequest.brokerResponse.createdByEmail || workflow.revisionWorkflow.currentRequest.brokerUpdatedBy || "—"}</p>
+                        <p>Uploaded assets: {workflow.revisionWorkflow.currentRequest.brokerResponse.uploadedAssetCount}</p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isAdmin ? (
+                    <div className="space-y-3 rounded-2xl border border-dashed border-amber-300 bg-white/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Queue controls</p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRevisionStatus("resolved")}
+                          disabled={!formData.slug || revisionStatusState === "saving"}
+                          className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-700 bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {revisionStatusState === "saving" ? "Updating…" : "Mark Resolved"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRevisionStatus("superseded")}
+                          disabled={!formData.slug || revisionStatusState === "saving"}
+                          className="inline-flex w-full items-center justify-center rounded-2xl border border-zinc-900 bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {revisionStatusState === "saving" ? "Updating…" : "Mark Superseded"}
+                        </button>
+                      </div>
+                      {revisionStatusMessage ? <p className={`text-sm ${revisionStatusState === "error" ? "text-red-600" : "text-zinc-700"}`}>{revisionStatusMessage}</p> : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : (workflow?.approvalRejectionReason || workflow?.approvalDecisionNote) ? (
                 <div className={`rounded-2xl border p-4 text-sm space-y-2 ${workflow?.approvalStatus === "rejected" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
@@ -1095,7 +1214,60 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 {workflow?.approvalSubmittedBy ? <p>Submitted by: {workflow.approvalSubmittedBy}</p> : null}
                 {workflow?.approvalDecidedAt ? <p>Last decision: {workflow.approvalDecidedAt}</p> : null}
                 {workflow?.approvalDecidedBy ? <p>Decision by: {workflow.approvalDecidedBy}</p> : null}
+                {workflow?.revisionWorkflow?.historyCount ? <p>Revision history entries: {workflow.revisionWorkflow.historyCount}</p> : null}
               </div>
+
+              {workflow?.revisionWorkflow?.history?.length ? (
+                <details className="rounded-2xl border border-zinc-200 bg-white p-4">
+                  <summary className="cursor-pointer text-sm font-semibold text-zinc-900">Revision history</summary>
+                  <div className="mt-4 space-y-3">
+                    {workflow.revisionWorkflow.history.slice().reverse().map((entry, index) => (
+                      <div key={`${entry.id || entry.createdAt || "history"}-${index}`} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-700">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <p className="font-semibold text-zinc-900">{entry.summary || "Revision event"}</p>
+                            <div className="mt-1 space-y-1 text-xs text-zinc-500">
+                              {entry.createdAt ? <p>Created: {entry.createdAt}</p> : null}
+                              {entry.createdByName || entry.createdBy ? <p>Created by: {entry.createdByName || entry.createdBy}</p> : null}
+                              {entry.closedAt ? <p>Closed: {entry.closedAt}</p> : null}
+                              {entry.closedBy ? <p>Closed by: {entry.closedBy}</p> : null}
+                            </div>
+                          </div>
+                          <span className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-700">
+                            {entry.status || "open"}
+                          </span>
+                        </div>
+                        {entry.categories.length ? (
+                          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {entry.categories.map((category) => (
+                              <div key={`${entry.id}-${category.code}-${category.title}`} className="rounded-2xl border border-white bg-white p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="font-medium text-zinc-900">{category.title}</p>
+                                  <span className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase ${category.severity === "blocker" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>{category.severity}</span>
+                                </div>
+                                <ul className="mt-2 list-disc space-y-1 pl-5">
+                                  {category.items.map((item) => <li key={`${entry.id}-${category.code}-${item}`}>{item}</li>)}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {entry.brokerResponse ? (
+                          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em]">Broker response</p>
+                            <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800">{entry.brokerResponse.instructions}</p>
+                            <div className="mt-2 grid gap-2 text-xs text-zinc-600 md:grid-cols-2">
+                              <p>Updated: {entry.brokerResponse.createdAt || entry.brokerUpdatedAt || "—"}</p>
+                              <p>Updated by: {entry.brokerResponse.createdByName || entry.brokerResponse.createdByEmail || entry.brokerUpdatedBy || "—"}</p>
+                              <p>Uploaded assets: {entry.brokerResponse.uploadedAssetCount}</p>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
 
               {isAdmin ? (
                 <>

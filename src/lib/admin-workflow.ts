@@ -15,6 +15,38 @@ export type AdminPreflightSnapshot = {
   };
 };
 
+type WorkflowCategory = {
+  code: string;
+  title: string;
+  severity: "warning" | "blocker";
+  items: string[];
+};
+
+type WorkflowBrokerResponse = {
+  id: string | null;
+  createdAt: string | null;
+  createdByEmail: string | null;
+  createdByName: string | null;
+  instructions: string | null;
+  uploadedAssetCount: number;
+  status: string | null;
+};
+
+type WorkflowRequest = {
+  id: string | null;
+  createdAt: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  status: string | null;
+  summary: string | null;
+  categories: WorkflowCategory[];
+  brokerResponse: WorkflowBrokerResponse | null;
+  brokerUpdatedAt: string | null;
+  brokerUpdatedBy: string | null;
+  closedAt: string | null;
+  closedBy: string | null;
+};
+
 export type AdminWorkflowSnapshot = {
   documentId: string;
   slug: string;
@@ -73,20 +105,8 @@ export type AdminWorkflowSnapshot = {
   buildoutWarnings: string[];
   preflight: AdminPreflightSnapshot;
   revisionWorkflow: {
-    currentRequest: {
-      id: string | null;
-      createdAt: string | null;
-      createdBy: string | null;
-      createdByName: string | null;
-      status: string | null;
-      summary: string | null;
-      categories: Array<{
-        code: string;
-        title: string;
-        severity: "warning" | "blocker";
-        items: string[];
-      }>;
-    } | null;
+    currentRequest: WorkflowRequest | null;
+    history: WorkflowRequest[];
     historyCount: number;
   };
   reviewChecklist: {
@@ -149,6 +169,49 @@ function makeSection(blockers: string[], warnings: string[]) {
   } as const;
 }
 
+function normalizeCategories(input: unknown): WorkflowCategory[] {
+  if (!Array.isArray(input)) return [];
+  return input.map((category: any) => ({
+    code: asString(category.code) || "",
+    title: asString(category.title) || asString(category.code) || "",
+    severity: category.severity === "warning" ? "warning" : "blocker",
+    items: Array.isArray(category.items) ? category.items.map((item: unknown) => asString(item)).filter(Boolean) : [],
+  }));
+}
+
+function normalizeBrokerResponse(input: unknown): WorkflowBrokerResponse | null {
+  if (!input || typeof input !== "object") return null;
+  const row = input as Record<string, any>;
+  return {
+    id: asString(row.id),
+    createdAt: asString(row.createdAt),
+    createdByEmail: asString(row.createdByEmail),
+    createdByName: asString(row.createdByName),
+    instructions: asString(row.instructions),
+    uploadedAssetCount: Number(row.uploadedAssetCount ?? 0) || 0,
+    status: asString(row.status),
+  };
+}
+
+function normalizeWorkflowRequest(input: unknown): WorkflowRequest | null {
+  if (!input || typeof input !== "object") return null;
+  const row = input as Record<string, any>;
+  return {
+    id: asString(row.id),
+    createdAt: asString(row.createdAt),
+    createdBy: asString(row.createdBy),
+    createdByName: asString(row.createdByName),
+    status: asString(row.status),
+    summary: asString(row.summary),
+    categories: normalizeCategories(row.categories),
+    brokerResponse: normalizeBrokerResponse(row.brokerResponse),
+    brokerUpdatedAt: asString(row.brokerUpdatedAt),
+    brokerUpdatedBy: asString(row.brokerUpdatedBy),
+    closedAt: asString(row.closedAt),
+    closedBy: asString(row.closedBy),
+  };
+}
+
 export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflightSnapshot {
   const meta = raw.meta ?? {};
   const exportMeta = meta.export ?? {};
@@ -182,9 +245,7 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
     present(property.parcelId) ? null : "Parcel ID missing",
     present(raw.leadBroker) || present(admin.leadBroker) || present(raw.ownerEmail) || present(raw.ownerUserId) ? null : "Lead broker / owner missing",
   ]);
-  const identityWarnings = uniq([
-    present(address.zip) ? null : "ZIP not set",
-  ]);
+  const identityWarnings = uniq([present(address.zip) ? null : "ZIP not set"]);
 
   const hasSalePrice = present(pricing.salePriceDollars) || pricing.salePriceIsCallForPrice === true || present(pricing.hiddenPriceLabel);
   const completeSuites = suites.filter((suite: Record<string, any>) => present(suite.suiteNumber) && present(suite.availableSqFt) && (present(suite.baseRent) || suite.unpriced === true) && present(suite.rentType));
@@ -195,30 +256,19 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
     present(property.buildingSizeSf) || present(property.lotSizeAcres) ? null : "Building size or lot size missing",
     present(property.zoning) ? null : "Zoning missing",
   ]);
-  const pricingWarnings = uniq([
-    present(property.yearBuilt) ? null : "Year built missing",
-    present(admin.parking) || present(property.parking) ? null : "Parking details missing",
-  ]);
+  const pricingWarnings = uniq([present(property.yearBuilt) ? null : "Year built missing", present(admin.parking) || present(property.parking) ? null : "Parking details missing"]);
 
-  const mediaBlockers = uniq([
-    images.length > 0 ? null : "At least one property photo is required",
-  ]);
-  const mediaWarnings = uniq([
-    images.some((image: Record<string, any>) => image?.isPrimary === true) || images.length <= 1 ? null : "Hero image flag not set on gallery",
-  ]);
+  const mediaBlockers = uniq([images.length > 0 ? null : "At least one property photo is required"]);
+  const mediaWarnings = uniq([images.some((image: Record<string, any>) => image?.isPrimary === true) || images.length <= 1 ? null : "Hero image flag not set on gallery"]);
 
   const copyBlockers = uniq([
     present(content.saleTitle) || present(raw.title) ? null : "Listing title not finalized",
     saleActive && !present(content.saleDescription) ? "Sale description missing" : null,
     leaseActive && !present(content.leaseDescription) ? "Lease description missing" : null,
     present(content.locationDescription) ? null : "Location description missing",
-    (Array.isArray(content.saleBullets) && content.saleBullets.length > 0) || (Array.isArray(content.leaseBullets) && content.leaseBullets.length > 0)
-      ? null
-      : "At least one listing bullet is required",
+    (Array.isArray(content.saleBullets) && content.saleBullets.length > 0) || (Array.isArray(content.leaseBullets) && content.leaseBullets.length > 0) ? null : "At least one listing bullet is required",
   ]);
-  const copyWarnings = uniq([
-    present(content.exteriorDescription) ? null : "Exterior description missing",
-  ]);
+  const copyWarnings = uniq([present(content.exteriorDescription) ? null : "Exterior description missing"]);
 
   const buildoutBlockers = uniq(buildoutMissingFields.map((field: string) => labelBuildoutField(field)));
   const buildoutSectionWarnings = uniq(buildoutWarnings.map((field: string) => labelBuildoutField(field)));
@@ -234,12 +284,7 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
   const blockers = uniq(Object.values(sections).flatMap((section) => section.blockers));
   const warnings = uniq(Object.values(sections).flatMap((section) => section.warnings));
 
-  return {
-    status: blockers.length ? "blocked" : warnings.length ? "publish_ready_with_warnings" : "publish_ready",
-    blockers,
-    warnings,
-    sections,
-  };
+  return { status: blockers.length ? "blocked" : warnings.length ? "publish_ready_with_warnings" : "publish_ready", blockers, warnings, sections };
 }
 
 export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkflowSnapshot | null> {
@@ -261,36 +306,25 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
   const streetView = research.street_view ?? {};
   const countyRouting = enrichment.countyRouting ?? {};
   const extractedFields = enrichment.extractedFields ?? {};
-  const buildoutMissingFields = Array.isArray(exportMeta.missingRequiredFields)
-    ? exportMeta.missingRequiredFields.map((field: unknown) => asString(field)).filter(Boolean)
-    : [];
-  const buildoutWarnings = Array.isArray(exportMeta.warnings)
-    ? exportMeta.warnings.map((field: unknown) => asString(field)).filter(Boolean)
-    : [];
+  const buildoutMissingFields = Array.isArray(exportMeta.missingRequiredFields) ? exportMeta.missingRequiredFields.map((field: unknown) => asString(field)).filter(Boolean) : [];
+  const buildoutWarnings = Array.isArray(exportMeta.warnings) ? exportMeta.warnings.map((field: unknown) => asString(field)).filter(Boolean) : [];
 
   const successfulScrapes = uniq([
     ["ok", "completed"].includes(asString(publicRecords.status) || "") ? `Public records · ${asString(countyRouting.assessorSource) || "county source"}` : null,
     ["ok", "completed"].includes(asString(places.status) || "") ? "Places / neighborhood context" : null,
     ["ok", "completed"].includes(asString(streetView.status) || "") ? "Street view / imagery context" : null,
   ]);
-
   const partialScrapes = uniq([
     asString(enrichment.status) === "partial" ? "Enrichment returned partial extraction" : null,
     asString(publicRecords.status) === "partial" ? "Public records partial" : null,
     asString(places.status) === "partial" ? "Places / neighborhood partial" : null,
     asString(streetView.status) === "partial" ? "Street view partial" : null,
   ]);
-
   const blockedScrapes = uniq([
     ["blocked", "login_gated", "error", "no_results"].includes(asString(publicRecords.status) || "") ? `Public records blocked (${asString(publicRecords.status)})` : null,
     ["blocked", "error"].includes(asString(places.status) || "") ? `Places blocked (${asString(places.status)})` : null,
     ["blocked", "error"].includes(asString(streetView.status) || "") ? `Street view blocked (${asString(streetView.status)})` : null,
-    ...(Array.isArray(enrichment.launchpadErrors)
-      ? enrichment.launchpadErrors.map((item: unknown) => {
-          const value = asString(item);
-          return value ? `Launchpad: ${value}` : null;
-        })
-      : []),
+    ...(Array.isArray(enrichment.launchpadErrors) ? enrichment.launchpadErrors.map((item: unknown) => { const value = asString(item); return value ? `Launchpad: ${value}` : null; }) : []),
   ]);
 
   const autoFilledFields = uniq([
@@ -319,12 +353,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     locationDescription: "Location description",
   };
 
-  const failedAutoFillFields = uniq(
-    (Array.isArray(enrichment.missingFields) ? enrichment.missingFields : [])
-      .map((field: unknown) => missingFieldLabels[asString(field) || ""] || asString(field))
-      .filter(Boolean),
-  );
-
+  const failedAutoFillFields = uniq((Array.isArray(enrichment.missingFields) ? enrichment.missingFields : []).map((field: unknown) => missingFieldLabels[asString(field) || ""] || asString(field)).filter(Boolean));
   const humanConfirmationNeeded = uniq([
     present(publicRecords.building_size_sf) ? "Confirm building size against source docs" : null,
     present(publicRecords.lot_size_acres) ? "Confirm lot size / acreage" : null,
@@ -332,7 +361,6 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     present(copy.sale_description) ? "Review generated marketing copy" : null,
     buildoutWarnings.length ? "Resolve Buildout preview warnings" : null,
   ]);
-
   const buildoutReadyFields = uniq([
     !buildoutMissingFields.includes("title") ? "Title" : null,
     !buildoutMissingFields.includes("address.street") ? "Street address" : null,
@@ -347,33 +375,13 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     !buildoutMissingFields.includes("content.leaseDescription") ? "Lease description" : null,
     !buildoutMissingFields.includes("content.locationDescription") ? "Location description" : null,
   ]);
-
   const buildoutMissingFieldLabels = uniq(buildoutMissingFields.map((field: string) => labelBuildoutField(field)));
-
-  const manualResearchNeeded = uniq([
-    ...failedAutoFillFields,
-    blockedScrapes.length ? "Blocked data source follow-up" : null,
-    buildoutMissingFieldLabels.length ? "Buildout-required fields still missing" : null,
-    autoFilledFields.length < 4 ? "Thin extraction needs manual research" : null,
-  ]);
-
-  const exceptionReason =
-    blockedScrapes.length > 0
-      ? "Blocked source needs manual follow-up"
-      : failedAutoFillFields.length >= 2 || autoFilledFields.length < 4
-        ? "Thin extraction needs manual follow-up"
-        : buildoutMissingFieldLabels.length >= 2
-          ? "Buildout handoff not normalized yet"
-          : null;
-
-  const checklistState = blockedScrapes.length
-    ? "blocked"
-    : exceptionReason
-      ? "needs_manual_followup"
-      : "ready";
-
+  const manualResearchNeeded = uniq([...failedAutoFillFields, blockedScrapes.length ? "Blocked data source follow-up" : null, buildoutMissingFieldLabels.length ? "Buildout-required fields still missing" : null, autoFilledFields.length < 4 ? "Thin extraction needs manual research" : null]);
+  const exceptionReason = blockedScrapes.length > 0 ? "Blocked source needs manual follow-up" : failedAutoFillFields.length >= 2 || autoFilledFields.length < 4 ? "Thin extraction needs manual follow-up" : buildoutMissingFieldLabels.length >= 2 ? "Buildout handoff not normalized yet" : null;
+  const checklistState = blockedScrapes.length ? "blocked" : exceptionReason ? "needs_manual_followup" : "ready";
   const preflight = evaluateAdminPreflight(raw);
-  const currentRevisionRequest = revisionWorkflow.currentRequest ?? null;
+  const currentRevisionRequest = normalizeWorkflowRequest(revisionWorkflow.currentRequest);
+  const history = Array.isArray(revisionWorkflow.history) ? revisionWorkflow.history.map(normalizeWorkflowRequest).filter(Boolean) as WorkflowRequest[] : [];
 
   return {
     documentId: doc.id,
@@ -389,15 +397,11 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     enrichmentStatus: asString(enrichment.status),
     enrichmentSummary: asString(enrichment.summary),
     enrichmentLastRunAt: asString(enrichment.lastRunAt),
-    missingFields: Array.isArray(enrichment.missingFields)
-      ? enrichment.missingFields.map((field: unknown) => asString(field)).filter(Boolean)
-      : [],
+    missingFields: Array.isArray(enrichment.missingFields) ? enrichment.missingFields.map((field: unknown) => asString(field)).filter(Boolean) : [],
     countyRoutingStatus: asString(countyRouting.status),
     countyRoutingSource: asString(countyRouting.assessorSource),
     countyRoutingNotes: asString(countyRouting.notes),
-    launchpadErrors: Array.isArray(enrichment.launchpadErrors)
-      ? enrichment.launchpadErrors.map((field: unknown) => asString(field)).filter(Boolean)
-      : [],
+    launchpadErrors: Array.isArray(enrichment.launchpadErrors) ? enrichment.launchpadErrors.map((field: unknown) => asString(field)).filter(Boolean) : [],
     extractedFields: {
       buildingSizeSf: extractedFields.buildingSizeSf === true,
       lotSizeAcres: extractedFields.lotSizeAcres === true,
@@ -412,9 +416,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
       lotSizeAcres: asString(publicRecords.lot_size_acres),
       zoning: asString(publicRecords.zoning),
       propertyClass: asString(publicRecords.property_class),
-      assessorImprovements: Array.isArray(publicRecords.assessor_improvements)
-        ? publicRecords.assessor_improvements.map((item: unknown) => asString(item)).filter(Boolean)
-        : [],
+      assessorImprovements: Array.isArray(publicRecords.assessor_improvements) ? publicRecords.assessor_improvements.map((item: unknown) => asString(item)).filter(Boolean) : [],
     },
     generatedCopy: {
       saleTitle: asString(copy.sale_title),
@@ -439,25 +441,9 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     buildoutWarnings,
     preflight,
     revisionWorkflow: {
-      currentRequest: currentRevisionRequest
-        ? {
-            id: asString(currentRevisionRequest.id),
-            createdAt: asString(currentRevisionRequest.createdAt),
-            createdBy: asString(currentRevisionRequest.createdBy),
-            createdByName: asString(currentRevisionRequest.createdByName),
-            status: asString(currentRevisionRequest.status),
-            summary: asString(currentRevisionRequest.summary),
-            categories: Array.isArray(currentRevisionRequest.categories)
-              ? currentRevisionRequest.categories.map((category: any) => ({
-                  code: asString(category.code) || "",
-                  title: asString(category.title) || asString(category.code) || "",
-                  severity: category.severity === "warning" ? "warning" : "blocker",
-                  items: Array.isArray(category.items) ? category.items.map((item: unknown) => asString(item)).filter(Boolean) : [],
-                }))
-              : [],
-          }
-        : null,
-      historyCount: Array.isArray(revisionWorkflow.history) ? revisionWorkflow.history.length : 0,
+      currentRequest: currentRevisionRequest,
+      history,
+      historyCount: history.length,
     },
     reviewChecklist: {
       successfulScrapes,
