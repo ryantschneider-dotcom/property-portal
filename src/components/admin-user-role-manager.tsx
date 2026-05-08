@@ -11,13 +11,14 @@ type AdminUserRoleManagerProps = {
   currentAdminEmail: string;
 };
 
-const ROLE_OPTIONS: PortalRole[] = ["admin", "senior_broker", "junior_broker"];
+const ROLE_OPTIONS: PortalRole[] = ["admin", "senior_broker", "junior_broker", "sales_associate"];
 
 function roleLabel(role: PortalRole) {
   return {
     admin: "Admin",
     senior_broker: "Senior Broker",
     junior_broker: "Junior Broker",
+    sales_associate: "Sales Associate",
   }[role];
 }
 
@@ -65,7 +66,7 @@ export function AdminUserRoleManager({ initialUsers, currentAdminEmail }: AdminU
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">Role Manager</p>
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-900">Portal users & access levels</h2>
-          <p className="mt-2 text-sm text-zinc-600">View all portal users and switch access between admin, senior broker, and junior broker without touching Firestore manually.</p>
+          <p className="mt-2 text-sm text-zinc-600">View all portal users and switch access between admin, senior broker, junior broker, and sales associate without touching Firestore manually.</p>
         </div>
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
           Signed in as <span className="font-semibold text-zinc-900">{currentAdminEmail}</span>

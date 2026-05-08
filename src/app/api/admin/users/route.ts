@@ -37,7 +37,7 @@ export async function PATCH(request: Request) {
     }
 
     const normalizedRole = normalizePortalRole(role, normalizedEmail) as PortalRole;
-    if (!["admin", "senior_broker", "junior_broker"].includes(normalizedRole)) {
+    if (!["admin", "senior_broker", "junior_broker", "sales_associate"].includes(normalizedRole)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 

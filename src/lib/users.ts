@@ -6,7 +6,7 @@ import { db } from "@/lib/firestore";
 
 export const USERS_COLLECTION = "portal_users";
 
-export type PortalRole = "admin" | "senior_broker" | "junior_broker";
+export type PortalRole = "admin" | "senior_broker" | "junior_broker" | "sales_associate";
 
 export type PortalUserRecord = {
   id: string;
@@ -32,6 +32,7 @@ export function normalizePortalRole(role: unknown, email?: string | null): Porta
   if (role === "admin") return "admin";
   if (role === "senior_broker") return "senior_broker";
   if (role === "junior_broker") return "junior_broker";
+  if (role === "sales_associate") return "sales_associate";
   if (role === "broker") {
     return email && LEGACY_SENIOR_BROKER_EMAILS.has(normalizeEmail(email)) ? "senior_broker" : "junior_broker";
   }

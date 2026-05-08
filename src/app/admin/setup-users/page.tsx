@@ -17,7 +17,7 @@ export default async function AdminSetupUsersPage() {
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">Admin Tools</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight">Portal User Manager</h1>
         <p className="mt-3 max-w-3xl text-zinc-600">
-          Manage portal access levels for your team from one place. Initialize baseline users if needed, then assign admin, senior broker, or junior broker directly from the dashboard.
+          Manage portal access levels for your team from one place. Initialize baseline users if needed, then assign admin, senior broker, junior broker, or sales associate directly from the dashboard.
         </p>
       </div>
 
