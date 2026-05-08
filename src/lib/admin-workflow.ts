@@ -107,9 +107,19 @@ function labelBuildoutField(field: string) {
     "address.street": "Street address",
     "address.city": "City",
     "address.state": "State",
+    "address.county": "County",
     "property.category": "Property category",
+    "property.parcelId": "Parcel ID",
+    "property.zoning": "Zoning",
+    "property.size": "Building size or lot size",
+    "property.availableSqFt": "Available square footage",
+    "broker.leadBroker": "Lead broker",
+    "media.images": "At least one property photo",
+    "pricing.sale": "Sale pricing",
+    "pricing.lease": "Lease pricing",
     "content.saleTitle": "Buildout title",
     "content.saleDescription": "Sale description",
+    "content.leaseDescription": "Lease description",
     "content.locationDescription": "Location description",
   }[field] || field);
 }
@@ -153,9 +163,9 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
     present(property.category) ? null : "Property type missing",
     saleActive || leaseActive ? null : "Transaction visibility missing",
     present(property.parcelId) ? null : "Parcel ID missing",
+    present(raw.leadBroker) || present(admin.leadBroker) || present(raw.ownerEmail) || present(raw.ownerUserId) ? null : "Lead broker / owner missing",
   ]);
   const identityWarnings = uniq([
-    present(raw.leadBroker) || present(raw.ownerEmail) || present(raw.ownerUserId) ? null : "Lead broker / owner not assigned",
     present(address.zip) ? null : "ZIP not set",
   ]);
 
@@ -163,20 +173,20 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
   const completeSuites = suites.filter((suite: Record<string, any>) => present(suite.suiteNumber) && present(suite.availableSqFt) && (present(suite.baseRent) || suite.unpriced === true) && present(suite.rentType));
   const pricingBlockers = uniq([
     saleActive && !hasSalePrice ? "Sale pricing missing" : null,
-    leaseActive && completeSuites.length === 0 ? "Lease suite pricing missing" : null,
+    leaseActive && completeSuites.length === 0 && !present(pricing.askingPriceRatePerSf) ? "Lease suite pricing missing" : null,
     leaseActive && !present(pricing.availableSqFt) && completeSuites.length === 0 ? "Available SF missing for lease" : null,
+    present(property.buildingSizeSf) || present(property.lotSizeAcres) ? null : "Building size or lot size missing",
+    present(property.zoning) ? null : "Zoning missing",
   ]);
   const pricingWarnings = uniq([
-    present(property.buildingSizeSf) ? null : "Building size missing",
-    present(property.lotSizeAcres) ? null : "Lot size missing",
     present(property.yearBuilt) ? null : "Year built missing",
-    present(property.zoning) ? null : "Zoning missing",
     present(admin.parking) || present(property.parking) ? null : "Parking details missing",
   ]);
 
-  const mediaBlockers = uniq([]);
+  const mediaBlockers = uniq([
+    images.length > 0 ? null : "At least one property photo is required",
+  ]);
   const mediaWarnings = uniq([
-    images.length > 0 ? null : "No property photos uploaded",
     images.some((image: Record<string, any>) => image?.isPrimary === true) || images.length <= 1 ? null : "Hero image flag not set on gallery",
   ]);
 
@@ -185,12 +195,12 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
     saleActive && !present(content.saleDescription) ? "Sale description missing" : null,
     leaseActive && !present(content.leaseDescription) ? "Lease description missing" : null,
     present(content.locationDescription) ? null : "Location description missing",
+    (Array.isArray(content.saleBullets) && content.saleBullets.length > 0) || (Array.isArray(content.leaseBullets) && content.leaseBullets.length > 0)
+      ? null
+      : "At least one listing bullet is required",
   ]);
   const copyWarnings = uniq([
     present(content.exteriorDescription) ? null : "Exterior description missing",
-    (Array.isArray(content.saleBullets) && content.saleBullets.length > 0) || (Array.isArray(content.leaseBullets) && content.leaseBullets.length > 0)
-      ? null
-      : "Bullets not finalized",
   ]);
 
   const buildoutBlockers = uniq(buildoutMissingFields.map((field: string) => labelBuildoutField(field)));
@@ -310,9 +320,13 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     !buildoutMissingFields.includes("address.street") ? "Street address" : null,
     !buildoutMissingFields.includes("address.city") ? "City" : null,
     !buildoutMissingFields.includes("address.state") ? "State" : null,
+    !buildoutMissingFields.includes("address.county") ? "County" : null,
     !buildoutMissingFields.includes("property.category") ? "Property category" : null,
+    !buildoutMissingFields.includes("property.parcelId") ? "Parcel ID" : null,
+    !buildoutMissingFields.includes("property.zoning") ? "Zoning" : null,
     !buildoutMissingFields.includes("content.saleTitle") ? "Buildout title" : null,
     !buildoutMissingFields.includes("content.saleDescription") ? "Sale description" : null,
+    !buildoutMissingFields.includes("content.leaseDescription") ? "Lease description" : null,
     !buildoutMissingFields.includes("content.locationDescription") ? "Location description" : null,
   ]);
 
