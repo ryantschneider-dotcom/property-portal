@@ -80,6 +80,23 @@ type AdminPropertyFormProps = {
         buildout: { status: "ok" | "warning" | "blocked"; blockers: string[]; warnings: string[] };
       };
     };
+    revisionWorkflow?: {
+      currentRequest?: {
+        id: string | null;
+        createdAt: string | null;
+        createdBy: string | null;
+        createdByName: string | null;
+        status: string | null;
+        summary: string | null;
+        categories: Array<{
+          code: string;
+          title: string;
+          severity: "warning" | "blocker";
+          items: string[];
+        }>;
+      } | null;
+      historyCount?: number;
+    };
     reviewChecklist?: {
       successfulScrapes: string[];
       partialScrapes: string[];
@@ -148,6 +165,31 @@ function preflightTone(state: "blocked" | "publish_ready_with_warnings" | "publi
   }
 }
 
+type RevisionCategoryFormRow = {
+  code: "identity" | "pricing" | "media" | "copy" | "facts" | "buildout" | "compliance";
+  title: string;
+  severity: "warning" | "blocker";
+  items: string;
+};
+
+const REVISION_CATEGORY_OPTIONS: Array<RevisionCategoryFormRow["code"]> = ["identity", "pricing", "media", "copy", "facts", "buildout", "compliance"];
+
+function revisionCategoryLabel(code: RevisionCategoryFormRow["code"]) {
+  return ({
+    identity: "Identity",
+    pricing: "Pricing",
+    media: "Media",
+    copy: "Copy",
+    facts: "Facts",
+    buildout: "Buildout",
+    compliance: "Compliance",
+  }[code]);
+}
+
+function createRevisionCategoryRow(code: RevisionCategoryFormRow["code"] = "identity"): RevisionCategoryFormRow {
+  return { code, title: revisionCategoryLabel(code), severity: "blocker", items: "" };
+}
+
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
@@ -177,6 +219,17 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
   const [approvalState, setApprovalState] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [approvalNote, setApprovalNote] = useState<string>(workflow?.approvalDecisionNote ?? workflow?.approvalRejectionReason ?? "");
+  const [revisionSummary, setRevisionSummary] = useState<string>(workflow?.revisionWorkflow?.currentRequest?.summary ?? "");
+  const [revisionCategories, setRevisionCategories] = useState<RevisionCategoryFormRow[]>(
+    workflow?.revisionWorkflow?.currentRequest?.categories?.length
+      ? workflow.revisionWorkflow.currentRequest.categories.map((category) => ({
+          code: (category.code as RevisionCategoryFormRow["code"]) || "identity",
+          title: category.title,
+          severity: category.severity,
+          items: category.items.join("\n"),
+        }))
+      : [createRevisionCategoryRow()],
+  );
   const [exportState, setExportState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [exportPreview, setExportPreview] = useState<Record<string, unknown> | null>(null);
@@ -207,6 +260,29 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
 
   function update<K extends keyof AdminPropertyFormData>(key: K, value: AdminPropertyFormData[K]) {
     setFormData((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateRevisionCategory(index: number, patch: Partial<RevisionCategoryFormRow>) {
+    setRevisionCategories((current) => current.map((row, rowIndex) => {
+      if (rowIndex !== index) return row;
+      const next = { ...row, ...patch };
+      if (patch.code) {
+        next.title = revisionCategoryLabel(patch.code);
+      }
+      return next;
+    }));
+  }
+
+  function addRevisionCategory() {
+    setRevisionCategories((current) => {
+      const used = new Set(current.map((row) => row.code));
+      const nextCode = REVISION_CATEGORY_OPTIONS.find((code) => !used.has(code)) ?? "identity";
+      return [...current, createRevisionCategoryRow(nextCode)];
+    });
+  }
+
+  function removeRevisionCategory(index: number) {
+    setRevisionCategories((current) => current.length === 1 ? current : current.filter((_, rowIndex) => rowIndex !== index));
   }
 
   async function handlePhotoUpload() {
@@ -342,6 +418,15 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
     setApprovalMessage(null);
 
     try {
+      const normalizedRevisionCategories = revisionCategories
+        .map((category) => ({
+          code: category.code,
+          title: category.title,
+          severity: category.severity,
+          items: category.items.split(/\n+/).map((item) => item.trim()).filter(Boolean),
+        }))
+        .filter((category) => category.items.length > 0);
+
       const response = await fetch(`/api/admin/properties/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -349,6 +434,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
           slug: formData.slug,
           note: approvalNote,
           reason: action === "reject" ? approvalNote : undefined,
+          summary: action === "reject" ? revisionSummary : undefined,
+          categories: action === "reject" ? normalizedRevisionCategories : undefined,
         }),
       });
       const payload = await response.json();
@@ -970,7 +1057,32 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 </div>
               ) : null}
 
-              {(workflow?.approvalRejectionReason || workflow?.approvalDecisionNote) ? (
+              {workflow?.revisionWorkflow?.currentRequest ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em]">Current send-back request</p>
+                      <p className="mt-2 text-base font-semibold text-zinc-900">{workflow.revisionWorkflow.currentRequest.summary || "Structured revisions required before approval."}</p>
+                    </div>
+                    <span className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
+                      {workflow.revisionWorkflow.currentRequest.status || "open"}
+                    </span>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {workflow.revisionWorkflow.currentRequest.categories.map((category) => (
+                      <div key={`${category.code}-${category.title}`} className="rounded-2xl border border-white/70 bg-white/70 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold text-zinc-900">{category.title}</p>
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase ${category.severity === "blocker" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>{category.severity}</span>
+                        </div>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-zinc-700">
+                          {category.items.map((item) => <li key={`${category.code}-${item}`}>{item}</li>)}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (workflow?.approvalRejectionReason || workflow?.approvalDecisionNote) ? (
                 <div className={`rounded-2xl border p-4 text-sm space-y-2 ${workflow?.approvalStatus === "rejected" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-zinc-200 bg-zinc-50 text-zinc-700"}`}>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em]">{workflow?.approvalStatus === "rejected" ? "Changes requested" : "Admin decision note"}</p>
                   {workflow?.approvalRejectionReason ? <p>{workflow.approvalRejectionReason}</p> : null}
@@ -991,6 +1103,51 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                     <textarea className={`${inputClassName()} min-h-28`} value={approvalNote} onChange={(e) => setApprovalNote(e.target.value)} />
                   </Field>
 
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-zinc-900">Structured send-back package</p>
+                        <p className="mt-1 text-sm text-zinc-500">Group the rejection by category so the broker knows exactly what to fix.</p>
+                      </div>
+                      <button type="button" onClick={addRevisionCategory} className="inline-flex items-center rounded-2xl border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-100">
+                        Add category
+                      </button>
+                    </div>
+                    <Field label="Broker summary">
+                      <textarea className={`${inputClassName()} min-h-24`} value={revisionSummary} onChange={(e) => setRevisionSummary(e.target.value)} placeholder="Example: Approval blocked until pricing, media, and zoning gaps are corrected." />
+                    </Field>
+                    <div className="space-y-3">
+                      {revisionCategories.map((category, index) => (
+                        <div key={`${category.code}-${index}`} className="rounded-2xl border border-zinc-200 bg-white p-4">
+                          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                            <label className="block space-y-2">
+                              <span className="text-sm font-medium text-zinc-700">Category</span>
+                              <select className={inputClassName()} value={category.code} onChange={(e) => updateRevisionCategory(index, { code: e.target.value as RevisionCategoryFormRow["code"] })}>
+                                {REVISION_CATEGORY_OPTIONS.map((option) => <option key={option} value={option}>{revisionCategoryLabel(option)}</option>)}
+                              </select>
+                            </label>
+                            <label className="block space-y-2">
+                              <span className="text-sm font-medium text-zinc-700">Severity</span>
+                              <select className={inputClassName()} value={category.severity} onChange={(e) => updateRevisionCategory(index, { severity: e.target.value as RevisionCategoryFormRow["severity"] })}>
+                                <option value="blocker">Blocker</option>
+                                <option value="warning">Warning</option>
+                              </select>
+                            </label>
+                            <div className="flex items-end">
+                              <button type="button" onClick={() => removeRevisionCategory(index)} className="inline-flex w-full items-center justify-center rounded-2xl border border-zinc-300 bg-white px-3 py-3 text-sm font-semibold text-zinc-700 transition hover:border-red-400 hover:text-red-600">
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                          <label className="mt-3 block space-y-2">
+                            <span className="text-sm font-medium text-zinc-700">Issue list</span>
+                            <textarea className={`${inputClassName()} min-h-24`} value={category.items} onChange={(e) => updateRevisionCategory(index, { items: e.target.value })} placeholder="One requested fix per line" />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="grid gap-3 md:grid-cols-2">
                     <button
                       type="button"
@@ -1003,7 +1160,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                     <button
                       type="button"
                       onClick={() => handleApproval("reject")}
-                      disabled={!formData.slug || approvalState === "saving"}
+                      disabled={!formData.slug || approvalState === "saving" || !revisionCategories.some((category) => category.items.trim())}
                       className="inline-flex w-full items-center justify-center rounded-2xl border border-amber-700 bg-amber-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {approvalState === "saving" ? "Saving decision…" : "Reject / Send Back"}

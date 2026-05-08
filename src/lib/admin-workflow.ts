@@ -72,6 +72,23 @@ export type AdminWorkflowSnapshot = {
   buildoutMissingFields: string[];
   buildoutWarnings: string[];
   preflight: AdminPreflightSnapshot;
+  revisionWorkflow: {
+    currentRequest: {
+      id: string | null;
+      createdAt: string | null;
+      createdBy: string | null;
+      createdByName: string | null;
+      status: string | null;
+      summary: string | null;
+      categories: Array<{
+        code: string;
+        title: string;
+        severity: "warning" | "blocker";
+        items: string[];
+      }>;
+    } | null;
+    historyCount: number;
+  };
   reviewChecklist: {
     successfulScrapes: string[];
     partialScrapes: string[];
@@ -235,6 +252,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
   const intake = meta.intake ?? {};
   const enrichment = meta.enrichment ?? {};
   const approval = meta.approval ?? {};
+  const revisionWorkflow = meta.revisionWorkflow ?? {};
   const exportMeta = meta.export ?? {};
   const research = meta.research ?? {};
   const copy = meta.copy ?? {};
@@ -355,6 +373,7 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
       : "ready";
 
   const preflight = evaluateAdminPreflight(raw);
+  const currentRevisionRequest = revisionWorkflow.currentRequest ?? null;
 
   return {
     documentId: doc.id,
@@ -419,6 +438,27 @@ export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkf
     buildoutMissingFields,
     buildoutWarnings,
     preflight,
+    revisionWorkflow: {
+      currentRequest: currentRevisionRequest
+        ? {
+            id: asString(currentRevisionRequest.id),
+            createdAt: asString(currentRevisionRequest.createdAt),
+            createdBy: asString(currentRevisionRequest.createdBy),
+            createdByName: asString(currentRevisionRequest.createdByName),
+            status: asString(currentRevisionRequest.status),
+            summary: asString(currentRevisionRequest.summary),
+            categories: Array.isArray(currentRevisionRequest.categories)
+              ? currentRevisionRequest.categories.map((category: any) => ({
+                  code: asString(category.code) || "",
+                  title: asString(category.title) || asString(category.code) || "",
+                  severity: category.severity === "warning" ? "warning" : "blocker",
+                  items: Array.isArray(category.items) ? category.items.map((item: unknown) => asString(item)).filter(Boolean) : [],
+                }))
+              : [],
+          }
+        : null,
+      historyCount: Array.isArray(revisionWorkflow.history) ? revisionWorkflow.history.length : 0,
+    },
     reviewChecklist: {
       successfulScrapes,
       partialScrapes,
