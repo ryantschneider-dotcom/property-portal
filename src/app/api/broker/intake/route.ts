@@ -20,22 +20,25 @@ import { parsePortalSession } from "@/lib/portal-session";
 type SuiteRow = {
   suiteNumber: string;
   availableSqFt: string;
+  baseRent: string;
+  rentType: string;
+  unpriced?: boolean;
 };
 
 type IntakePayload = {
   slug?: string;
+  heroPhotoKey?: string | null;
   addressStreet: string;
   city: string;
-  state: string;
+  state: "GA" | "SC";
   zip: string;
   county: string;
   parcelId: string;
   propertyType: "Office" | "Industrial" | "Retail" | "Land" | "Multi-Family" | "";
-  transactionType: "Sale" | "Lease" | "Both";
+  transactionType: "Sale" | "Lease";
   salePrice: string;
+  saleUnpriced?: boolean;
   grossAcres: string;
-  leaseRate: string;
-  leaseType: "NNN" | "Modified Net" | "Modified Gross" | "Gross" | "";
   brokerNotes: string;
   leadBrokers: string[];
   suites: SuiteRow[];
@@ -45,10 +48,7 @@ function visibilityFromTransaction(transactionType: IntakePayload["transactionTy
   if (transactionType === "Sale") {
     return { transactionLabel: "For Sale", saleActive: true, leaseActive: false };
   }
-  if (transactionType === "Lease") {
-    return { transactionLabel: "For Lease", saleActive: false, leaseActive: true };
-  }
-  return { transactionLabel: "For Sale/Lease", saleActive: true, leaseActive: true };
+  return { transactionLabel: "For Lease", saleActive: false, leaseActive: true };
 }
 
 export async function POST(request: Request) {
@@ -74,30 +74,43 @@ export async function POST(request: Request) {
     const payload = JSON.parse(String(formData.get("payload") ?? "{}")) as IntakePayload;
     const files = formData.getAll("assets").filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-    const isSale = payload.transactionType === "Sale" || payload.transactionType === "Both";
-    const isLease = payload.transactionType === "Lease" || payload.transactionType === "Both";
     const slug = payload.slug?.trim() || buildListingSlug(payload.addressStreet, payload.city, payload.propertyType || "property");
     const normalizedParcelId = normalizeParcelId(payload.parcelId, payload.county);
-    const suites = (payload.suites ?? []).filter((suite) => suite.suiteNumber?.trim() || suite.availableSqFt?.trim());
+    const suites = (payload.suites ?? []).filter((suite) => suite.suiteNumber?.trim() || suite.availableSqFt?.trim() || suite.baseRent?.trim());
 
-    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId) {
-      return NextResponse.json({ error: "Address, county, and parcel number are required." }, { status: 400 });
+    if (!payload.addressStreet || !payload.city || !payload.state || !payload.county || !normalizedParcelId || !payload.propertyType || !payload.transactionType) {
+      return NextResponse.json({ error: "Street address, city, state, county, parcel ID, property type, and transaction type are required." }, { status: 400 });
+    }
+
+    if (!["GA", "SC"].includes(payload.state)) {
+      return NextResponse.json({ error: "State must be GA or SC." }, { status: 400 });
+    }
+
+    if (payload.transactionType === "Sale" && !payload.saleUnpriced && !payload.salePrice.trim()) {
+      return NextResponse.json({ error: "Sale listings require a sale price or Unpriced / Inquire." }, { status: 400 });
     }
 
     if (payload.propertyType === "Land" && !payload.grossAcres.trim()) {
       return NextResponse.json({ error: "Gross acres are required for land listings." }, { status: 400 });
     }
 
-    if (isLease) {
-      const firstSuite = suites[0];
-      if (!payload.leaseRate.trim() || !payload.leaseType || !firstSuite?.suiteNumber?.trim() || !firstSuite?.availableSqFt?.trim()) {
-        return NextResponse.json({ error: "Lease rate, lease type, and at least one suite row are required for lease listings." }, { status: 400 });
+    if (payload.transactionType === "Lease") {
+      if (!suites.length) {
+        return NextResponse.json({ error: "Lease listings require at least one suite row." }, { status: 400 });
+      }
+      for (const suite of suites) {
+        if (!suite.suiteNumber?.trim() || !suite.availableSqFt?.trim() || !suite.rentType?.trim() || (!suite.unpriced && !suite.baseRent?.trim())) {
+          return NextResponse.json({ error: "Each suite requires Suite #, Suite Size, Rent Type, and either Base Rent or Unpriced / Inquire." }, { status: 400 });
+        }
       }
     }
 
     const uploadedAssets = await Promise.all(files.map((file, index) => uploadBrokerAsset("intake", slug, file, index)));
     const imageAssets = uploadedAssets.filter((asset) => asset.documentType === "photo");
     const documentAssets = uploadedAssets.filter((asset) => asset.documentType !== "photo");
+    const heroAsset = imageAssets.find((asset) => `${asset.filename}-${asset.sizeBytes}-${files.find((file) => file.name === asset.filename && file.size === asset.sizeBytes)?.lastModified}` === payload.heroPhotoKey)
+      ?? imageAssets[0]
+      ?? null;
     const now = new Date().toISOString();
     const title = `${payload.addressStreet}, ${payload.city}, ${payload.state}`;
     const visibility = visibilityFromTransaction(payload.transactionType);
@@ -135,8 +148,9 @@ export async function POST(request: Request) {
           parcelId: normalizedParcelId,
         },
         pricing: {
-          salePriceDollars: parseOptionalNumber(payload.salePrice),
-          askingPriceRatePerSf: parseOptionalNumber(payload.leaseRate),
+          salePriceDollars: payload.saleUnpriced ? null : parseOptionalNumber(payload.salePrice),
+          salePriceIsCallForPrice: payload.transactionType === "Sale" ? payload.saleUnpriced === true : false,
+          askingPriceRatePerSf: null,
           availableSqFt: suites.reduce<number | null>((sum, suite) => {
             const value = parseOptionalNumber(suite.availableSqFt);
             if (value == null) return sum;
@@ -154,12 +168,12 @@ export async function POST(request: Request) {
           leaseBullets: [],
         },
         media: {
-          heroImageUrl: imageAssets[0]?.urls?.large ?? null,
+          heroImageUrl: heroAsset?.urls?.large ?? null,
           images: imageAssets.map((asset) => ({
             id: asset.id,
             title: asset.title,
             caption: null,
-            isPrimary: Boolean(asset.isPrimary),
+            isPrimary: heroAsset ? asset.id === heroAsset.id : Boolean(asset.isPrimary),
             sortOrder: asset.sortOrder,
             urls: asset.urls,
           })),
@@ -174,7 +188,7 @@ export async function POST(request: Request) {
           })),
         },
         admin: {
-          leaseType: payload.leaseType || null,
+          leaseType: payload.transactionType === "Lease" ? (suites.length === 1 ? suites[0].rentType : null) : null,
           suites,
           propertyTypeLabel: payload.propertyType || null,
           intakeNotes: payload.brokerNotes || null,
@@ -183,7 +197,7 @@ export async function POST(request: Request) {
         meta: {
           updatedAt: now,
           intake: {
-            intake_version: "broker_hub_v1",
+            intake_version: "broker_hub_v2",
             address_street: payload.addressStreet,
             city: payload.city,
             state: payload.state,
@@ -194,13 +208,13 @@ export async function POST(request: Request) {
             property_type: payload.propertyType,
             transaction_type: payload.transactionType,
             sale_price: payload.salePrice,
+            sale_unpriced: payload.saleUnpriced === true,
             gross_acres: payload.grossAcres,
-            lease_rate_per_sf: payload.leaseRate,
-            lease_type: payload.leaseType,
             suites,
             broker_notes: payload.brokerNotes,
             lead_brokers: payload.leadBrokers,
             uploaded_asset_count: uploadedAssets.length,
+            hero_photo_key: payload.heroPhotoKey || null,
           },
           enrichment: {
             status: "queued",

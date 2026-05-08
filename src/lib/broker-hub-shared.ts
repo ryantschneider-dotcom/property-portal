@@ -21,8 +21,9 @@ export const BROKER_HUB_COUNTIES = [
 ] as const;
 
 export const BROKER_HUB_PROPERTY_TYPES = ["Office", "Industrial", "Retail", "Land", "Multi-Family"] as const;
-export const BROKER_HUB_TRANSACTION_TYPES = ["Sale", "Lease", "Both"] as const;
-export const BROKER_HUB_LEASE_TYPES = ["NNN", "Modified Net", "Modified Gross", "Gross"] as const;
+export const BROKER_HUB_TRANSACTION_TYPES = ["Sale", "Lease"] as const;
+export const BROKER_HUB_STATES = ["GA", "SC"] as const;
+export const BROKER_HUB_LEASE_TYPES = ["NNN", "NN", "Gross", "Modified Gross", "Modified Net", "Full Service", "Absolute NNN", "Ground Lease"] as const;
 export const BROKER_HUB_BROKERS = ["Ryan", "Anthony", "Joel"] as const;
 
 export type BrokerHubCounty = (typeof BROKER_HUB_COUNTIES)[number];

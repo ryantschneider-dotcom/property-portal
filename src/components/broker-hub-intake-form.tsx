@@ -8,6 +8,7 @@ import {
   BROKER_HUB_COUNTIES,
   BROKER_HUB_LEASE_TYPES,
   BROKER_HUB_PROPERTY_TYPES,
+  BROKER_HUB_STATES,
   buildListingSlug,
 } from "@/lib/broker-hub-shared";
 
@@ -15,21 +16,23 @@ type SuiteRow = {
   id: string;
   suiteNumber: string;
   availableSqFt: string;
+  baseRent: string;
+  rentType: string;
+  unpriced: boolean;
 };
 
 type IntakeState = {
   addressStreet: string;
   city: string;
-  state: string;
+  state: "GA" | "SC";
   zip: string;
   county: string;
   parcelId: string;
   propertyType: string;
-  transactionType: "Sale" | "Lease" | "Both";
+  transactionType: "Sale" | "Lease";
   salePrice: string;
+  saleUnpriced: boolean;
   grossAcres: string;
-  leaseRate: string;
-  leaseType: string;
   brokerNotes: string;
   leadBrokers: string[];
 };
@@ -58,15 +61,14 @@ const initialState: IntakeState = {
   propertyType: "",
   transactionType: "Sale",
   salePrice: "",
+  saleUnpriced: false,
   grossAcres: "",
-  leaseRate: "",
-  leaseType: "",
   brokerNotes: "",
   leadBrokers: [],
 };
 
-function inputClassName() {
-  return "w-full rounded-xl border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10";
+function inputClassName(required = false, invalid = false) {
+  return `w-full rounded-xl border bg-white px-3 py-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10 ${invalid ? "border-red-400 bg-red-50" : required ? "border-zinc-400" : "border-zinc-300"}`;
 }
 
 function sectionCardClassName() {
@@ -74,7 +76,11 @@ function sectionCardClassName() {
 }
 
 function createSuite(): SuiteRow {
-  return { id: Math.random().toString(36).slice(2), suiteNumber: "", availableSqFt: "" };
+  return { id: Math.random().toString(36).slice(2), suiteNumber: "", availableSqFt: "", baseRent: "", rentType: "", unpriced: false };
+}
+
+function RequiredLabel({ children }: { children: React.ReactNode }) {
+  return <span className="text-sm font-medium text-zinc-700">{children} <span className="text-red-600">*</span></span>;
 }
 
 export function BrokerHubIntakeForm() {
@@ -83,16 +89,32 @@ export function BrokerHubIntakeForm() {
   const [formData, setFormData] = useState<IntakeState>(initialState);
   const [suites, setSuites] = useState<SuiteRow[]>([createSuite()]);
   const [files, setFiles] = useState<File[]>([]);
+  const [heroPhotoKey, setHeroPhotoKey] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
   const [reviewChecklist, setReviewChecklist] = useState<ReviewChecklist | null>(null);
 
-  const isSale = formData.transactionType === "Sale" || formData.transactionType === "Both";
-  const isLease = formData.transactionType === "Lease" || formData.transactionType === "Both";
+  const isSale = formData.transactionType === "Sale";
+  const isLease = formData.transactionType === "Lease";
   const isLand = formData.propertyType === "Land";
   const suggestedSlug = useMemo(() => buildListingSlug(formData.addressStreet, formData.city, formData.propertyType), [formData.addressStreet, formData.city, formData.propertyType]);
+  const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+  const requiredSummary = [
+    "Street Address",
+    "City",
+    "State",
+    "County",
+    "Parcel ID",
+    "Property Type",
+    "Transaction Type",
+    ...(isSale ? ["Sale Price or Unpriced / Inquire"] : ["At least one complete suite row"]),
+  ];
+
+  function fileKey(file: File) {
+    return `${file.name}-${file.size}-${file.lastModified}`;
+  }
 
   function update<K extends keyof IntakeState>(key: K, value: IntakeState[K]) {
     setFormData((current) => ({ ...current, [key]: value }));
@@ -109,12 +131,26 @@ export function BrokerHubIntakeForm() {
 
   function addFiles(nextFiles: File[]) {
     setFiles((current) => {
-      const existing = new Set(current.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
-      return [...current, ...nextFiles.filter((file) => !existing.has(`${file.name}-${file.size}-${file.lastModified}`))];
+      const existing = new Set(current.map((file) => fileKey(file)));
+      const merged = [...current, ...nextFiles.filter((file) => !existing.has(fileKey(file)))];
+      const images = merged.filter((file) => file.type.startsWith("image/"));
+      if (!heroPhotoKey && images[0]) setHeroPhotoKey(fileKey(images[0]));
+      return merged;
     });
   }
 
-  function updateSuite(id: string, key: keyof Omit<SuiteRow, "id">, value: string) {
+  function removeFile(target: File) {
+    setFiles((current) => {
+      const next = current.filter((entry) => entry !== target);
+      const nextImages = next.filter((file) => file.type.startsWith("image/"));
+      if (heroPhotoKey === fileKey(target)) {
+        setHeroPhotoKey(nextImages[0] ? fileKey(nextImages[0]) : null);
+      }
+      return next;
+    });
+  }
+
+  function updateSuite(id: string, key: keyof Omit<SuiteRow, "id">, value: string | boolean) {
     setSuites((current) => current.map((suite) => (suite.id === id ? { ...suite, [key]: value } : suite)));
   }
 
@@ -136,7 +172,8 @@ export function BrokerHubIntakeForm() {
         JSON.stringify({
           ...formData,
           slug: suggestedSlug,
-          suites: suites.filter((suite) => suite.suiteNumber.trim() || suite.availableSqFt.trim()),
+          heroPhotoKey,
+          suites: suites.filter((suite) => suite.suiteNumber.trim() || suite.availableSqFt.trim() || suite.baseRent.trim()),
         }),
       );
       files.forEach((file) => body.append("assets", file));
@@ -155,6 +192,7 @@ export function BrokerHubIntakeForm() {
       setFormData(initialState);
       setSuites([createSuite()]);
       setFiles([]);
+      setHeroPhotoKey(null);
       router.refresh();
     } catch (error) {
       console.error(error);
@@ -164,71 +202,74 @@ export function BrokerHubIntakeForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl flex-col gap-4">
+    <form onSubmit={handleSubmit} className="mx-auto flex max-w-4xl flex-col gap-4">
       <section className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 text-white">
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">Internal Intake</p>
         <h3 className="mt-2 text-xl font-semibold tracking-tight">Create new listing draft</h3>
-        <p className="mt-2 text-sm text-zinc-300">Enter the core facts first. After submit, the system will create the draft, normalize parcel data, and kick off enrichment.</p>
+        <p className="mt-2 text-sm text-zinc-300">Required before submit: {requiredSummary.join(", ")}.</p>
       </section>
 
       <section className={sectionCardClassName()}>
         <div className="mb-4 border-b border-zinc-200 pb-3">
           <h3 className="text-base font-semibold text-zinc-950">1. Property basics</h3>
-          <p className="mt-1 text-sm text-zinc-500">Required fields only. Keep it fast and accurate.</p>
+          <p className="mt-1 text-sm text-zinc-500">Asterisks mark the minimum fields needed to create the draft. Parcel format can be entered naturally — backend normalization handles county-specific cleanup.</p>
         </div>
         <div className="flex flex-col gap-4">
           <label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Street address</span>
-            <input className={inputClassName()} value={formData.addressStreet} onChange={(event) => update("addressStreet", event.target.value)} required />
+            <RequiredLabel>Street address</RequiredLabel>
+            <input className={inputClassName(true)} value={formData.addressStreet} onChange={(event) => update("addressStreet", event.target.value)} required />
           </label>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">City</span>
-              <input className={inputClassName()} value={formData.city} onChange={(event) => update("city", event.target.value)} required />
+              <RequiredLabel>City</RequiredLabel>
+              <input className={inputClassName(true)} value={formData.city} onChange={(event) => update("city", event.target.value)} required />
             </label>
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">State</span>
-              <input className={inputClassName()} value={formData.state} onChange={(event) => update("state", event.target.value)} required />
+              <RequiredLabel>State</RequiredLabel>
+              <select className={inputClassName(true)} value={formData.state} onChange={(event) => update("state", event.target.value as "GA" | "SC")} required>
+                {BROKER_HUB_STATES.map((state) => <option key={state} value={state}>{state}</option>)}
+              </select>
             </label>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-700">ZIP</span>
               <input className={inputClassName()} value={formData.zip} onChange={(event) => update("zip", event.target.value)} inputMode="numeric" />
             </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">County</span>
-              <select className={inputClassName()} value={formData.county} onChange={(event) => update("county", event.target.value)} required>
-                <option value="">Select county</option>
-                {BROKER_HUB_COUNTIES.map((county) => (
-                  <option key={county} value={county}>{county}</option>
-                ))}
-              </select>
-            </label>
           </div>
-          <label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-700">Parcel ID</span>
-            <input className={inputClassName()} value={formData.parcelId} onChange={(event) => update("parcelId", event.target.value)} required />
-          </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">Property type</span>
-              <select className={inputClassName()} value={formData.propertyType} onChange={(event) => update("propertyType", event.target.value)}>
-                <option value="">Select type</option>
-                {BROKER_HUB_PROPERTY_TYPES.map((propertyType) => (
-                  <option key={propertyType} value={propertyType}>{propertyType}</option>
-                ))}
+              <RequiredLabel>County</RequiredLabel>
+              <select className={inputClassName(true)} value={formData.county} onChange={(event) => update("county", event.target.value)} required>
+                <option value="">Select county</option>
+                {BROKER_HUB_COUNTIES.map((county) => <option key={county} value={county}>{county}</option>)}
               </select>
             </label>
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">Transaction type</span>
-              <select className={inputClassName()} value={formData.transactionType} onChange={(event) => update("transactionType", event.target.value as IntakeState["transactionType"])}>
-                <option value="Sale">Sale</option>
-                <option value="Lease">Lease</option>
-                <option value="Both">Both</option>
+              <RequiredLabel>Parcel ID</RequiredLabel>
+              <input className={inputClassName(true)} value={formData.parcelId} onChange={(event) => update("parcelId", event.target.value)} required />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="space-y-2">
+              <RequiredLabel>Property type</RequiredLabel>
+              <select className={inputClassName(true)} value={formData.propertyType} onChange={(event) => update("propertyType", event.target.value)} required>
+                <option value="">Select type</option>
+                {BROKER_HUB_PROPERTY_TYPES.map((propertyType) => <option key={propertyType} value={propertyType}>{propertyType}</option>)}
+              </select>
+            </label>
+            <label className="space-y-2">
+              <RequiredLabel>Transaction type</RequiredLabel>
+              <select className={inputClassName(true)} value={formData.transactionType} onChange={(event) => update("transactionType", event.target.value as "Sale" | "Lease")} required>
+                <option value="Sale">For Sale</option>
+                <option value="Lease">For Lease</option>
               </select>
             </label>
           </div>
+          {isLand ? (
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-zinc-700">Gross acres</span>
+              <input className={inputClassName()} value={formData.grossAcres} onChange={(event) => update("grossAcres", event.target.value)} inputMode="decimal" />
+            </label>
+          ) : null}
           <label className="space-y-2">
             <span className="text-sm font-medium text-zinc-700">Draft slug</span>
             <input className={`${inputClassName()} bg-zinc-100`} value={suggestedSlug} readOnly />
@@ -238,70 +279,68 @@ export function BrokerHubIntakeForm() {
 
       <section className={sectionCardClassName()}>
         <div className="mb-4 border-b border-zinc-200 pb-3">
-          <h3 className="text-base font-semibold text-zinc-950">2. Deal terms</h3>
-          <p className="mt-1 text-sm text-zinc-500">Only show the pricing fields that matter for this listing.</p>
+          <h3 className="text-base font-semibold text-zinc-950">2. Pricing / deal structure</h3>
+          <p className="mt-1 text-sm text-zinc-500">Show only the deal fields that matter for the chosen transaction type.</p>
         </div>
-        <div className="flex flex-col gap-4">
-          {isSale ? (
+        {isSale ? (
+          <div className="space-y-4">
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">Sale price</span>
-              <input className={inputClassName()} value={formData.salePrice} onChange={(event) => update("salePrice", event.target.value)} inputMode="decimal" />
+              <RequiredLabel>Sale price</RequiredLabel>
+              <input className={inputClassName(true, !formData.saleUnpriced && !formData.salePrice)} value={formData.salePrice} onChange={(event) => update("salePrice", event.target.value)} inputMode="decimal" disabled={formData.saleUnpriced} required={!formData.saleUnpriced} />
             </label>
-          ) : null}
-          {isLand ? (
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-700">Gross acres</span>
-              <input className={inputClassName()} value={formData.grossAcres} onChange={(event) => update("grossAcres", event.target.value)} inputMode="decimal" required={isLand} />
+            <label className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800">
+              <input type="checkbox" checked={formData.saleUnpriced} onChange={(event) => update("saleUnpriced", event.target.checked)} />
+              <span>Unpriced / Inquire</span>
             </label>
-          ) : null}
-          {isLease ? (
-            <>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-700">Lease rate ($/SF)</span>
-                <input className={inputClassName()} value={formData.leaseRate} onChange={(event) => update("leaseRate", event.target.value)} inputMode="decimal" required={isLease} />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-zinc-700">Lease type</span>
-                <select className={inputClassName()} value={formData.leaseType} onChange={(event) => update("leaseType", event.target.value)} required={isLease}>
-                  <option value="">Select lease type</option>
-                  {BROKER_HUB_LEASE_TYPES.map((leaseType) => (
-                    <option key={leaseType} value={leaseType}>{leaseType}</option>
-                  ))}
-                </select>
-              </label>
-              <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-sm font-semibold text-zinc-900">Available suites</h4>
-                    <p className="text-xs text-zinc-500">One row per space.</p>
-                  </div>
-                  <button type="button" onClick={() => setSuites((current) => [...current, createSuite()])} className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-950">
-                    Add suite
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {suites.map((suite, index) => (
-                    <div key={suite.id} className="grid gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
-                      <label className="space-y-2">
-                        <span className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Suite {index + 1}</span>
-                        <input className={inputClassName()} value={suite.suiteNumber} onChange={(event) => updateSuite(suite.id, "suiteNumber", event.target.value)} placeholder="Suite number" required={isLease && index === 0} />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-xs font-medium uppercase tracking-[0.18em] text-zinc-500">Available SF</span>
-                        <input className={inputClassName()} value={suite.availableSqFt} onChange={(event) => updateSuite(suite.id, "availableSqFt", event.target.value)} placeholder="Square feet" inputMode="numeric" required={isLease && index === 0} />
-                      </label>
-                      <div className="flex items-end">
-                        <button type="button" onClick={() => removeSuite(suite.id)} className="inline-flex w-full items-center justify-center rounded-lg border border-zinc-300 px-3 py-3 text-sm font-semibold text-zinc-700 transition hover:border-red-500 hover:text-red-600">
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          </div>
+        ) : null}
+        {isLease ? (
+          <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-zinc-900">Suites</h4>
+                <p className="text-xs text-zinc-500">Each lease listing needs at least one complete suite row.</p>
               </div>
-            </>
-          ) : null}
-        </div>
+              <button type="button" onClick={() => setSuites((current) => [...current, createSuite()])} className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-950">
+                + Add another suite
+              </button>
+            </div>
+            <div className="space-y-3">
+              {suites.map((suite, index) => (
+                <div key={suite.id} className="grid gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-2 xl:grid-cols-5">
+                  <label className="space-y-2">
+                    <RequiredLabel>Suite #</RequiredLabel>
+                    <input className={inputClassName(true)} value={suite.suiteNumber} onChange={(event) => updateSuite(suite.id, "suiteNumber", event.target.value)} placeholder="Suite number" required={index === 0} />
+                  </label>
+                  <label className="space-y-2">
+                    <RequiredLabel>Suite size</RequiredLabel>
+                    <input className={inputClassName(true)} value={suite.availableSqFt} onChange={(event) => updateSuite(suite.id, "availableSqFt", event.target.value)} placeholder="Square feet" inputMode="numeric" required={index === 0} />
+                  </label>
+                  <label className="space-y-2">
+                    <RequiredLabel>Base rent</RequiredLabel>
+                    <input className={inputClassName(true)} value={suite.baseRent} onChange={(event) => updateSuite(suite.id, "baseRent", event.target.value)} placeholder="$/SF or monthly" inputMode="decimal" disabled={suite.unpriced} required={index === 0 && !suite.unpriced} />
+                  </label>
+                  <label className="space-y-2">
+                    <RequiredLabel>Rent type</RequiredLabel>
+                    <select className={inputClassName(true)} value={suite.rentType} onChange={(event) => updateSuite(suite.id, "rentType", event.target.value)} required={index === 0}>
+                      <option value="">Select rent type</option>
+                      {BROKER_HUB_LEASE_TYPES.map((leaseType) => <option key={leaseType} value={leaseType}>{leaseType}</option>)}
+                    </select>
+                  </label>
+                  <div className="flex flex-col justify-end gap-2">
+                    <label className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-800">
+                      <input type="checkbox" checked={suite.unpriced} onChange={(event) => updateSuite(suite.id, "unpriced", event.target.checked)} />
+                      <span>Unpriced / Inquire</span>
+                    </label>
+                    <button type="button" onClick={() => removeSuite(suite.id)} className="inline-flex items-center justify-center rounded-lg border border-zinc-300 px-3 py-3 text-sm font-semibold text-zinc-700 transition hover:border-red-500 hover:text-red-600">
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className={sectionCardClassName()}>
@@ -311,7 +350,7 @@ export function BrokerHubIntakeForm() {
         </div>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-zinc-700">Broker notes / brain dump</span>
-          <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, politics, tenant status, pricing reality, missing facts." />
+          <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, tenant status, pricing reality, missing facts." />
         </label>
         <div className="mt-4 space-y-3">
           <span className="text-sm font-medium text-zinc-700">Lead broker (optional)</span>
@@ -332,7 +371,7 @@ export function BrokerHubIntakeForm() {
       <section className={sectionCardClassName()}>
         <div className="mb-4 border-b border-zinc-200 pb-3">
           <h3 className="text-base font-semibold text-zinc-950">4. Photos and files</h3>
-          <p className="mt-1 text-sm text-zinc-500">Attach source photos, flyers, OM pages, tax docs, or PDFs.</p>
+          <p className="mt-1 text-sm text-zinc-500">Photos are strongly recommended but not required. If you upload images, mark one as the HERO / Main Photo.</p>
         </div>
         <div
           className={`rounded-xl border-2 border-dashed px-4 py-8 text-center transition ${dragActive ? "border-zinc-950 bg-zinc-100" : "border-zinc-300 bg-white"}`}
@@ -356,17 +395,34 @@ export function BrokerHubIntakeForm() {
         </div>
         <div className="mt-4 space-y-2">
           {files.length === 0 ? <p className="text-sm text-zinc-500">No files selected.</p> : null}
-          {files.map((file) => (
-            <div key={`${file.name}-${file.lastModified}`} className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium text-zinc-900">{file.name}</p>
-                <p className="text-xs text-zinc-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
+          {files.map((file) => {
+            const isImage = file.type.startsWith("image/");
+            const isHero = heroPhotoKey === fileKey(file);
+            return (
+              <div key={fileKey(file)} className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-zinc-900">{file.name}</p>
+                    <p className="text-xs text-zinc-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
+                  </div>
+                  <button type="button" onClick={() => removeFile(file)} className="text-sm font-semibold text-zinc-500 transition hover:text-red-600">
+                    Remove
+                  </button>
+                </div>
+                {isImage ? (
+                  <div className="mt-3 flex items-center gap-3 text-xs">
+                    <label className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-semibold ${isHero ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-zinc-300 bg-zinc-50 text-zinc-700"}`}>
+                      <input type="radio" name="hero-photo" checked={isHero} onChange={() => setHeroPhotoKey(fileKey(file))} />
+                      <span>{isHero ? "HERO / Main Photo" : "Set as HERO / Main Photo"}</span>
+                    </label>
+                    {!isHero ? <span className="text-zinc-500">Additional Photo</span> : null}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-zinc-500">Supporting document</p>
+                )}
               </div>
-              <button type="button" onClick={() => setFiles((current) => current.filter((entry) => entry !== file))} className="text-sm font-semibold text-zinc-500 transition hover:text-red-600">
-                Remove
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
