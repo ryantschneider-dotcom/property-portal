@@ -6,7 +6,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { getCountyEnrichmentPlan } from "@/lib/broker-hub-shared";
 import { db, PROPERTIES_COLLECTION, storage } from "@/lib/firestore";
-import { runLaunchpadEnrichment } from "@/lib/launchpad-enrichment";
+import { hasLaunchpadServiceConfig, runLaunchpadEnrichment } from "@/lib/launchpad-enrichment";
 
 function asString(value: unknown): string {
   return value == null ? "" : String(value).trim();
@@ -612,11 +612,12 @@ export async function enrichPropertyDraft(slug: string) {
       hasExistingLocation: Boolean(raw.location),
       hasMapsKey: Boolean(getMapsApiKey()),
       hasOpenAiKey: Boolean(getOpenAiApiKey()),
+      hasLaunchpadServiceConfig: hasLaunchpadServiceConfig(),
     });
     launchpad = await runLaunchpadEnrichment(row, raw.location ?? null);
   } catch (error) {
     launchpadFailure = error instanceof Error ? error.message : String(error);
-    console.error("[enrich] Launchpad enrichment failed; falling back to native node enrichment", {
+    console.error("[enrich] Launchpad service failed; falling back to native node enrichment", {
       slug,
       error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
     });

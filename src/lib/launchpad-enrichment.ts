@@ -1,39 +1,6 @@
 import "server-only";
 
-import { execFile } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import path from "path";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
-const PROJECT_ROOT = process.cwd();
-const WORKSPACE_ROOT = path.resolve(PROJECT_ROOT, "..");
-const LAUNCHPAD_PATH_CANDIDATES = [
-  path.join(PROJECT_ROOT, "scripts", "listing_launchpad.py"),
-  path.join(WORKSPACE_ROOT, "scripts", "listing_launchpad.py"),
-  "/data/.openclaw/workspace/property-portal/scripts/listing_launchpad.py",
-  "/data/.openclaw/workspace/scripts/listing_launchpad.py",
-];
-const PYTHON_CANDIDATES = [
-  process.env.PYTHON_BIN,
-  process.env.OPENCLAW_PYTHON_BIN,
-  "/opt/homebrew/bin/python3",
-  "/opt/homebrew/bin/python3.13",
-  "/usr/local/bin/python3",
-  "/usr/local/bin/python3.13",
-  "/usr/bin/python3",
-  "/usr/bin/python3.13",
-  "python3",
-  "python3.13",
-  "python",
-].filter(Boolean) as string[];
-const ENV_CANDIDATES = [
-  "/data/.openclaw/workspace/scripts/.env",
-  path.join(PROJECT_ROOT, ".env.local"),
-  path.join(PROJECT_ROOT, ".env"),
-  path.join(PROJECT_ROOT, "scripts", ".env"),
-  path.join(WORKSPACE_ROOT, "scripts", ".env"),
-];
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 type LaunchpadResearchResult = {
   public_records?: Record<string, unknown>;
@@ -42,166 +9,79 @@ type LaunchpadResearchResult = {
   ai_copy?: Record<string, unknown>;
 };
 
-function parseEnvFile(filePath: string) {
-  const text = readFileSync(filePath, "utf8");
-  const values: Record<string, string> = {};
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const index = trimmed.indexOf("=");
-    const key = trimmed.slice(0, index).trim();
-    const value = trimmed.slice(index + 1).trim();
-    if (key) values[key] = value;
+function asString(value: unknown) {
+  return value == null ? "" : String(value).trim();
+}
+
+function getLaunchpadServiceUrl() {
+  return asString(process.env.LAUNCHPAD_SERVICE_URL || process.env.LAUNCHPAD_API_URL);
+}
+
+function getLaunchpadServiceToken() {
+  return asString(process.env.LAUNCHPAD_SERVICE_TOKEN || process.env.LAUNCHPAD_API_TOKEN);
+}
+
+function getLaunchpadServiceTimeoutMs() {
+  const raw = Number(process.env.LAUNCHPAD_SERVICE_TIMEOUT_MS || process.env.LAUNCHPAD_API_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
+}
+
+export function hasLaunchpadServiceConfig() {
+  return Boolean(getLaunchpadServiceUrl());
+}
+
+export async function runLaunchpadEnrichment(
+  row: Record<string, unknown>,
+  mapCoordinates?: { lat?: number | null; lng?: number | null } | null,
+) {
+  const serviceUrl = getLaunchpadServiceUrl();
+  if (!serviceUrl) {
+    throw new Error("LAUNCHPAD_SERVICE_URL missing in Node runtime");
   }
-  return values;
-}
 
-function resolveEnvPath() {
-  return ENV_CANDIDATES.find((candidate) => existsSync(candidate)) ?? null;
-}
-
-function loadScriptEnv() {
-  const envPath = resolveEnvPath();
-  if (!envPath) return {};
+  const timeoutMs = getLaunchpadServiceTimeoutMs();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return parseEnvFile(envPath);
-  } catch {
-    return {};
-  }
-}
+    const response = await fetch(`${serviceUrl.replace(/\/$/, "")}/enrich`, {
+      method: "POST",
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(getLaunchpadServiceToken() ? { Authorization: `Bearer ${getLaunchpadServiceToken()}` } : {}),
+      },
+      body: JSON.stringify({
+        row,
+        mapCoordinates: mapCoordinates ?? null,
+      }),
+    });
 
-function resolveLaunchpadPath() {
-  return LAUNCHPAD_PATH_CANDIDATES.find((candidate) => existsSync(candidate)) ?? LAUNCHPAD_PATH_CANDIDATES[0];
-}
-
-function resolvePythonBinary() {
-  const searchDirs = Array.from(new Set([
-    ...((process.env.PATH || "").split(":").filter(Boolean)),
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-    "/bin",
-  ]));
-
-  for (const candidate of PYTHON_CANDIDATES) {
-    if (!candidate) continue;
-    if (candidate.includes("/")) {
-      if (existsSync(candidate)) return candidate;
-      continue;
-    }
-
-    for (const dir of searchDirs) {
-      const fullPath = path.join(dir, candidate);
-      if (existsSync(fullPath)) return fullPath;
-    }
-  }
-
-  return null;
-}
-
-function parseJsonBlock(stdout: string) {
-  const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const candidate = lines.slice(i).join("\n");
+    const text = await response.text();
+    let payload: Record<string, unknown> = {};
     try {
-      return JSON.parse(candidate) as LaunchpadResearchResult;
+      payload = text ? JSON.parse(text) as Record<string, unknown> : {};
     } catch {
-      // keep scanning upward for the final JSON block
+      throw new Error(`Launchpad service returned non-JSON response (${response.status})`);
     }
+
+    if (!response.ok) {
+      throw new Error(asString(payload.error) || `Launchpad service failed (${response.status})`);
+    }
+
+    return {
+      public_records: (payload.public_records as Record<string, unknown> | undefined) ?? {},
+      places: (payload.places as Record<string, unknown> | undefined) ?? {},
+      research: (payload.research as Record<string, unknown> | undefined) ?? {},
+      ai_copy: (payload.ai_copy as Record<string, unknown> | undefined) ?? {},
+    } satisfies LaunchpadResearchResult;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Launchpad service timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  throw new Error("Unable to parse launchpad enrichment output");
-}
-
-export async function runLaunchpadEnrichment(row: Record<string, unknown>, mapCoordinates?: { lat?: number | null; lng?: number | null } | null) {
-  const env = {
-    ...loadScriptEnv(),
-    ...process.env,
-  };
-
-  const envPath = resolveEnvPath();
-  const launchpadPath = resolveLaunchpadPath();
-  const pythonBin = resolvePythonBinary();
-
-  if (!pythonBin) {
-    throw new Error("Python runtime not found for Launchpad enrichment. Set PYTHON_BIN or install python3 in the runtime image.");
-  }
-
-  console.log("[enrich][launchpad] starting python enrichment", {
-    address: row.street_name,
-    city: row.city,
-    state: row.state,
-    zip: row.zip_code,
-    projectRoot: PROJECT_ROOT,
-    cwdExists: existsSync(PROJECT_ROOT),
-    launchpadPath,
-    launchpadExists: existsSync(launchpadPath),
-    envPath,
-    hasInputCoordinates: Boolean(mapCoordinates?.lat != null && mapCoordinates?.lng != null),
-    hasOpenAiKey: Boolean(env.OPENAI_API_KEY),
-    hasMapsKey: Boolean(env.Maps_API_KEY),
-    openAiModel: env.OPENAI_MODEL || null,
-    pythonBin,
-  });
-
-  const script = `
-import importlib.util, json, os
-from pathlib import Path
-
-launchpad_path = ${JSON.stringify(launchpadPath)}
-env_path = ${JSON.stringify(envPath)}
-if env_path and Path(env_path).exists():
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(env_path)
-    except Exception:
-        pass
-
-spec = importlib.util.spec_from_file_location('listing_launchpad', launchpad_path)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-
-row = json.loads(${JSON.stringify(JSON.stringify(row))})
-coords = json.loads(${JSON.stringify(JSON.stringify(mapCoordinates ?? {}))})
-map_coordinates = None
-if isinstance(coords, dict) and coords.get('lat') is not None and coords.get('lng') is not None:
-    map_coordinates = {'lat': coords.get('lat'), 'lng': coords.get('lng')}
-
-public_records = module.research_public_records_placeholder(row)
-places = module.research_google_places(row, map_coordinates)
-research = module.enrich_research_package(row, public_records, {'public_records': public_records, 'places': places})
-public_records = research.get('public_records') or public_records
-places = research.get('places') or places
-ai_copy = module.generate_ai_copy(row, public_records, research)
-
-print(json.dumps({
-    'public_records': public_records,
-    'places': places,
-    'research': research,
-    'ai_copy': ai_copy,
-}, default=str))
-`.trim();
-
-  const { stdout, stderr } = await execFileAsync(pythonBin, ["-c", script], {
-    cwd: path.dirname(launchpadPath),
-    env: {
-      ...env,
-      PATH: process.env.PATH || "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-    },
-    maxBuffer: 1024 * 1024 * 8,
-  });
-
-  if (stderr && stderr.trim()) {
-    console.warn("[enrich][launchpad] python stderr", stderr.trim());
-  }
-
-  const parsed = parseJsonBlock(stdout);
-  console.log("[enrich][launchpad] completed python enrichment", {
-    placesStatus: parsed.places && typeof parsed.places === "object" ? (parsed.places as Record<string, unknown>).status ?? null : null,
-    aiGenerator: parsed.ai_copy && typeof parsed.ai_copy === "object" ? (parsed.ai_copy as Record<string, unknown>).generator ?? null : null,
-    aiError: parsed.ai_copy && typeof parsed.ai_copy === "object" ? (parsed.ai_copy as Record<string, unknown>).error ?? null : null,
-    researchKeys: parsed.research && typeof parsed.research === "object" ? Object.keys(parsed.research) : [],
-  });
-
-  return parsed;
 }

@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const frameAncestors = ["'self'", "https://piercommercial.com", "https://www.piercommercial.com", "https://broker.piercommercial.com"].join(" ");
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   images: {
     remotePatterns: [
       {
