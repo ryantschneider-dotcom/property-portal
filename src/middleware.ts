@@ -22,7 +22,8 @@ export function middleware(request: NextRequest) {
     }
 
     const allowedBrokerPaths = new Set(['/broker', '/broker/new', '/broker/revisions']);
-    if (!allowedBrokerPaths.has(path) && !path.startsWith('/api/')) {
+    const isAdminPath = path.startsWith('/admin') || path.startsWith('/api/admin');
+    if (!allowedBrokerPaths.has(path) && !path.startsWith('/api/') && !isAdminPath) {
       return NextResponse.redirect(new URL('/broker', request.url));
     }
   }
