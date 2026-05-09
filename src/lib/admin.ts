@@ -12,6 +12,7 @@ import type { PropertyDetail } from "@/lib/types";
 
 export type AdminPropertyListItem = {
   id: string;
+  documentId: string;
   slug: string;
   title: string;
   address: string | null;
@@ -220,6 +221,7 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       const reviewState = blockedIssueCount > 0 ? "blocked" : (thinExtraction || !buildoutReady) ? "needs_manual_followup" : "ready";
       return {
         id: doc.id,
+        documentId: doc.id,
         slug: asString(data.slug),
         title: asString(data.title) || "Untitled Property",
         address: asString(address.full || address.street) || null,

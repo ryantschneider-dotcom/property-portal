@@ -98,7 +98,7 @@ export default async function PropertiesDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {activeProperties.map((property) => (
           <div
-            key={property.id}
+            key={property.documentId}
             className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col"
           >
             <div className="h-48 bg-gray-100 relative border-b border-gray-200 flex items-center justify-center overflow-hidden">
@@ -182,7 +182,7 @@ export default async function PropertiesDashboard() {
 
             <div className="p-4 bg-gray-50 border-t border-gray-100">
               <Link
-                href={`/admin/properties/${property.id}/edit`}
+                href={`/admin/properties/${property.documentId}/edit`}
                 className={`block w-full rounded-lg border px-4 py-2 text-center text-sm font-semibold tracking-wide shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${property.workflowStatus === "ready_for_approval" ? "border-emerald-700 bg-emerald-600 !text-white hover:bg-emerald-700 focus:ring-emerald-700" : property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "border-amber-700 bg-amber-600 !text-white hover:bg-amber-700 focus:ring-amber-700" : "border-gray-900 bg-gray-900 !text-white hover:bg-black hover:!text-white focus:ring-gray-900"}`}
               >
                 {property.workflowStatus === "ready_for_approval" ? "Review Submission" : property.workflowStatus === "needs_input" || property.approvalStatus === "rejected" ? "Review Changes" : "Edit Details"}
@@ -203,7 +203,7 @@ export default async function PropertiesDashboard() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Archived listings</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {archivedProperties.map((property) => (
-              <Link key={`archived-${property.id}`} href={`/admin/properties/${property.id}/edit`} className="rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-zinc-400 hover:shadow-sm">
+              <Link key={`archived-${property.documentId}`} href={`/admin/properties/${property.documentId}/edit`} className="rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-zinc-400 hover:shadow-sm">
                 <p className="font-semibold text-zinc-900">{displayValue(property.title, "Untitled Property")}</p>
                 <p className="mt-1 text-sm text-zinc-500">{displayValue(property.address, "No address listed")}</p>
                 <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-amber-700">Archived</p>

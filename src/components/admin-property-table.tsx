@@ -22,7 +22,7 @@ export function AdminPropertyTable({ properties }: AdminPropertyTableProps) {
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {properties.map((property) => (
-              <tr key={property.id} className="hover:bg-zinc-50/80">
+              <tr key={property.documentId} className="hover:bg-zinc-50/80">
                 <td className="px-6 py-5 align-top">
                   <p className="font-semibold text-zinc-900">{property.title}</p>
                   <p className="mt-1 text-zinc-500">{property.address ?? "Address unavailable"}</p>
@@ -34,7 +34,7 @@ export function AdminPropertyTable({ properties }: AdminPropertyTableProps) {
                 <td className="px-6 py-5 align-top">
                   <div className="flex justify-end gap-3">
                     <Link
-                      href={`/admin/properties/${property.id}/edit`}
+                      href={`/admin/properties/${property.documentId}/edit`}
                       className="rounded-full border border-zinc-300 px-4 py-2 font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900"
                     >
                       Edit
