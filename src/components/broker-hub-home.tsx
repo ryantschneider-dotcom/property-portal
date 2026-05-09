@@ -90,7 +90,7 @@ export function BrokerHubHome({ countyHealth, listings }: BrokerHubHomeProps) {
         {reviewQueue.length ? (
           <div className="mt-4 grid gap-3">
             {reviewQueue.map((item) => (
-              <Link key={item.id} href={`/admin/properties/${item.slug || item.id}/edit`} className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-4 transition hover:border-zinc-400 hover:bg-white">
+              <Link key={item.id} href={`/admin/properties/${item.id}/edit`} className="rounded-[1.5rem] border border-zinc-200 bg-zinc-50 p-4 transition hover:border-zinc-400 hover:bg-white">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
                     <p className="text-base font-semibold text-zinc-950">{item.title}</p>

@@ -32,6 +32,15 @@ export type AdminPropertyListItem = {
   missingFieldCount: number;
   blockedIssueCount: number;
   buildoutReady: boolean;
+  launchPackageStatus: string | null;
+  exportWorkflowStatus: string | null;
+  exportDestination: string | null;
+  exportReadyReasons: string[];
+  exportBlockingReasons: string[];
+  exportWarningReasons: string[];
+  exportCount: number;
+  lastExportResult: string | null;
+  lastExportErrorMessage: string | null;
   revisionWorkflow: {
     currentRequest: {
       id: string | null;
@@ -191,6 +200,9 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       const places = (research.places as Record<string, unknown> | undefined) ?? {};
       const streetView = (research.street_view as Record<string, unknown> | undefined) ?? {};
       const exportMeta = (meta.export as Record<string, unknown> | undefined) ?? {};
+      const launchPackage = (meta.launchPackage as Record<string, unknown> | undefined) ?? {};
+      const exportWorkflow = (meta.exportWorkflow as Record<string, unknown> | undefined) ?? {};
+      const lastExportAttempt = (exportWorkflow.lastExportAttempt as Record<string, unknown> | undefined) ?? {};
       const revisionWorkflow = (meta.revisionWorkflow as Record<string, unknown> | undefined) ?? {};
       const currentRevisionRequest = (revisionWorkflow.currentRequest as Record<string, unknown> | undefined) ?? null;
       const primaryImage = images.find((image) => image?.isPrimary === true) ?? images[0] ?? {};
@@ -228,6 +240,15 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
         missingFieldCount,
         blockedIssueCount,
         buildoutReady,
+        launchPackageStatus: asString(launchPackage.status) || null,
+        exportWorkflowStatus: asString(exportWorkflow.status) || null,
+        exportDestination: asString(exportWorkflow.destination) || null,
+        exportReadyReasons: Array.isArray(exportWorkflow.readyReasons) ? exportWorkflow.readyReasons.map((item) => asString(item)).filter(Boolean) : [],
+        exportBlockingReasons: Array.isArray(exportWorkflow.blockingReasons) ? exportWorkflow.blockingReasons.map((item) => asString(item)).filter(Boolean) : [],
+        exportWarningReasons: Array.isArray(exportWorkflow.warningReasons) ? exportWorkflow.warningReasons.map((item) => asString(item)).filter(Boolean) : [],
+        exportCount: Number(exportWorkflow.exportCount ?? 0) || 0,
+        lastExportResult: asString(lastExportAttempt.result) || null,
+        lastExportErrorMessage: asString(lastExportAttempt.errorMessage) || null,
         revisionWorkflow: {
           currentRequest: currentRevisionRequest
             ? {
@@ -256,6 +277,55 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
       return property.ownerEmail?.toLowerCase() === session.email.toLowerCase();
     })
     .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+export type ExportConsoleBucket = "ready" | "queued" | "failed";
+
+export type ExportConsoleItem = Pick<
+  AdminPropertyListItem,
+  | "id"
+  | "slug"
+  | "title"
+  | "address"
+  | "ownerEmail"
+  | "transactionLabel"
+  | "workflowStatus"
+  | "launchPackageStatus"
+  | "exportWorkflowStatus"
+  | "exportDestination"
+  | "exportReadyReasons"
+  | "exportBlockingReasons"
+  | "exportWarningReasons"
+  | "exportCount"
+  | "lastExportResult"
+  | "lastExportErrorMessage"
+  | "updatedAt"
+> & {
+  bucket: ExportConsoleBucket;
+};
+
+export async function listExportConsoleItems(session?: PortalSession | null): Promise<ExportConsoleItem[]> {
+  const properties = await listAdminProperties(session);
+
+  return properties
+    .filter((property) => property.workflowStatus === "approved")
+    .map((property) => {
+      const exportStatus = (property.exportWorkflowStatus || "").toLowerCase();
+      const lastResult = (property.lastExportResult || "").toLowerCase();
+
+      let bucket: ExportConsoleBucket = "ready";
+      if (["queued", "exporting", "in_progress"].includes(exportStatus)) {
+        bucket = "queued";
+      } else if (["failed", "error"].includes(exportStatus) || ["failed", "error"].includes(lastResult)) {
+        bucket = "failed";
+      }
+
+      return {
+        ...property,
+        bucket,
+      };
+    })
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 }
 
 function healthFromLiveStatus(input: {

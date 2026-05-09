@@ -34,7 +34,7 @@ export function AdminPropertyTable({ properties }: AdminPropertyTableProps) {
                 <td className="px-6 py-5 align-top">
                   <div className="flex justify-end gap-3">
                     <Link
-                      href={`/admin/properties/${property.slug}/edit`}
+                      href={`/admin/properties/${property.id}/edit`}
                       className="rounded-full border border-zinc-300 px-4 py-2 font-medium text-zinc-700 transition hover:border-zinc-900 hover:text-zinc-900"
                     >
                       Edit
