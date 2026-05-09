@@ -113,7 +113,8 @@ export function BrokerIntakeForm() {
         return;
       }
 
-      router.push(`/admin/properties/${payload.slug}/edit?intake=1`);
+      const propertyIdentifier = payload.id ?? payload.slug;
+      router.push(`/admin/properties/${propertyIdentifier}/edit?intake=1`);
       router.refresh();
     } catch (error) {
       console.error(error);

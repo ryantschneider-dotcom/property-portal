@@ -1,6 +1,6 @@
 import "server-only";
 
-import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
+import { getPropertyDocumentByIdentifier } from "@/lib/properties";
 
 export type AdminPreflightSnapshot = {
   status: "blocked" | "publish_ready_with_warnings" | "publish_ready";
@@ -313,9 +313,8 @@ export function evaluateAdminPreflight(raw: Record<string, any>): AdminPreflight
 }
 
 export async function getAdminWorkflowSnapshot(slug: string): Promise<AdminWorkflowSnapshot | null> {
-  const query = await db.collection(PROPERTIES_COLLECTION).where("slug", "==", slug).limit(1).get();
-  const doc = !query.empty ? query.docs[0] : await db.collection(PROPERTIES_COLLECTION).doc(slug).get();
-  if (!doc.exists) return null;
+  const doc = await getPropertyDocumentByIdentifier(slug);
+  if (!doc?.exists) return null;
 
   const raw = (doc.data() as Record<string, any> | undefined) ?? {};
   const meta = raw.meta ?? {};

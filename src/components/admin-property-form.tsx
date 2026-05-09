@@ -625,7 +625,8 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
     } else if (payload.sync?.skipped) {
       setErrorMessage(`Saved to Listing Stream. Ascendix sync skipped: ${payload.sync.message}`);
     }
-    router.push(`/admin/properties/${payload.slug}/edit?saved=1`);
+    const propertyIdentifier = payload.id ?? payload.slug;
+    router.push(`/admin/properties/${propertyIdentifier}/edit?saved=1`);
     router.refresh();
   }
 
