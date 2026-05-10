@@ -31,3 +31,4 @@ const app = initFirebaseAdmin();
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const PROPERTIES_COLLECTION = "properties";
+export const PUBLIC_LISTINGS_COLLECTION = "public_listings";

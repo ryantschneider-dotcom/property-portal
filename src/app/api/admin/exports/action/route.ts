@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { revalidatePath } from "next/cache";
 
-import { persistLaunchExecutionState } from "@/lib/launch-package";
+import { persistLaunchExecutionState, publishLaunchPackageToListingStream } from "@/lib/launch-package";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { parsePortalSession } from "@/lib/portal-session";
 
@@ -43,78 +43,60 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Property not found" }, { status: 404 });
     }
 
-    const raw = (doc.data() as Record<string, any> | undefined) ?? {};
-    const slug = typeof raw.slug === "string" && raw.slug.trim() ? raw.slug.trim() : doc.id;
-
     if (action === "build_package") {
-      const result = await persistLaunchExecutionState(slug, session.email);
+      const result = await persistLaunchExecutionState(doc.id, session.email);
       revalidatePath("/admin/exports");
       revalidatePath("/admin/properties");
       revalidatePath(`/admin/properties/${doc.id}/edit`);
-      return NextResponse.json({ success: true, message: "Launch package rebuilt.", result });
+      return NextResponse.json({ success: true, message: "Launch package rebuilt for ListingStream.", result });
     }
-
-    const exportCountBase = Number(raw.meta?.exportWorkflow?.exportCount ?? 0) || 0;
-    const now = FieldValue.serverTimestamp();
-    const update: Record<string, unknown> = {
-      meta: {
-        updatedAt: now,
-        exportWorkflow: {
-          destination: raw.meta?.exportWorkflow?.destination ?? "buildout",
-        },
-      },
-    };
 
     if (action === "queue_export" || action === "retry_export") {
-      update.meta = {
-        ...((update.meta as Record<string, unknown>) ?? {}),
-        exportWorkflow: {
-          destination: raw.meta?.exportWorkflow?.destination ?? "buildout",
-          status: "queued",
-          queuedAt: now,
-          queuedBy: session.email,
-          exportCount: exportCountBase + 1,
-          lastExportAttempt: {
-            attemptedAt: now,
-            attemptedBy: session.email,
-            result: action === "retry_export" ? "retry_queued" : "queued",
-            errorMessage: null,
-          },
-        },
-      };
+      try {
+        const result = await publishLaunchPackageToListingStream(doc.id, session.email);
+        revalidatePath("/admin/exports");
+        revalidatePath("/admin/properties");
+        revalidatePath(`/admin/properties/${doc.id}/edit`);
+        return NextResponse.json({
+          success: true,
+          message: action === "retry_export" ? "ListingStream publish retried successfully." : "Published to ListingStream.",
+          result,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "Missing Geolocation") {
+          revalidatePath("/admin/exports");
+          revalidatePath("/admin/properties");
+          revalidatePath(`/admin/properties/${doc.id}/edit`);
+          return NextResponse.json({ error: "Missing Geolocation" }, { status: 400 });
+        }
+        throw error;
+      }
     }
 
-    if (action === "mark_failed") {
-      update.meta = {
-        ...((update.meta as Record<string, unknown>) ?? {}),
-        exportWorkflow: {
-          destination: raw.meta?.exportWorkflow?.destination ?? "buildout",
-          status: "failed",
-          lastExportAttempt: {
-            attemptedAt: now,
-            attemptedBy: session.email,
-            result: "failed",
-            errorMessage: "Marked failed from Export Console.",
+    await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
+      {
+        meta: {
+          updatedAt: FieldValue.serverTimestamp(),
+          exportWorkflow: {
+            destination: "listingstream",
+            status: "failed",
+            lastExportAttempt: {
+              attemptedAt: FieldValue.serverTimestamp(),
+              attemptedBy: session.email,
+              result: "failed",
+              errorMessage: "Marked failed from Export Console.",
+            },
           },
         },
-      };
-    }
-
-    await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(update, { merge: true });
+      },
+      { merge: true },
+    );
 
     revalidatePath("/admin/exports");
     revalidatePath("/admin/properties");
     revalidatePath(`/admin/properties/${doc.id}/edit`);
 
-    return NextResponse.json({
-      success: true,
-      message:
-        action === "queue_export"
-          ? "Export queued."
-          : action === "retry_export"
-            ? "Export re-queued."
-            : "Export marked failed.",
-    });
+    return NextResponse.json({ success: true, message: "Export marked failed." });
   } catch (error) {
     console.error("Export console action error:", error);
     return NextResponse.json(

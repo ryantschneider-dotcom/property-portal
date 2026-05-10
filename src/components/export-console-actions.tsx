@@ -7,11 +7,11 @@ type ExportAction = "build_package" | "queue_export" | "retry_export" | "mark_fa
 
 export function ExportConsoleActions({
   propertyId,
-  canQueue,
+  canPublish,
   canRetry,
 }: {
   propertyId: string;
-  canQueue: boolean;
+  canPublish: boolean;
   canRetry: boolean;
 }) {
   const router = useRouter();
@@ -56,14 +56,14 @@ export function ExportConsoleActions({
         >
           {busyAction === "build_package" ? "Building…" : "Rebuild package"}
         </button>
-        {canQueue ? (
+        {canPublish ? (
           <button
             type="button"
             onClick={() => run("queue_export")}
             disabled={busyAction !== null}
             className="rounded-full bg-zinc-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busyAction === "queue_export" ? "Queueing…" : "Queue export"}
+            {busyAction === "queue_export" ? "Publishing…" : "Publish to ListingStream"}
           </button>
         ) : null}
         {canRetry ? (
@@ -73,7 +73,7 @@ export function ExportConsoleActions({
             disabled={busyAction !== null}
             className="rounded-full bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busyAction === "retry_export" ? "Retrying…" : "Retry export"}
+            {busyAction === "retry_export" ? "Retrying…" : "Retry Publish"}
           </button>
         ) : null}
         <button
