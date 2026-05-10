@@ -3,103 +3,69 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { ExportConsoleActions } from "@/components/export-console-actions";
+import { ExportPropertyCard } from "@/components/export-property-card";
 import { listExportConsoleItems } from "@/lib/admin";
+import type { ExportConsoleBucket, ExportConsoleItem } from "@/lib/export-console";
 import { getPortalSession } from "@/lib/portal-session";
 import { isAdminPortalRole } from "@/lib/users";
 
-function formatLabel(value: string | null | undefined, fallback = "—") {
-  if (!value) return fallback;
-  return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+function BucketSummaryCard({
+  label,
+  count,
+  className,
+  description,
+  href,
+}: {
+  label: string;
+  count: number;
+  className: string;
+  description: string;
+  href: string;
+}) {
+  return (
+    <Link href={href} className={`rounded-3xl border p-5 transition hover:shadow-sm ${className}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em]">{label}</p>
+      <p className="mt-2 text-3xl font-bold">{count}</p>
+      <p className="mt-2 text-sm opacity-90">{description}</p>
+    </Link>
+  );
 }
 
-function ExportBucket({
+function ExportBucketSection({
+  bucket,
   title,
   description,
-  tone,
   items,
 }: {
+  bucket: ExportConsoleBucket;
   title: string;
   description: string;
-  tone: "ready" | "queued" | "failed";
-  items: Awaited<ReturnType<typeof listExportConsoleItems>>;
+  items: ExportConsoleItem[];
 }) {
-  const tones = {
-    ready: "border-emerald-200 bg-emerald-50 text-emerald-950",
-    queued: "border-blue-200 bg-blue-50 text-blue-950",
-    failed: "border-red-200 bg-red-50 text-red-950",
+  const styles = {
+    ready: "border-emerald-200 bg-emerald-50",
+    queued: "border-blue-200 bg-blue-50",
+    warning: "border-amber-200 bg-amber-50",
+    failed: "border-red-200 bg-red-50",
+    completed: "border-zinc-300 bg-zinc-50",
   } as const;
 
   return (
-    <section className={`rounded-3xl border p-5 shadow-sm ${tones[tone]}`}>
-      <div className="flex items-start justify-between gap-4">
+    <section id={`bucket-${bucket}`} className={`scroll-mt-24 rounded-3xl border p-5 shadow-sm ${styles[bucket]}`}>
+      <div className="flex flex-col gap-3 border-b border-white/70 pb-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em]">{title}</p>
-          <p className="mt-2 text-sm opacity-80">{description}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-700">{title}</p>
+          <p className="mt-2 max-w-3xl text-sm text-zinc-700">{description}</p>
         </div>
-        <div className="rounded-full bg-white/70 px-3 py-1 text-sm font-semibold">{items.length}</div>
+        <div className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-zinc-800">{items.length} item{items.length === 1 ? "" : "s"}</div>
       </div>
 
       <div className="mt-5 space-y-4">
-        {items.length ? items.map((item) => {
-          const canQueue = item.bucket === "ready";
-          const canRetry = item.bucket === "failed";
-          return (
-            <article key={item.id} className="rounded-2xl border border-white/70 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-zinc-950">{item.title}</h3>
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
-                      {formatLabel(item.exportWorkflowStatus, "Not Ready")}
-                    </span>
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-700">
-                      Package: {formatLabel(item.launchPackageStatus, "Not Built")}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-zinc-600">{item.address || item.slug}</p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-600">
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-1">{item.transactionLabel || "Transaction unknown"}</span>
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-1">Destination: {item.exportDestination || "Buildout"}</span>
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-1">Exports: {item.exportCount}</span>
-                    {item.ownerEmail ? <span className="rounded-full bg-zinc-100 px-2.5 py-1">{item.ownerEmail}</span> : null}
-                  </div>
-
-                  {item.exportBlockingReasons.length ? (
-                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                      <p className="font-semibold">Blocking reasons</p>
-                      <ul className="mt-2 list-disc space-y-1 pl-5">
-                        {item.exportBlockingReasons.map((reason) => <li key={`${item.id}-block-${reason}`}>{reason}</li>)}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {!item.exportBlockingReasons.length && item.exportWarningReasons.length ? (
-                    <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-800">
-                      <p className="font-semibold">Warnings</p>
-                      <ul className="mt-2 list-disc space-y-1 pl-5">
-                        {item.exportWarningReasons.map((reason) => <li key={`${item.id}-warn-${reason}`}>{reason}</li>)}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {item.lastExportErrorMessage ? (
-                    <p className="mt-3 text-sm text-red-700">Last error: {item.lastExportErrorMessage}</p>
-                  ) : null}
-                </div>
-
-                <div className="w-full max-w-sm space-y-3 lg:w-80">
-                  <div className="flex flex-wrap gap-2">
-                    <Link href={`/admin/properties/${item.id}/edit`} className="rounded-full border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-800 transition hover:border-zinc-900 hover:text-zinc-950">
-                      Open listing
-                    </Link>
-                  </div>
-                  <ExportConsoleActions propertyId={item.id} canQueue={canQueue} canRetry={canRetry} />
-                </div>
-              </div>
-            </article>
-          );
-        }) : <p className="rounded-2xl border border-dashed border-white/70 bg-white/70 p-5 text-sm text-zinc-600">Nothing in this bucket right now.</p>}
+        {items.length ? items.map((item) => <ExportPropertyCard key={item.documentId} item={item} />) : (
+          <div className="rounded-2xl border border-dashed border-white/80 bg-white/70 p-5 text-sm text-zinc-600">
+            Nothing in this bucket right now.
+          </div>
+        )}
       </div>
     </section>
   );
@@ -114,7 +80,9 @@ export default async function AdminExportsPage() {
   const items = await listExportConsoleItems(session);
   const ready = items.filter((item) => item.bucket === "ready");
   const queued = items.filter((item) => item.bucket === "queued");
+  const warning = items.filter((item) => item.bucket === "warning");
   const failed = items.filter((item) => item.bucket === "failed");
+  const completed = items.filter((item) => item.bucket === "completed");
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10 lg:px-10 lg:py-12">
@@ -122,35 +90,37 @@ export default async function AdminExportsPage() {
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-zinc-500">Phase 5.2</p>
           <h1 className="mt-3 text-4xl font-semibold tracking-tight text-zinc-950">Export Console</h1>
-          <p className="mt-3 max-w-3xl text-zinc-600">Execution layer skeleton for approved listings. This keeps ready, queued, and failed export work separate from editorial approval while the downstream launch hooks harden.</p>
+          <p className="mt-3 max-w-3xl text-zinc-600">
+            Operational launch dashboard for approved listings. Buckets are separated cleanly so execution work, warnings, and failures stay visible instead of getting buried inside editorial review.
+          </p>
         </div>
         <Link href="/admin/properties" className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-800 transition hover:border-zinc-900 hover:text-zinc-950">
-          Back to inventory
+          Back to Inventory
         </Link>
       </div>
 
-      <div className="mb-8 grid gap-4 md:grid-cols-3">
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Ready</p>
-          <p className="mt-2 text-3xl font-bold text-emerald-950">{ready.length}</p>
-          <p className="mt-2 text-sm text-emerald-900">Approved listings with packaging complete enough to queue.</p>
-        </div>
-        <div className="rounded-3xl border border-blue-200 bg-blue-50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">Queued</p>
-          <p className="mt-2 text-3xl font-bold text-blue-950">{queued.length}</p>
-          <p className="mt-2 text-sm text-blue-900">Listings staged for export execution and awaiting downstream handling.</p>
-        </div>
-        <div className="rounded-3xl border border-red-200 bg-red-50 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-red-700">Failed</p>
-          <p className="mt-2 text-3xl font-bold text-red-950">{failed.length}</p>
-          <p className="mt-2 text-sm text-red-900">Listings that need a retry or explicit intervention before launch resumes.</p>
-        </div>
+      <div className="mb-6 flex flex-wrap gap-2 rounded-3xl border border-zinc-200 bg-white p-3 shadow-sm">
+        <Link href="#bucket-ready" className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100">Ready</Link>
+        <Link href="#bucket-queued" className="rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100">Queued</Link>
+        <Link href="#bucket-warning" className="rounded-full bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100">Warning</Link>
+        <Link href="#bucket-failed" className="rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100">Failed</Link>
+        <Link href="#bucket-completed" className="rounded-full bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-200">Completed</Link>
+      </div>
+
+      <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <BucketSummaryCard label="Ready" count={ready.length} description="Clean approved listings ready to hand into execution." href="#bucket-ready" className="border-emerald-200 bg-emerald-50 text-emerald-950" />
+        <BucketSummaryCard label="Queued" count={queued.length} description="Listings already staged for export execution." href="#bucket-queued" className="border-blue-200 bg-blue-50 text-blue-950" />
+        <BucketSummaryCard label="Warning" count={warning.length} description="Exportable listings carrying soft issues worth checking." href="#bucket-warning" className="border-amber-200 bg-amber-50 text-amber-950" />
+        <BucketSummaryCard label="Failed" count={failed.length} description="Listings blocked by export failures or hard errors." href="#bucket-failed" className="border-red-200 bg-red-50 text-red-950" />
+        <BucketSummaryCard label="Completed" count={completed.length} description="Exported listings kept visible for audit trail confidence." href="#bucket-completed" className="border-zinc-300 bg-zinc-50 text-zinc-950" />
       </div>
 
       <div className="space-y-6">
-        <ExportBucket title="Ready to export" description="Approved assets with a clean enough package state to move into execution." tone="ready" items={ready} />
-        <ExportBucket title="Queued exports" description="Execution work that has been intentionally queued but not yet marked complete." tone="queued" items={queued} />
-        <ExportBucket title="Failed exports" description="Failures surfaced separately so they do not get buried inside the approval queue." tone="failed" items={failed} />
+        <ExportBucketSection bucket="ready" title="Ready to Export" description="Approved listings with a clean enough package state to push directly into downstream execution." items={ready} />
+        <ExportBucketSection bucket="queued" title="Queued Exports" description="Listings intentionally staged for execution and waiting on downstream processing." items={queued} />
+        <ExportBucketSection bucket="warning" title="Warning Review" description="Approved listings with no hard blockers, but still carrying warnings or soft concerns that deserve attention." items={warning} />
+        <ExportBucketSection bucket="failed" title="Failed Exports" description="Listings that need retry or intervention before launch work can continue." items={failed} />
+        <ExportBucketSection bucket="completed" title="Completed Exports" description="Listings that have already been exported or marked complete, kept visible for operational audit trail." items={completed} />
       </div>
     </main>
   );

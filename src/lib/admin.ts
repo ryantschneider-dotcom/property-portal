@@ -8,6 +8,8 @@ import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import type { PortalSession } from "@/lib/portal-session";
 import { isAdminPortalRole } from "@/lib/users";
 import { getPropertyBySlug } from "@/lib/properties";
+import { buildExportConsoleItem, shouldIncludeInExportConsole } from "@/lib/export-console";
+import type { ExportConsoleItem } from "@/lib/export-console";
 import type { PropertyDetail } from "@/lib/types";
 
 export type AdminPropertyListItem = {
@@ -281,52 +283,12 @@ export async function listAdminProperties(session?: PortalSession | null): Promi
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
-export type ExportConsoleBucket = "ready" | "queued" | "failed";
-
-export type ExportConsoleItem = Pick<
-  AdminPropertyListItem,
-  | "id"
-  | "slug"
-  | "title"
-  | "address"
-  | "ownerEmail"
-  | "transactionLabel"
-  | "workflowStatus"
-  | "launchPackageStatus"
-  | "exportWorkflowStatus"
-  | "exportDestination"
-  | "exportReadyReasons"
-  | "exportBlockingReasons"
-  | "exportWarningReasons"
-  | "exportCount"
-  | "lastExportResult"
-  | "lastExportErrorMessage"
-  | "updatedAt"
-> & {
-  bucket: ExportConsoleBucket;
-};
-
 export async function listExportConsoleItems(session?: PortalSession | null): Promise<ExportConsoleItem[]> {
   const properties = await listAdminProperties(session);
 
   return properties
-    .filter((property) => property.workflowStatus === "approved")
-    .map((property) => {
-      const exportStatus = (property.exportWorkflowStatus || "").toLowerCase();
-      const lastResult = (property.lastExportResult || "").toLowerCase();
-
-      let bucket: ExportConsoleBucket = "ready";
-      if (["queued", "exporting", "in_progress"].includes(exportStatus)) {
-        bucket = "queued";
-      } else if (["failed", "error"].includes(exportStatus) || ["failed", "error"].includes(lastResult)) {
-        bucket = "failed";
-      }
-
-      return {
-        ...property,
-        bucket,
-      };
-    })
+    .filter((property) => shouldIncludeInExportConsole({ workflowStatus: property.workflowStatus }))
+    .map((property) => buildExportConsoleItem(property))
     .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 }
 
