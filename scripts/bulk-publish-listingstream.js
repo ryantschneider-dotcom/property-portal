@@ -1,6 +1,7 @@
 require('dotenv').config({ path: '/data/.openclaw/workspace/scripts/.env' });
 require('dotenv').config({ path: '/data/.openclaw/workspace/property-portal/.env.local' });
 
+const http = require('http');
 const https = require('https');
 
 const { cert, getApps, initializeApp } = require('firebase-admin/app');
@@ -15,6 +16,8 @@ const ACTOR_EMAIL = process.env.LISTINGSTREAM_BULK_PUBLISH_ACTOR || 'mac@opencla
 const BUILDOUT_API_KEY = (process.env.BUILDOUT_API_KEY || '').trim();
 const BUILDOUT_BASE_URL = (process.env.BUILDOUT_BASE_URL || 'https://buildout.com/api/v1').replace(/\/$/, '');
 const buildoutDetailCache = new Map();
+const buildoutPublicEmbedCache = new Map();
+const buildoutPluginHtmlCache = new Map();
 
 function initDb() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -33,9 +36,21 @@ function hasValidCoordinates(location) {
   return Number.isFinite(location?.lat) && Number.isFinite(location?.lng);
 }
 
-function requestJson(url) {
+function requestText(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+    const client = String(url).startsWith('http://') ? http : https;
+    client.get(url, { headers: { Accept: '*/*', 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+      if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        if (redirectCount >= 5) {
+          reject(new Error('Too many redirects'));
+          return;
+        }
+        const nextUrl = new URL(response.headers.location, url).toString();
+        response.resume();
+        requestText(nextUrl, redirectCount + 1).then(resolve).catch(reject);
+        return;
+      }
+
       let body = '';
       response.on('data', (chunk) => {
         body += chunk;
@@ -45,14 +60,19 @@ function requestJson(url) {
           reject(new Error(`Buildout request failed (${response.statusCode})`));
           return;
         }
-
-        try {
-          resolve(body ? JSON.parse(body) : {});
-        } catch (error) {
-          reject(error);
-        }
+        resolve(body);
       });
     }).on('error', reject);
+  });
+}
+
+function requestJson(url) {
+  return requestText(url).then((body) => {
+    try {
+      return body ? JSON.parse(body) : {};
+    } catch (error) {
+      throw error;
+    }
   });
 }
 
@@ -68,6 +88,117 @@ async function fetchBuildoutPropertyDetail(raw = {}) {
 
   buildoutDetailCache.set(buildoutId, promise);
   return promise;
+}
+
+function decodeHtmlEntities(value) {
+  if (!value) return '';
+  return String(value)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function stripHtml(value) {
+  return decodeHtmlEntities(String(value || ''))
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function slugifyMetricLabel(value) {
+  return stripHtml(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function pickPublicListingUrl(raw = {}) {
+  return normalizeString(raw.links?.leaseListingUrl || raw.links?.saleListingUrl || raw.links?.websiteUrl);
+}
+
+async function fetchBuildoutPublicEmbed(raw = {}) {
+  const listingUrl = pickPublicListingUrl(raw);
+  if (!listingUrl) return null;
+  if (buildoutPublicEmbedCache.has(listingUrl)) return buildoutPublicEmbedCache.get(listingUrl);
+
+  const promise = requestText(listingUrl).then((html) => {
+    const tokenMatch = html.match(/BuildOut\.embed\(\{[\s\S]*?token:\s*"([^"]+)"/i);
+    const pluginMatch = html.match(/BuildOut\.embed\(\{[\s\S]*?plugin:\s*"([^"]+)"/i);
+    const parsedUrl = new URL(listingUrl);
+    const propertyId = parsedUrl.searchParams.get('propertyId') || null;
+    if (!tokenMatch || !propertyId) return null;
+    return {
+      token: tokenMatch[1],
+      plugin: pluginMatch ? pluginMatch[1] : 'inventory',
+      host: parsedUrl.hostname,
+      propertyId,
+      listingUrl,
+    };
+  }).catch(() => null);
+
+  buildoutPublicEmbedCache.set(listingUrl, promise);
+  return promise;
+}
+
+async function fetchBuildoutPluginHtml(raw = {}) {
+  const embed = await fetchBuildoutPublicEmbed(raw);
+  if (!embed || embed.plugin !== 'inventory') return null;
+  const cacheKey = `${embed.token}:${embed.host}:${embed.propertyId}`;
+  if (buildoutPluginHtmlCache.has(cacheKey)) return buildoutPluginHtmlCache.get(cacheKey);
+
+  const url = `https://buildout.com/plugins/${embed.token}/${embed.host}/inventory/${embed.propertyId}?iframe=true&embedded=true&cacheSearch=true`;
+  const promise = requestText(url).catch(() => null);
+  buildoutPluginHtmlCache.set(cacheKey, promise);
+  return promise;
+}
+
+function parseDemographicsFromPluginHtml(html) {
+  if (!html || !/Demographics Map & Report/i.test(html)) return null;
+  const sectionMatch = html.match(/<div[^>]*class="[^"]*demographics[^"]*"[\s\S]*?<table[^>]*class="table"[^>]*>[\s\S]*?<\/table>/i);
+  const tableMatch = (sectionMatch ? sectionMatch[0] : html).match(/<table[^>]*class="table"[^>]*>[\s\S]*?<\/table>/i);
+  if (!tableMatch) return null;
+  const tableHtml = tableMatch[0];
+
+  const headerMatches = [...tableHtml.matchAll(/<th[^>]*scope="col"[^>]*>([\s\S]*?)<\/th>/gi)]
+    .map((match) => stripHtml(match[1]));
+  const radiusHeaders = headerMatches.slice(1).filter(Boolean);
+  if (!radiusHeaders.length) return null;
+
+  const rings = {};
+  radiusHeaders.forEach((header) => {
+    const radiusValue = Number.parseFloat(header);
+    const ringKey =
+      radiusValue == 1 ? 'oneMile'
+      : radiusValue == 3 ? 'threeMile'
+      : radiusValue == 5 ? 'fiveMile'
+      : null;
+    if (ringKey) rings[ringKey] = {};
+  });
+
+  if (!Object.keys(rings).length) return null;
+
+  const rowMatches = [...tableHtml.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)];
+  for (const rowMatch of rowMatches) {
+    const cells = [...rowMatch[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((match) => stripHtml(match[1]));
+    if (cells.length !== radiusHeaders.length + 1) continue;
+    const metricKey = slugifyMetricLabel(cells[0]);
+    if (!metricKey) continue;
+    radiusHeaders.forEach((header, index) => {
+      const radiusValue = Number.parseFloat(header);
+      const ringKey =
+        radiusValue == 1 ? 'oneMile'
+        : radiusValue == 3 ? 'threeMile'
+        : radiusValue == 5 ? 'fiveMile'
+        : null;
+      if (!ringKey) return;
+      rings[ringKey][metricKey] = cells[index + 1] || null;
+    });
+  }
+
+  return Object.values(rings).some((ring) => ring && Object.keys(ring).length) ? rings : null;
 }
 
 function normalizeDocuments(raw = {}, detail = {}) {
@@ -109,7 +240,7 @@ function normalizeDocuments(raw = {}, detail = {}) {
   return documents;
 }
 
-function normalizeDemographics(raw = {}, detail = null) {
+async function normalizeDemographics(raw = {}, detail = null) {
   const source =
     raw.demographics ||
     raw.marketData?.demographics ||
@@ -123,7 +254,10 @@ function normalizeDemographics(raw = {}, detail = null) {
     fiveMile: source?.fiveMile || source?.five_mile || detail?.fiveMile || detail?.five_mile || null,
   };
 
-  return Object.values(rings).some(Boolean) ? rings : null;
+  if (Object.values(rings).some(Boolean)) return rings;
+
+  const pluginHtml = await fetchBuildoutPluginHtml(raw);
+  return parseDemographicsFromPluginHtml(pluginHtml);
 }
 
 function normalizeBrokerProfile(raw = {}) {
@@ -174,7 +308,7 @@ function normalizeTransactionTypes(visibility = {}) {
   return [];
 }
 
-function buildPropertyDetailLike(docId, raw, detail = null) {
+async function buildPropertyDetailLike(docId, raw, detail = null) {
   const address = raw.address || {};
   const location = raw.location || {};
   const property = raw.property || {};
@@ -182,6 +316,7 @@ function buildPropertyDetailLike(docId, raw, detail = null) {
   const content = raw.content || {};
   const media = raw.media || {};
   const links = raw.links || {};
+  const demographics = await normalizeDemographics(raw, detail);
 
   return {
     id: docId,
@@ -254,13 +389,13 @@ function buildPropertyDetailLike(docId, raw, detail = null) {
     },
     spaces: normalizeSpaces(raw),
     documents: normalizeDocuments(raw, detail),
-    demographics: normalizeDemographics(raw, detail),
+    demographics,
     brokerProfile: normalizeBrokerProfile(raw),
   };
 }
 
 async function buildLaunchSnapshot(docId, raw, detail = null) {
-  const property = buildPropertyDetailLike(docId, raw, detail);
+  const property = await buildPropertyDetailLike(docId, raw, detail);
   return {
     documentId: docId,
     slug: property.slug,
