@@ -14,6 +14,41 @@ function coalesce<T>(...values: Array<T | null | undefined>): T | null {
   return null;
 }
 
+function asPositiveNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^\d.-]/g, "").trim();
+    if (!cleaned) return null;
+    const parsed = Number(cleaned);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function normalizeSpaces(data: Record<string, unknown>) {
+  const raw = (data.raw as Record<string, unknown> | undefined)?.buildout as Record<string, unknown> | undefined;
+  const candidates = [
+    data.spaces,
+    data.suites,
+    (data.availability as Record<string, unknown> | undefined)?.spaces,
+    (data.availability as Record<string, unknown> | undefined)?.suites,
+    raw?.spaces,
+    raw?.suites,
+    raw?.availabilities,
+    raw?.units,
+  ].filter(Array.isArray) as Array<Array<Record<string, unknown>>>;
+
+  return candidates.flatMap((items) => items.map((item) => ({
+    id: (item.id as string | number | null) ?? null,
+    name: (item.name as string | null) ?? (item.title as string | null) ?? null,
+    suite: (item.suite as string | null) ?? (item.unit as string | null) ?? (item.label as string | null) ?? null,
+    sizeSf: asPositiveNumber(item.sizeSf) ?? asPositiveNumber(item.availableSqFt) ?? asPositiveNumber(item.squareFeet) ?? asPositiveNumber(item.sqFt) ?? asPositiveNumber(item.size),
+    ratePerSf: asPositiveNumber(item.ratePerSf) ?? asPositiveNumber(item.askingPriceRatePerSf) ?? asPositiveNumber(item.pricePerSf) ?? asPositiveNumber(item.leaseRate),
+    monthlyRate: asPositiveNumber(item.monthlyRate) ?? asPositiveNumber(item.monthlyRent) ?? asPositiveNumber(item.rentPerMonth),
+    rawRateLabel: (item.rateLabel as string | null) ?? (item.priceLabel as string | null) ?? null,
+  })));
+}
+
 function formatTeaserText(pricing: Record<string, unknown> | undefined): string | null {
   if (!pricing) return null;
   if (pricing.hideSalePrice === true) {
@@ -172,12 +207,22 @@ export async function getPropertyBySlug(slug: string): Promise<PropertyDetail | 
       numberOfUnits: null,
       numberOfFloors: null,
     },
-    pricing: (data.pricing as PropertyDetail["pricing"]) ?? {
-      hideSalePrice: false,
-      hiddenPriceLabel: null,
-      salePriceDollars: null,
-      salePricePerUnit: null,
-      salePriceUnits: null,
+    pricing: {
+      hideSalePrice: ((data.pricing as Record<string, unknown> | undefined)?.hideSalePrice as boolean | undefined) === true,
+      hiddenPriceLabel: ((data.pricing as Record<string, unknown> | undefined)?.hiddenPriceLabel as string | null) ?? null,
+      salePriceDollars: ((data.pricing as Record<string, unknown> | undefined)?.salePriceDollars as number | null) ?? null,
+      salePricePerUnit: ((data.pricing as Record<string, unknown> | undefined)?.salePricePerUnit as number | null) ?? null,
+      salePriceUnits: ((data.pricing as Record<string, unknown> | undefined)?.salePriceUnits as string | null) ?? null,
+      availableSqFt:
+        (((data.pricing as Record<string, unknown> | undefined)?.availableSqFt as number | null) ?? null) ||
+        ((((data.meta as Record<string, unknown> | undefined)?.adminOverrides as Record<string, unknown> | undefined)?.availableSf as number | null) ?? null),
+      askingPriceRatePerSf:
+        (((data.pricing as Record<string, unknown> | undefined)?.askingPriceRatePerSf as number | null) ?? null) ||
+        ((((data.meta as Record<string, unknown> | undefined)?.adminOverrides as Record<string, unknown> | undefined)?.askingPriceRate as number | null) ?? null),
+      leaseType: (((data.meta as Record<string, unknown> | undefined)?.adminOverrides as Record<string, unknown> | undefined)?.leaseType as string | null) ?? null,
+      listingPriceVisibility:
+        (((data.pricing as Record<string, unknown> | undefined)?.listingPriceVisibility as string | null) ?? null) ||
+        ((((data.meta as Record<string, unknown> | undefined)?.adminOverrides as Record<string, unknown> | undefined)?.listingPriceVisibility as string | null) ?? null),
     },
     content: (data.content as PropertyDetail["content"]) ?? {
       locationDescription: null,
@@ -195,6 +240,7 @@ export async function getPropertyBySlug(slug: string): Promise<PropertyDetail | 
       images: [],
       documents: [],
     },
+    spaces: normalizeSpaces(data),
     links: (data.links as PropertyDetail["links"]) ?? {
       saleListingUrl: null,
       leaseListingUrl: null,

@@ -91,6 +91,10 @@ export type PropertyDetail = {
     salePriceDollars: number | null;
     salePricePerUnit: number | null;
     salePriceUnits: string | null;
+    availableSqFt?: number | null;
+    askingPriceRatePerSf?: number | null;
+    leaseType?: string | null;
+    listingPriceVisibility?: string | null;
   };
   content: {
     locationDescription: string | null;
@@ -130,6 +134,15 @@ export type PropertyDetail = {
       contentType: string | null;
     }>;
   };
+  spaces?: Array<{
+    id: string | number | null;
+    name: string | null;
+    suite: string | null;
+    sizeSf: number | null;
+    ratePerSf: number | null;
+    monthlyRate: number | null;
+    rawRateLabel: string | null;
+  }>;
   links: {
     saleListingUrl: string | null;
     leaseListingUrl: string | null;

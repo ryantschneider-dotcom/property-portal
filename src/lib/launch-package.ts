@@ -15,6 +15,32 @@ function normalizeString(value: unknown): string | null {
   return text || null;
 }
 
+function normalizeSpaces(raw: Record<string, any>, property: NonNullable<Awaited<ReturnType<typeof getPropertyBySlug>>>) {
+  const candidates = [
+    property.spaces,
+    raw.spaces,
+    raw.suites,
+    raw.availability?.spaces,
+    raw.availability?.suites,
+    raw.raw?.buildout?.spaces,
+    raw.raw?.buildout?.suites,
+    raw.raw?.buildout?.availabilities,
+    raw.raw?.buildout?.units,
+  ].filter(Array.isArray);
+
+  return candidates.flatMap((items: any) =>
+    items.map((item: any) => ({
+      id: item?.id ?? null,
+      name: item?.name ?? item?.title ?? null,
+      suite: item?.suite ?? item?.unit ?? item?.label ?? null,
+      sizeSf: item?.sizeSf ?? item?.availableSqFt ?? item?.squareFeet ?? item?.sqFt ?? item?.size ?? null,
+      ratePerSf: item?.ratePerSf ?? item?.askingPriceRatePerSf ?? item?.pricePerSf ?? item?.leaseRate ?? null,
+      monthlyRate: item?.monthlyRate ?? item?.monthlyRent ?? item?.rentPerMonth ?? null,
+      rawRateLabel: item?.rawRateLabel ?? item?.rateLabel ?? item?.priceLabel ?? null,
+    })),
+  );
+}
+
 function hasValidCoordinates(location: { lat: number | null; lng: number | null } | null | undefined) {
   return typeof location?.lat === "number" && Number.isFinite(location.lat)
     && typeof location?.lng === "number" && Number.isFinite(location.lng);
@@ -47,9 +73,16 @@ function buildLaunchSnapshot(input: {
     address: property.address,
     location: property.location,
     property: property.property,
-    pricing: property.pricing,
+    pricing: {
+      ...property.pricing,
+      availableSqFt: property.pricing.availableSqFt ?? raw.pricing?.availableSqFt ?? null,
+      askingPriceRatePerSf: property.pricing.askingPriceRatePerSf ?? raw.pricing?.askingPriceRatePerSf ?? raw.meta?.adminOverrides?.askingPriceRate ?? null,
+      leaseType: property.pricing.leaseType ?? raw.meta?.adminOverrides?.leaseType ?? null,
+      listingPriceVisibility: property.pricing.listingPriceVisibility ?? raw.pricing?.listingPriceVisibility ?? raw.meta?.adminOverrides?.listingPriceVisibility ?? null,
+    },
     content: property.content,
     media: property.media,
+    spaces: normalizeSpaces(raw, property),
     links: property.links,
     visibility: raw.visibility ?? null,
     ownerEmail: normalizeString(raw.ownerEmail ?? raw.ownerUserId),
@@ -184,6 +217,7 @@ export async function publishLaunchPackageToListingStream(identifier: string, ac
     content: snapshot.content,
     media: snapshot.media,
     links: snapshot.links,
+    spaces: snapshot.spaces,
     visibility: snapshot.visibility,
     ownerEmail: snapshot.ownerEmail,
     leadBroker: snapshot.leadBroker,
