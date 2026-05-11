@@ -1,6 +1,8 @@
 require('dotenv').config({ path: '/data/.openclaw/workspace/scripts/.env' });
 require('dotenv').config({ path: '/data/.openclaw/workspace/property-portal/.env.local' });
 
+const https = require('https');
+
 const { cert, getApps, initializeApp } = require('firebase-admin/app');
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
 
@@ -10,6 +12,9 @@ const LAUNCH_PACKAGE_VERSION = 'v2-listingstream';
 const LAUNCH_SUMMARY_VERSION = 'v2-listingstream';
 const MEDIA_MANIFEST_VERSION = 'v2-listingstream';
 const ACTOR_EMAIL = process.env.LISTINGSTREAM_BULK_PUBLISH_ACTOR || 'mac@openclaw.local';
+const BUILDOUT_API_KEY = (process.env.BUILDOUT_API_KEY || '').trim();
+const BUILDOUT_BASE_URL = (process.env.BUILDOUT_BASE_URL || 'https://buildout.com/api/v1').replace(/\/$/, '');
+const buildoutDetailCache = new Map();
 
 function initDb() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -26,6 +31,113 @@ function normalizeString(value) {
 
 function hasValidCoordinates(location) {
   return Number.isFinite(location?.lat) && Number.isFinite(location?.lng);
+}
+
+function requestJson(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+      let body = '';
+      response.on('data', (chunk) => {
+        body += chunk;
+      });
+      response.on('end', () => {
+        if (response.statusCode && response.statusCode >= 400) {
+          reject(new Error(`Buildout request failed (${response.statusCode})`));
+          return;
+        }
+
+        try {
+          resolve(body ? JSON.parse(body) : {});
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+async function fetchBuildoutPropertyDetail(raw = {}) {
+  const buildoutId = raw?.raw?.buildout?.id;
+  if (!BUILDOUT_API_KEY || !buildoutId) return null;
+  if (buildoutDetailCache.has(buildoutId)) return buildoutDetailCache.get(buildoutId);
+
+  const url = `${BUILDOUT_BASE_URL}/${BUILDOUT_API_KEY}/properties/${buildoutId}.json`;
+  const promise = requestJson(url)
+    .then((payload) => payload?.property || payload || null)
+    .catch(() => null);
+
+  buildoutDetailCache.set(buildoutId, promise);
+  return promise;
+}
+
+function normalizeDocuments(raw = {}, detail = {}) {
+  const documents = [];
+  const seen = new Set();
+  const pushDocument = (item) => {
+    if (!item) return;
+    const url = normalizeString(item.url || item.href || item.link);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    documents.push({
+      id: item.id ?? url,
+      title: normalizeString(item.title || item.name || item.label || item.filename) || 'Document',
+      description: normalizeString(item.description),
+      documentType: normalizeString(item.documentType || item.type || item.category),
+      url,
+      filename: normalizeString(item.filename || item.original_file_name || item.name),
+      contentType: normalizeString(item.contentType || item.mimeType),
+      source: normalizeString(item.source) || 'Buildout',
+      isExternal: /^https?:\/\//i.test(url),
+    });
+  };
+
+  const candidates = [
+    ...(Array.isArray(raw.media?.documents) ? raw.media.documents : []),
+    ...(Array.isArray(raw.documents) ? raw.documents : []),
+    ...(Array.isArray(raw.raw?.buildout?.documents) ? raw.raw.buildout.documents : []),
+    ...(Array.isArray(detail?.documents) ? detail.documents : []),
+  ];
+
+  candidates.forEach(pushDocument);
+
+  [
+    { title: 'Property Website', url: raw.links?.websiteUrl, documentType: 'External Link', source: 'Website' },
+    { title: 'Sale Listing', url: raw.links?.saleListingUrl, documentType: 'External Link', source: 'Website' },
+    { title: 'Lease Listing', url: raw.links?.leaseListingUrl, documentType: 'External Link', source: 'Website' },
+  ].forEach(pushDocument);
+
+  return documents;
+}
+
+function normalizeDemographics(raw = {}, detail = null) {
+  const source =
+    raw.demographics ||
+    raw.marketData?.demographics ||
+    raw.raw?.buildout?.demographics ||
+    detail?.demographics ||
+    null;
+
+  const rings = {
+    oneMile: source?.oneMile || source?.one_mile || detail?.oneMile || detail?.one_mile || null,
+    threeMile: source?.threeMile || source?.three_mile || detail?.threeMile || detail?.three_mile || null,
+    fiveMile: source?.fiveMile || source?.five_mile || detail?.fiveMile || detail?.five_mile || null,
+  };
+
+  return Object.values(rings).some(Boolean) ? rings : null;
+}
+
+function normalizeBrokerProfile(raw = {}) {
+  const broker = raw.broker || {};
+  return {
+    name: normalizeString(raw.leadBroker || raw.meta?.adminOverrides?.leadBroker || broker.name),
+    title: normalizeString(broker.role),
+    company: normalizeString(broker.company),
+    designations: Array.isArray(raw.brokerProfile?.designations) ? raw.brokerProfile.designations.filter(Boolean) : [],
+    licenseNumber: normalizeString(raw.brokerProfile?.licenseNumber),
+    phone: normalizeString(raw.brokerProfile?.phone || raw.contact?.phone),
+    email: normalizeString(raw.brokerProfile?.email || raw.ownerEmail),
+    headshotUrl: normalizeString(raw.brokerProfile?.headshotUrl || raw.brokerProfile?.photoUrl),
+  };
 }
 
 function normalizeSpaces(raw = {}) {
@@ -62,7 +174,7 @@ function normalizeTransactionTypes(visibility = {}) {
   return [];
 }
 
-function buildPropertyDetailLike(docId, raw) {
+function buildPropertyDetailLike(docId, raw, detail = null) {
   const address = raw.address || {};
   const location = raw.location || {};
   const property = raw.property || {};
@@ -130,7 +242,7 @@ function buildPropertyDetailLike(docId, raw) {
     media: {
       heroImageUrl: media.heroImageUrl ?? null,
       images: Array.isArray(media.images) ? media.images : [],
-      documents: Array.isArray(media.documents) ? media.documents : [],
+      documents: normalizeDocuments(raw, detail),
     },
     links: {
       saleListingUrl: links.saleListingUrl ?? null,
@@ -141,11 +253,14 @@ function buildPropertyDetailLike(docId, raw) {
       websiteUrl: links.websiteUrl ?? null,
     },
     spaces: normalizeSpaces(raw),
+    documents: normalizeDocuments(raw, detail),
+    demographics: normalizeDemographics(raw, detail),
+    brokerProfile: normalizeBrokerProfile(raw),
   };
 }
 
-function buildLaunchSnapshot(docId, raw) {
-  const property = buildPropertyDetailLike(docId, raw);
+async function buildLaunchSnapshot(docId, raw, detail = null) {
+  const property = buildPropertyDetailLike(docId, raw, detail);
   return {
     documentId: docId,
     slug: property.slug,
@@ -159,6 +274,9 @@ function buildLaunchSnapshot(docId, raw) {
     media: property.media,
     links: property.links,
     spaces: property.spaces,
+    documents: property.documents,
+    demographics: property.demographics,
+    brokerProfile: property.brokerProfile,
     visibility: raw.visibility ?? null,
     ownerEmail: normalizeString(raw.ownerEmail ?? raw.ownerUserId),
     leadBroker: normalizeString(raw.leadBroker ?? raw.admin?.leadBroker ?? raw.meta?.intake?.lead_broker),
@@ -168,7 +286,8 @@ function buildLaunchSnapshot(docId, raw) {
 async function publishOne(db, doc) {
   const raw = doc.data() || {};
   const nowIso = new Date().toISOString();
-  const launchSnapshot = buildLaunchSnapshot(doc.id, raw);
+  const buildoutDetail = await fetchBuildoutPropertyDetail(raw);
+  const launchSnapshot = await buildLaunchSnapshot(doc.id, raw, buildoutDetail);
   const hasGeo = hasValidCoordinates(launchSnapshot.location);
   const warningReasons = hasGeo ? [] : ['Missing Geolocation'];
   const readyReasons = ['Approval complete', 'Canonical launch package built', ...(hasGeo ? ['Valid geolocation'] : [])];
@@ -225,6 +344,9 @@ async function publishOne(db, doc) {
     media: launchSnapshot.media,
     links: launchSnapshot.links,
     spaces: launchSnapshot.spaces,
+    documents: launchSnapshot.documents,
+    demographics: launchSnapshot.demographics,
+    brokerProfile: launchSnapshot.brokerProfile,
     visibility: launchSnapshot.visibility,
     ownerEmail: launchSnapshot.ownerEmail,
     leadBroker: launchSnapshot.leadBroker,
