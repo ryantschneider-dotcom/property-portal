@@ -155,6 +155,7 @@ async function fetchBuildoutPluginHtml(raw = {}) {
   return promise;
 }
 
+
 function parseDemographicsFromPluginHtml(html) {
   if (!html || !/Demographics Map & Report/i.test(html)) return null;
   const sectionMatch = html.match(/<div[^>]*class="[^"]*demographics[^"]*"[\s\S]*?<table[^>]*class="table"[^>]*>[\s\S]*?<\/table>/i);
@@ -199,6 +200,50 @@ function parseDemographicsFromPluginHtml(html) {
   }
 
   return Object.values(rings).some((ring) => ring && Object.keys(ring).length) ? rings : null;
+}
+
+function parseSquareFeet(value) {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  const cleaned = normalized.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  return cleaned ? Number(cleaned[0]) : null;
+}
+
+function parseRateLabel(value) {
+  const normalized = normalizeString(value);
+  if (!normalized) return { rawRateLabel: null, ratePerSf: null };
+  const match = normalized.replace(/,/g, '').match(/\$?\s*(-?\d+(?:\.\d+)?)/);
+  return {
+    rawRateLabel: normalized,
+    ratePerSf: match ? Number(match[1]) : null,
+  };
+}
+
+function parseSpacesFromPluginHtml(html) {
+  if (!html || !/leaseSpacesTable/i.test(html)) return [];
+  const tableMatch = html.match(/<table[^>]*id="leaseSpacesTable-[^"]*"[^>]*>[\s\S]*?<\/table>/i);
+  if (!tableMatch) return [];
+  const tableHtml = tableMatch[0];
+  const rowMatches = [...tableHtml.matchAll(/<tr[^>]*class="[^"]*js-lease-space-row-toggle[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi)];
+  return rowMatches.map((rowMatch, index) => {
+    const cells = [...rowMatch[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((match) => stripHtml(match[1]));
+    const name = cells[0] || null;
+    const spaceType = cells[1] || null;
+    const sizeLabel = cells[2] || null;
+    const rateLabel = cells[3] || null;
+    const rate = parseRateLabel(rateLabel);
+    return {
+      id: `plugin-space-${index}`,
+      name,
+      suite: null,
+      spaceType,
+      sizeSf: parseSquareFeet(sizeLabel),
+      ratePerSf: rate.ratePerSf,
+      monthlyRate: null,
+      rawRateLabel: rate.rawRateLabel,
+      leaseTerm: cells[4] || null,
+    };
+  }).filter((item) => item.name || item.sizeSf || item.rawRateLabel);
 }
 
 function normalizeDocuments(raw = {}, detail = {}) {
@@ -274,7 +319,7 @@ function normalizeBrokerProfile(raw = {}) {
   };
 }
 
-function normalizeSpaces(raw = {}) {
+async function normalizeSpaces(raw = {}) {
   const candidates = [
     raw.spaces,
     raw.suites,
@@ -286,15 +331,22 @@ function normalizeSpaces(raw = {}) {
     raw.raw?.buildout?.units,
   ].filter(Array.isArray);
 
-  return candidates.flatMap((items) => items.map((item) => ({
+  const normalized = candidates.flatMap((items) => items.map((item) => ({
     id: item?.id ?? null,
     name: item?.name ?? item?.title ?? null,
     suite: item?.suite ?? item?.unit ?? item?.label ?? null,
+    spaceType: item?.spaceType ?? item?.space_type ?? item?.type ?? null,
     sizeSf: item?.sizeSf ?? item?.availableSqFt ?? item?.squareFeet ?? item?.sqFt ?? item?.size ?? null,
     ratePerSf: item?.ratePerSf ?? item?.askingPriceRatePerSf ?? item?.pricePerSf ?? item?.leaseRate ?? null,
     monthlyRate: item?.monthlyRate ?? item?.monthlyRent ?? item?.rentPerMonth ?? null,
     rawRateLabel: item?.rawRateLabel ?? item?.rateLabel ?? item?.priceLabel ?? null,
+    leaseTerm: item?.leaseTerm ?? item?.lease_term ?? null,
   })));
+
+  if (normalized.length) return normalized;
+
+  const pluginHtml = await fetchBuildoutPluginHtml(raw);
+  return parseSpacesFromPluginHtml(pluginHtml);
 }
 
 function normalizeTransactionTypes(visibility = {}) {
@@ -387,7 +439,7 @@ async function buildPropertyDetailLike(docId, raw, detail = null) {
       youTubeUrl: links.youTubeUrl ?? null,
       websiteUrl: links.websiteUrl ?? null,
     },
-    spaces: normalizeSpaces(raw),
+    spaces: await normalizeSpaces(raw),
     documents: normalizeDocuments(raw, detail),
     demographics,
     brokerProfile: normalizeBrokerProfile(raw),
