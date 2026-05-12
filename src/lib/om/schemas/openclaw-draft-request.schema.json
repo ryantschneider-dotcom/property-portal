@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openclaw-draft-request.schema.json",
+  "title": "OpenClawDraftRequest",
+  "type": "object",
+  "required": [
+    "task",
+    "template",
+    "systemInstructions",
+    "rules",
+    "style",
+    "sectionsRequired",
+    "property"
+  ],
+  "properties": {
+    "task": {
+      "const": "draft_offering_memorandum_sections"
+    },
+    "template": {
+      "type": "string"
+    },
+    "systemInstructions": {
+      "type": "string"
+    },
+    "rules": {
+      "type": "object",
+      "required": [
+        "mustUseOnlyProvidedData",
+        "mustNotInventFacts",
+        "mustReturnJsonOnly",
+        "mustAvoidEmDashes",
+        "mustAvoidAiVocabulary",
+        "mustFlagMissingImportantInputs"
+      ],
+      "properties": {
+        "mustUseOnlyProvidedData": { "type": "boolean" },
+        "mustNotInventFacts": { "type": "boolean" },
+        "mustReturnJsonOnly": { "type": "boolean" },
+        "mustAvoidEmDashes": { "type": "boolean" },
+        "mustAvoidAiVocabulary": { "type": "boolean" },
+        "mustFlagMissingImportantInputs": { "type": "boolean" }
+      }
+    },
+    "style": {
+      "type": "object",
+      "required": ["tone", "audience", "forbiddenPhrases", "preferredQualities"],
+      "properties": {
+        "tone": { "type": "string" },
+        "audience": { "type": "string" },
+        "forbiddenPhrases": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "preferredQualities": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "sectionsRequired": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "executiveSummary",
+          "propertyDescription",
+          "locationOverview",
+          "demographicsSummary",
+          "highlights",
+          "disclaimer"
+        ]
+      }
+    },
+    "property": {
+      "$ref": "./normalized-om-input.schema.json"
+    }
+  }
+}

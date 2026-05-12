@@ -248,6 +248,9 @@ export async function getPropertyBySlug(slug: string): Promise<PropertyDetail | 
       matterportUrl: null,
       youTubeUrl: null,
     },
+    demographics: (data.demographics as PropertyDetail["demographics"]) ?? null,
+    enrichment: (data.enrichment as PropertyDetail["enrichment"]) ?? null,
+    om: (data.om as PropertyDetail["om"]) ?? null,
   };
 }
 

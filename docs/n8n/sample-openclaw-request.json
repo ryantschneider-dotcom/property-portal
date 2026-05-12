@@ -1,0 +1,235 @@
+{
+  "task": "draft_offering_memorandum_sections",
+  "template": "standard-om-v1",
+  "systemInstructions": "You are an expert commercial real estate copywriter drafting offering memorandum narrative sections for PIER Commercial Real Estate. Write in plain speak. Sound professional, warm, steady, and commercially credible. Be concise, factual, and readable. Do not sound like a chatbot, marketer, or lawyer. Never use em dashes. Avoid typical AI vocabulary and filler such as: leverage, showcase, boasts, nestled, vibrant, thoughtfully designed, state-of-the-art, unlock, premier, exceptional opportunity, strategically located, this property offers. Do not hype. Do not exaggerate. Do not use unsupported superlatives. Use only facts provided in the NormalizedOmInput. Never invent missing data, tenant names, proximity claims, pricing logic, market commentary, or property attributes. If important information is missing, do not guess. Instead, list it in missingInputs or warnings and write around it cleanly. Return JSON only. No markdown, no commentary, no code fences, no preamble. The JSON must exactly follow the requested response structure.",
+  "rules": {
+    "mustUseOnlyProvidedData": true,
+    "mustNotInventFacts": true,
+    "mustReturnJsonOnly": true,
+    "mustAvoidEmDashes": true,
+    "mustAvoidAiVocabulary": true,
+    "mustFlagMissingImportantInputs": true
+  },
+  "style": {
+    "tone": "plain speak, professional, warm but firm, commercially credible",
+    "audience": "investors, tenants, brokers, lenders, and owner decision-makers",
+    "forbiddenPhrases": [
+      "leverage",
+      "showcase",
+      "boasts",
+      "nestled",
+      "vibrant",
+      "thoughtfully designed",
+      "state-of-the-art",
+      "unlock",
+      "premier",
+      "exceptional opportunity",
+      "strategically located",
+      "this property offers"
+    ],
+    "preferredQualities": [
+      "plainspoken",
+      "commercially credible",
+      "specific",
+      "clean",
+      "institutional but human",
+      "warm but firm",
+      "fact-driven"
+    ]
+  },
+  "sectionsRequired": [
+    "executiveSummary",
+    "propertyDescription",
+    "locationOverview",
+    "demographicsSummary",
+    "highlights",
+    "disclaimer"
+  ],
+  "property": {
+    "propertyId": "42-west-montgomery-cross-road-23514ffe7f",
+    "slug": "42-west-montgomery-cross-road",
+    "title": "Parrott Plaza",
+    "status": "active",
+    "transactionTypes": [
+      "lease"
+    ],
+    "address": {
+      "market": "",
+      "zip": "31406",
+      "crossStreets": "",
+      "city": "Savannah",
+      "countryCode": "US",
+      "street": "42 West Montgomery Cross Road",
+      "county": "Chatham",
+      "hideAddress": false,
+      "countryName": "United States",
+      "state": "GA",
+      "full": "42 West Montgomery Cross Road Savannah, GA 31406",
+      "submarket": null,
+      "neighborhood": null
+    },
+    "location": {
+      "lat": 31.99980399999999,
+      "lng": -81.1238308
+    },
+    "property": {
+      "category": "office",
+      "typeId": 1,
+      "subtypeId": 101,
+      "buildingSizeSf": 53650,
+      "grossLeasableArea": null,
+      "lotSizeAcres": 4,
+      "yearBuilt": null,
+      "numberOfUnits": null,
+      "numberOfFloors": 2,
+      "zoning": "BC",
+      "parcelId": null
+    },
+    "pricing": {
+      "hideSalePrice": true,
+      "hiddenPriceLabel": null,
+      "salePriceDollars": null,
+      "salePricePerUnit": null,
+      "salePriceUnits": null,
+      "availableSqFt": null,
+      "askingPriceRatePerSf": null,
+      "leaseType": null,
+      "listingPriceVisibility": null,
+      "display": "Call for Price"
+    },
+    "content": {
+      "saleTitle": "Parrott Plaza",
+      "leaseTitle": "Office Space for Lease Under $22.00 psf/annually",
+      "propertyDescription": "The property has one 1,900 SF second-floor office suite available for lease in the back building (no elevator).  The 1,900 sq. ft. space has an efficient space plan and is ready for immediate occupancy and was just updated with new paint and LED drop in lighting.\n\nThe space in the front building offers a great opportunity for a tenant needing a space with multiple offices, breakroom, and conference area.",
+      "locationDescription": "This mixed-use retail, office, and office/flex development is very conveniently located on Montgomery Crossroad Just east of Abercorn Street and west of White Bluff Road.  The neighborhood is characterized as a commercial shopping district with commercial development in the immediate surrounding area.  A newly developed Roadhouse Grill is located directly across from the property.  A new hotel has been developed in the immediate area and a few more are proposed.  A mixed use (multi-family residential and commercial) re-development project at the Oglethorpe Mall is nearing completion.",
+      "siteDescription": "The property has very good frontage on Montgomery Crossroad and has two curb-cuts for access.  There is a rear drive and parking for the office/flex space located at the rear of the property.",
+      "exteriorDescription": null,
+      "saleDescription": null,
+      "leaseDescription": "The property has one 1,900 SF second-floor office suite available for lease in the back building (no elevator).  The 1,900 sq. ft. space has an efficient space plan and is ready for immediate occupancy and was just updated with new paint and LED drop in lighting.\n\nThe space in the front building offers a great opportunity for a tenant needing a space with multiple offices, breakroom, and conference area.",
+      "highlights": [
+        "Great parking",
+        "Road signage available",
+        "Very good natural light",
+        "Very affordable"
+      ]
+    },
+    "spaces": [],
+    "images": [
+      {
+        "id": "29775421",
+        "title": null,
+        "caption": null,
+        "storagePath": null,
+        "isPublic": false,
+        "sortOrder": 0,
+        "url": "https://s3.amazonaws.com/buildout-production/datas/29775421/5940bb0a6dc7a7f566d8253421eba93578defee5/original.jpg?1714758398",
+        "thumbUrl": "https://d33y5rc9xva21v.cloudfront.net/eyJidWNrZXQiOiJidWlsZG91dC1wcm9kdWN0aW9uIiwia2V5IjoiZGF0YXMvMjk3NzU0MjEvNTk0MGJiMGE2ZGM3YTdmNTY2ZDgyNTM0MjFlYmE5MzU3OGRlZmVlNS9vcmlnaW5hbC5qcGciLCJlZGl0cyI6eyJyZXNpemUiOnsid2lkdGgiOjIwMCwiaGVpZ2h0IjoyMDAsImZpdCI6Imluc2lkZSIsIndpdGhvdXRFbmxhcmdlbWVudCI6dHJ1ZX0sInJvdGF0ZSI6bnVsbH0sInVwZGF0ZWRBdCI6MTcxNDc1ODM5OH0=",
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout"
+      },
+      {
+        "id": "4127064",
+        "title": null,
+        "caption": "View northeast from Montgomery Crossroad",
+        "storagePath": null,
+        "isPublic": false,
+        "sortOrder": 1,
+        "url": "https://s3.amazonaws.com/buildout-production/datas/4127064/14c7bd19a666c46ca5e079946966656e5b227151/original.jpg?1580841646",
+        "thumbUrl": "https://d33y5rc9xva21v.cloudfront.net/eyJidWNrZXQiOiJidWlsZG91dC1wcm9kdWN0aW9uIiwia2V5IjoiZGF0YXMvNDEyNzA2NC8xNGM3YmQxOWE2NjZjNDZjYTVlMDc5OTQ2OTY2NjU2ZTViMjI3MTUxL29yaWdpbmFsLmpwZyIsImVkaXRzIjp7InJlc2l6ZSI6eyJ3aWR0aCI6MjAwLCJoZWlnaHQiOjIwMCwiZml0IjoiaW5zaWRlIiwid2l0aG91dEVubGFyZ2VtZW50Ijp0cnVlfSwicm90YXRlIjpudWxsfSwidXBkYXRlZEF0IjoxNTgwODQxNjQ2fQ==",
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout"
+      },
+      {
+        "id": "4127065",
+        "title": null,
+        "caption": "View northwest from Montgomery Crossroad",
+        "storagePath": null,
+        "isPublic": false,
+        "sortOrder": 2,
+        "url": "https://s3.amazonaws.com/buildout-production/datas/4127065/4f79b92831ae086728ab74053d35f98d9dbf5a62/original.jpg?1580841650",
+        "thumbUrl": "https://d33y5rc9xva21v.cloudfront.net/eyJidWNrZXQiOiJidWlsZG91dC1wcm9kdWN0aW9uIiwia2V5IjoiZGF0YXMvNDEyNzA2NS80Zjc5YjkyODMxYWUwODY3MjhhYjc0MDUzZDM1Zjk4ZDlkYmY1YTYyL29yaWdpbmFsLmpwZyIsImVkaXRzIjp7InJlc2l6ZSI6eyJ3aWR0aCI6MjAwLCJoZWlnaHQiOjIwMCwiZml0IjoiaW5zaWRlIiwid2l0aG91dEVubGFyZ2VtZW50Ijp0cnVlfSwicm90YXRlIjpudWxsfSwidXBkYXRlZEF0IjoxNTgwODQxNjUwfQ==",
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout"
+      },
+      {
+        "id": "4198527",
+        "title": null,
+        "caption": "View of Entrance to 2nd floor office",
+        "storagePath": null,
+        "isPublic": false,
+        "sortOrder": 3,
+        "url": "https://s3.amazonaws.com/buildout-production/datas/4198527/49345ff96e1c0ff52d427c30f091140dbf77fa8f/original.jpeg?1582596169",
+        "thumbUrl": "https://d33y5rc9xva21v.cloudfront.net/eyJidWNrZXQiOiJidWlsZG91dC1wcm9kdWN0aW9uIiwia2V5IjoiZGF0YXMvNDE5ODUyNy80OTM0NWZmOTZlMWMwZmY1MmQ0MjdjMzBmMDkxMTQwZGJmNzdmYThmL29yaWdpbmFsLmpwZWciLCJlZGl0cyI6eyJyZXNpemUiOnsid2lkdGgiOjIwMCwiaGVpZ2h0IjoyMDAsImZpdCI6Imluc2lkZSIsIndpdGhvdXRFbmxhcmdlbWVudCI6dHJ1ZX0sInJvdGF0ZSI6bnVsbH0sInVwZGF0ZWRBdCI6MTU4MjU5NjE2OX0=",
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout"
+      },
+      {
+        "id": "29775391",
+        "title": null,
+        "caption": null,
+        "storagePath": null,
+        "isPublic": false,
+        "sortOrder": 4,
+        "url": "https://s3.amazonaws.com/buildout-production/datas/29775391/d5ff084b8d80a32b310dfa29daf90f9692a368da/original.jpg?1714758126",
+        "thumbUrl": "https://d33y5rc9xva21v.cloudfront.net/eyJidWNrZXQiOiJidWlsZG91dC1wcm9kdWN0aW9uIiwia2V5IjoiZGF0YXMvMjk3NzUzOTEvZDVmZjA4NGI4ZDgwYTMyYjMxMGRmYTI5ZGFmOTBmOTY5MmEzNjhkYS9vcmlnaW5hbC5qcGciLCJlZGl0cyI6eyJyZXNpemUiOnsid2lkdGgiOjIwMCwiaGVpZ2h0IjoyMDAsImZpdCI6Imluc2lkZSIsIndpdGhvdXRFbmxhcmdlbWVudCI6dHJ1ZX0sInJvdGF0ZSI6bnVsbH0sInVwZGF0ZWRBdCI6MTcxNDc1ODEyNn0=",
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout"
+      },
+      {
+        "id": "29775392",
+        "title": null,
+        "caption": null,
+        "storagePath": null,
+        "isPublic": false,
+        "sortOrder": 5,
+        "url": "https://s3.amazonaws.com/buildout-production/datas/29775392/5ecf6a139e03afab65630fa89f3affbcbab77a1c/original.jpg?1714758126",
+        "thumbUrl": "https://d33y5rc9xva21v.cloudfront.net/eyJidWNrZXQiOiJidWlsZG91dC1wcm9kdWN0aW9uIiwia2V5IjoiZGF0YXMvMjk3NzUzOTIvNWVjZjZhMTM5ZTAzYWZhYjY1NjMwZmE4OWYzYWZmYmNiYWI3N2ExYy9vcmlnaW5hbC5qcGciLCJlZGl0cyI6eyJyZXNpemUiOnsid2lkdGgiOjIwMCwiaGVpZ2h0IjoyMDAsImZpdCI6Imluc2lkZSIsIndpdGhvdXRFbmxhcmdlbWVudCI6dHJ1ZX0sInJvdGF0ZSI6bnVsbH0sInVwZGF0ZWRBdCI6MTcxNDc1ODEyNn0=",
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout"
+      }
+    ],
+    "documents": [
+      {
+        "id": "3449607",
+        "title": "Lease Brochure",
+        "description": null,
+        "isPublic": false,
+        "storagePath": null,
+        "url": "https://buildout.com/docs/documents/3449607?mtime=1751106036&token=66567d89688cec9559a6e805736b4c73cef10b77",
+        "previewImageUrl": null,
+        "filename": null,
+        "contentType": null,
+        "source": "Buildout",
+        "version": 1,
+        "sortOrder": 0
+      }
+    ],
+    "demographics": null,
+    "links": {
+      "virtualTourUrl": "",
+      "saleListingUrl": null,
+      "leaseListingUrl": "http://www.piercommercial.com/properties/?propertyId=646120-lease",
+      "matterportUrl": "",
+      "youTubeUrl": "",
+      "websiteUrl": null
+    },
+    "brokerProfile": {
+      "leadBroker": "Ryan Schneider",
+      "ownerEmail": null,
+      "companyName": "PIER Commercial Real Estate"
+    },
+    "branding": {
+      "companyName": "PIER Commercial Real Estate",
+      "primaryColor": "#cb521e"
+    },
+    "warnings": [
+      "Missing demographics"
+    ]
+  }
+}

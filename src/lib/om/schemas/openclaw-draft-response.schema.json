@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openclaw-draft-response.schema.json",
+  "title": "OpenClawDraftResponse",
+  "type": "object",
+  "required": ["sections", "warnings", "missingInputs", "metadata"],
+  "properties": {
+    "sections": {
+      "type": "object",
+      "required": [
+        "executiveSummary",
+        "propertyDescription",
+        "locationOverview",
+        "demographicsSummary",
+        "highlights",
+        "disclaimer"
+      ],
+      "properties": {
+        "executiveSummary": { "type": "string" },
+        "propertyDescription": { "type": "string" },
+        "locationOverview": { "type": "string" },
+        "demographicsSummary": { "type": "string" },
+        "highlights": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "disclaimer": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "missingInputs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["template", "draftVersion"],
+      "properties": {
+        "template": { "type": "string" },
+        "draftVersion": { "type": "number" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

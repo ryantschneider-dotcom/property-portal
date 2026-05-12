@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "normalized-om-input.schema.json",
+  "title": "NormalizedOmInput",
+  "type": "object",
+  "required": [
+    "propertyId",
+    "slug",
+    "title",
+    "transactionTypes",
+    "address",
+    "location",
+    "property",
+    "pricing",
+    "content",
+    "spaces",
+    "images",
+    "documents",
+    "brokerProfile",
+    "branding",
+    "warnings"
+  ],
+  "properties": {
+    "propertyId": { "type": "string" },
+    "slug": { "type": "string" },
+    "title": { "type": "string" },
+    "status": { "type": ["string", "null"] },
+    "transactionTypes": {
+      "type": "array",
+      "items": { "enum": ["sale", "lease"] }
+    },
+    "address": { "type": "object" },
+    "location": {
+      "type": "object",
+      "required": ["lat", "lng"],
+      "properties": {
+        "lat": { "type": ["number", "null"] },
+        "lng": { "type": ["number", "null"] }
+      }
+    },
+    "property": { "type": "object" },
+    "pricing": {
+      "type": "object",
+      "required": ["hideSalePrice", "display"],
+      "properties": {
+        "hideSalePrice": { "type": "boolean" },
+        "display": { "type": ["string", "null"] }
+      }
+    },
+    "content": {
+      "type": "object",
+      "required": ["highlights"],
+      "properties": {
+        "highlights": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "spaces": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "images": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "documents": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "demographics": {
+      "type": ["object", "null"]
+    },
+    "links": {
+      "type": "object"
+    },
+    "brokerProfile": {
+      "type": "object",
+      "required": ["companyName"],
+      "properties": {
+        "companyName": { "type": "string" }
+      }
+    },
+    "branding": {
+      "type": "object",
+      "required": ["companyName", "primaryColor"],
+      "properties": {
+        "companyName": { "type": "string" },
+        "primaryColor": { "type": "string" }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
