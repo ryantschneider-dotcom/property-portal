@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { getPortalSession } from "@/lib/portal-session";
 import { uploadBrokerAsset } from "@/lib/broker-hub";
+import { interpretBrokerEditRequest } from "@/lib/broker-edit-interpreter";
 
 export async function POST(request: Request) {
   const session = await getPortalSession();
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
     const slug = String(snapshot.get("slug") ?? propertyId);
     const revisionWorkflow = raw.meta?.revisionWorkflow ?? {};
     const currentRequest = revisionWorkflow.currentRequest ?? null;
+    const interpreter = interpretBrokerEditRequest(raw, instructions);
 
     const uploadedAssets = await Promise.all(files.map((file, index) => uploadBrokerAsset("revision", slug, file, index)));
     const now = new Date().toISOString();
@@ -73,12 +75,14 @@ export async function POST(request: Request) {
       uploadedAssetCount: uploadedAssets.length,
       status: "broker_updated",
       mode: "enrich_edit_request",
+      interpreter,
     };
 
     const updatePayload: Record<string, unknown> = {
       updatedAt: now,
       updatedByUserId: session.email,
       workflowStatus: "broker_updated_pending_review",
+      ...interpreter.updatePayload,
       meta: {
         updatedAt: now,
         revisionQueue: FieldValue.arrayUnion({
@@ -105,16 +109,26 @@ export async function POST(request: Request) {
             slug,
             mode: "enrich_edit_request",
           },
+          latestInterpreter: {
+            createdAt: now,
+            confidence: interpreter.confidence,
+            summary: interpreter.summary,
+            flags: interpreter.flags,
+            appliedFieldGroups: Object.keys(interpreter.updatePayload),
+          },
         },
         enrichment: {
           editRequest: {
-            status: "queued",
+            status: interpreter.summary.length ? "applied_partially" : "queued",
             requestedAt: now,
             requestedByEmail: session.email,
             requestedByName: session.name,
             instructions,
             uploadedAssetCount: uploadedAssets.length,
             mode: "enrich_edit_request",
+            interpreterConfidence: interpreter.confidence,
+            interpreterSummary: interpreter.summary,
+            interpreterFlags: interpreter.flags,
           },
         },
         revisionWorkflow: currentRequest
@@ -171,6 +185,7 @@ export async function POST(request: Request) {
       workflowStatus: "broker_updated_pending_review",
       revisionRequestId: currentRequest?.id ?? null,
       responseId,
+      interpreter,
     });
   } catch (error) {
     console.error(error);

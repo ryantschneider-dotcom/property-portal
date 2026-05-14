@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+type InterpreterResult = {
+  summary: string[];
+  flags: string[];
+  confidence: "high" | "medium" | "low";
+};
+
 type ListingOption = {
   id: string;
   slug: string;
@@ -51,6 +57,7 @@ export function BrokerHubRevisionsForm() {
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "error" | "done">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [interpreterResult, setInterpreterResult] = useState<InterpreterResult | null>(null);
 
   async function loadListings(preferredId?: string) {
     const response = await fetch("/api/broker/active-listings", { cache: "no-store" });
@@ -91,6 +98,7 @@ export function BrokerHubRevisionsForm() {
     event.preventDefault();
     setStatus("saving");
     setErrorMessage(null);
+    setInterpreterResult(null);
 
     try {
       const body = new FormData();
@@ -107,6 +115,7 @@ export function BrokerHubRevisionsForm() {
       }
 
       setStatus("done");
+      setInterpreterResult(payload.interpreter ?? null);
       setInstructions("");
       setFiles([]);
       await loadListings(selectedId);
@@ -266,6 +275,30 @@ export function BrokerHubRevisionsForm() {
         </div>
         <textarea className={`${inputClassName()} min-h-44`} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Describe the listing update in plain English..." required />
       </section>
+
+      {status === "done" && interpreterResult ? (
+        <section className={`rounded-[2rem] border p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6 ${interpreterResult.summary.length ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Interpreter pass</p>
+          <p className="mt-2 text-sm font-semibold text-zinc-950">
+            {interpreterResult.summary.length
+              ? `Mack auto-applied ${interpreterResult.summary.length} update${interpreterResult.summary.length === 1 ? "" : "s"} before routing to review.`
+              : "Mack captured the request but did not auto-apply a safe structured mutation yet."}
+          </p>
+          {interpreterResult.summary.length ? (
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-zinc-700">
+              {interpreterResult.summary.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+          ) : null}
+          {interpreterResult.flags.length ? (
+            <div className="mt-3">
+              <p className="text-sm font-semibold text-zinc-900">Needs manual confirmation</p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-700">
+                {interpreterResult.flags.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="rounded-[2rem] border border-white/70 bg-white/94 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
         <div className="flex flex-col gap-2">
