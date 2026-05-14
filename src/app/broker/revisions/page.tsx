@@ -3,7 +3,7 @@ import { BrokerHubShell } from "@/components/broker-hub-shell";
 
 export default function BrokerHubRevisionsPage() {
   return (
-    <BrokerHubShell title="Listing Revisions">
+    <BrokerHubShell title="Enrich / Edit">
       <BrokerHubRevisionsForm />
     </BrokerHubShell>
   );

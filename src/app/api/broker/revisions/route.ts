@@ -72,6 +72,7 @@ export async function POST(request: Request) {
       uploadedAssets,
       uploadedAssetCount: uploadedAssets.length,
       status: "broker_updated",
+      mode: "enrich_edit_request",
     };
 
     const updatePayload: Record<string, unknown> = {
@@ -91,6 +92,30 @@ export async function POST(request: Request) {
           instructions,
           uploadedAssetCount: uploadedAssets.length,
           requestId: currentRequest?.id ?? null,
+          mode: "enrich_edit_request",
+        },
+        brokerHub: {
+          latestEditRequest: {
+            createdAt: now,
+            createdByEmail: session.email,
+            createdByName: session.name,
+            instructions,
+            uploadedAssetCount: uploadedAssets.length,
+            propertyId,
+            slug,
+            mode: "enrich_edit_request",
+          },
+        },
+        enrichment: {
+          editRequest: {
+            status: "queued",
+            requestedAt: now,
+            requestedByEmail: session.email,
+            requestedByName: session.name,
+            instructions,
+            uploadedAssetCount: uploadedAssets.length,
+            mode: "enrich_edit_request",
+          },
         },
         revisionWorkflow: currentRequest
           ? {
