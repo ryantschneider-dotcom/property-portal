@@ -42,10 +42,23 @@ type IntakePayload = {
   grossAcres: string;
   brokerNotes: string;
   leadBroker: string;
+  listingTitle?: string;
+  propertyDescription?: string;
+  neighborhoodDescription?: string;
+  areaBusinessesRetail?: string;
+  roadwaysTransportation?: string;
+  bulletPoints?: string;
   duplicateDecision?: "restore_existing" | "create_duplicate";
   duplicateSlug?: string;
   suites: SuiteRow[];
 };
+
+function parseBulletLines(value: string | null | undefined) {
+  return String(value ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-•\s]+/, "").trim())
+    .filter(Boolean);
+}
 
 function visibilityFromTransaction(transactionType: IntakePayload["transactionType"]) {
   if (transactionType === "Sale") {
@@ -158,11 +171,17 @@ export async function POST(request: Request) {
     const uploadedAssets = await Promise.all(files.map((file, index) => uploadBrokerAsset("intake", slug, file, index)));
     const imageAssets = uploadedAssets.filter((asset) => asset.documentType === "photo");
     const documentAssets = uploadedAssets.filter((asset) => asset.documentType !== "photo");
+    const seededBullets = parseBulletLines(payload.bulletPoints);
+
+    if (!imageAssets.length) {
+      return NextResponse.json({ error: "At least one photo is required. The first image becomes the Hero image." }, { status: 400 });
+    }
     const heroAsset = imageAssets.find((asset) => `${asset.filename}-${asset.sizeBytes}-${files.find((file) => file.name === asset.filename && file.size === asset.sizeBytes)?.lastModified}` === payload.heroPhotoKey)
       ?? imageAssets[0]
       ?? null;
     const now = new Date().toISOString();
     const title = `${payload.addressStreet}, ${payload.city}, ${payload.state}`;
+    const customListingTitle = payload.listingTitle?.trim() || null;
     const visibility = visibilityFromTransaction(payload.transactionType);
     const countyPlan = getCountyEnrichmentPlan(payload.county);
 
@@ -209,13 +228,17 @@ export async function POST(request: Request) {
           suiteNumbers: suites.map((suite) => suite.suiteNumber.trim()).filter(Boolean).join(", "),
         },
         content: {
-          saleTitle: title,
-          saleDescription: null,
-          leaseDescription: null,
-          locationDescription: null,
+          saleTitle: customListingTitle,
+          saleDescription: payload.transactionType === "Sale" ? payload.propertyDescription?.trim() || null : null,
+          leaseDescription: payload.transactionType === "Lease" ? payload.propertyDescription?.trim() || null : null,
+          locationDescription: [
+            payload.neighborhoodDescription?.trim(),
+            payload.areaBusinessesRetail?.trim(),
+            payload.roadwaysTransportation?.trim(),
+          ].filter(Boolean).join("\n\n") || null,
           exteriorDescription: null,
-          saleBullets: [],
-          leaseBullets: [],
+          saleBullets: payload.transactionType === "Sale" ? seededBullets : [],
+          leaseBullets: payload.transactionType === "Lease" ? seededBullets : [],
         },
         media: {
           heroImageUrl: heroAsset?.urls?.large ?? null,
@@ -257,6 +280,12 @@ export async function POST(request: Request) {
             parcel_id_normalized: normalizedParcelId,
             property_type: payload.propertyType,
             transaction_type: payload.transactionType,
+            listing_title: customListingTitle,
+            property_description: payload.propertyDescription?.trim() || null,
+            neighborhood_description: payload.neighborhoodDescription?.trim() || null,
+            area_businesses_retail: payload.areaBusinessesRetail?.trim() || null,
+            roadways_transportation: payload.roadwaysTransportation?.trim() || null,
+            bullet_points: seededBullets,
             sale_price: payload.salePrice,
             sale_unpriced: payload.saleUnpriced === true,
             gross_acres: payload.grossAcres,
