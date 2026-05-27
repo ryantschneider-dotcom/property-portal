@@ -1,0 +1,602 @@
+{
+  "name": "OM Draft Workflow V1",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "om-draft-v1",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "Webhook_Trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        320
+      ],
+      "webhookId": "om-draft-v1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst propertyId = String(body.propertyId ?? '').trim();\nconst template = String(body.template ?? 'standard-om-v1').trim() || 'standard-om-v1';\nconst mode = String(body.mode ?? 'draft').trim() || 'draft';\nif (!propertyId) {\n  throw new Error('propertyId is required');\n}\nconst runId = `run_${Date.now()}`;\nconst safe = (value, fallback = 'unknown') => String(value || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^[-._]+|[-._]+$/g, '') || fallback;\nconst propertyKey = safe(propertyId, 'property');\nconst htmlVersion = 'v1';\nconst pdfVersion = 'v1';\nreturn [{\n  json: {\n    propertyId,\n    template,\n    mode,\n    runId,\n    storage: {\n      propertyRoot: `properties/${propertyKey}`,\n      publicRoot: `properties/${propertyKey}/public`,\n      privateRoot: `properties/${propertyKey}/private`,\n      omInputSnapshotPath: `properties/${propertyKey}/private/generated/om-input/${safe(runId, 'run')}.json`,\n      narrativeSnapshotPath: `properties/${propertyKey}/private/generated/narrative/${safe(runId, 'run')}.json`,\n      htmlDraftPath: `properties/${propertyKey}/private/generated/html/${safe(runId, 'run')}/${safe(htmlVersion, 'v1')}.html`,\n      pdfDraftPath: `properties/${propertyKey}/private/generated/om-drafts/${safe(runId, 'run')}/${safe(pdfVersion, 'v1')}.pdf`\n    }\n  }\n}];"
+      },
+      "id": "Code_Init_Request",
+      "name": "Init Request + Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/status'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'da2d4213752c9a11458774f2e8981c23b7ff2694724da5b7d7ee5f4ef46e5c31'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $json.propertyId, patch: { om: { status: 'assembling', error: null } }, runId: $json.runId } }}",
+        "options": {}
+      },
+      "id": "HTTP_Status_Assembling",
+      "name": "Set OM Status Assembling",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/build-input'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'da2d4213752c9a11458774f2e8981c23b7ff2694724da5b7d7ee5f4ef46e5c31'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $('Init Request + Paths').item.json.propertyId, template: $('Init Request + Paths').item.json.template } }}",
+        "options": {}
+      },
+      "id": "HTTP_Build_OM_Input",
+      "name": "Build Normalized OM Input",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.ok}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "input-ok"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "If_Input_OK",
+      "name": "OM Input OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/assets/write-json'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'2ce86b8026a04729f8eaab72eef6a0e5d6a8c16928eac7198038de07c999123d'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $('Init Request + Paths').item.json.propertyId, storagePath: $('Init Request + Paths').item.json.storage.omInputSnapshotPath, content: $json.input, contentType: 'application/json', isPublic: false, metadata: { runId: $('Init Request + Paths').item.json.runId, template: $('Init Request + Paths').item.json.template, artifactType: 'om_input_snapshot' } } }}",
+        "options": {}
+      },
+      "id": "HTTP_Save_Input_Snapshot",
+      "name": "Save OM Input Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/status'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'da2d4213752c9a11458774f2e8981c23b7ff2694724da5b7d7ee5f4ef46e5c31'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $('Init Request + Paths').item.json.propertyId, patch: { om: { status: 'drafting', inputSnapshotPath: $('Init Request + Paths').item.json.storage.omInputSnapshotPath, error: null } }, runId: $('Init Request + Paths').item.json.runId } }}",
+        "options": {}
+      },
+      "id": "HTTP_Status_Drafting",
+      "name": "Set OM Status Drafting",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/draft'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'378bd72bdb5ee9b2d4d4f84af44ce3d861799710192c8648a516babc88ef93cc'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { task: 'draft_offering_memorandum_sections', template: $('Init Request + Paths').item.json.template, systemInstructions: 'You are an expert commercial real estate copywriter drafting offering memorandum narrative sections for PIER Commercial Real Estate. Write in plain speak. Sound professional, warm, steady, and commercially credible. Be concise, factual, and readable. Do not sound like a chatbot, marketer, or lawyer. Never use em dashes. Avoid typical AI vocabulary and filler such as: leverage, showcase, boasts, nestled, vibrant, thoughtfully designed, state-of-the-art, unlock, premier, exceptional opportunity, strategically located, this property offers. Do not hype. Do not exaggerate. Do not use unsupported superlatives. Use only facts provided in the NormalizedOmInput. Never invent missing data, tenant names, proximity claims, pricing logic, market commentary, or property attributes. If important information is missing, do not guess. Instead, list it in missingInputs or warnings and write around it cleanly. Return JSON only. No markdown, no commentary, no code fences, no preamble. The JSON must exactly follow the requested response structure.', rules: { mustUseOnlyProvidedData: true, mustNotInventFacts: true, mustReturnJsonOnly: true, mustAvoidEmDashes: true, mustAvoidAiVocabulary: true, mustFlagMissingImportantInputs: true }, style: { tone: 'plain speak, professional, warm but firm, commercially credible', audience: 'investors, tenants, brokers, lenders, and owner decision-makers', forbiddenPhrases: ['leverage','showcase','boasts','nestled','vibrant','thoughtfully designed','state-of-the-art','unlock','premier','exceptional opportunity','strategically located','this property offers'], preferredQualities: ['plainspoken','commercially credible','specific','clean','institutional but human','warm but firm','fact-driven'] }, sectionsRequired: ['executiveSummary','propertyDescription','locationOverview','demographicsSummary','highlights','disclaimer'], property: $('Build Normalized OM Input').item.json.input } }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "HTTP_OpenClaw_Draft",
+      "name": "Draft Narrative via OpenClaw",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2060,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\nconst sections = data.sections || {};\nconst required = ['executiveSummary','propertyDescription','locationOverview','demographicsSummary','highlights','disclaimer'];\nfor (const key of required) {\n  if (!(key in sections)) throw new Error(`Missing drafted section: ${key}`);\n}\nif (!Array.isArray(sections.highlights)) throw new Error('sections.highlights must be an array');\nif (!Array.isArray(data.warnings)) throw new Error('warnings must be an array');\nif (!Array.isArray(data.missingInputs)) throw new Error('missingInputs must be an array');\nif (!data.metadata || typeof data.metadata.template !== 'string') throw new Error('metadata.template is required');\nif (typeof data.metadata.draftVersion !== 'number') throw new Error('metadata.draftVersion is required');\nreturn [{ json: data }];"
+      },
+      "id": "Code_Validate_Draft_Response",
+      "name": "Validate Draft Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/assets/write-json'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'2ce86b8026a04729f8eaab72eef6a0e5d6a8c16928eac7198038de07c999123d'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $('Init Request + Paths').item.json.propertyId, storagePath: $('Init Request + Paths').item.json.storage.narrativeSnapshotPath, content: $json, contentType: 'application/json', isPublic: false, metadata: { runId: $('Init Request + Paths').item.json.runId, template: $('Init Request + Paths').item.json.template, artifactType: 'om_narrative_snapshot' } } }}",
+        "options": {}
+      },
+      "id": "HTTP_Save_Narrative_Snapshot",
+      "name": "Save Narrative Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2580,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/status'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'da2d4213752c9a11458774f2e8981c23b7ff2694724da5b7d7ee5f4ef46e5c31'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $('Init Request + Paths').item.json.propertyId, patch: { om: { status: 'draft_ready', template: $('Init Request + Paths').item.json.template, inputSnapshotPath: $('Init Request + Paths').item.json.storage.omInputSnapshotPath, narrativeSnapshotPath: $('Init Request + Paths').item.json.storage.narrativeSnapshotPath, lastGeneratedAt: new Date().toISOString(), warnings: $json.warnings || [], error: null } }, runId: $('Init Request + Paths').item.json.runId } }}",
+        "options": {}
+      },
+      "id": "HTTP_Status_Draft_Ready",
+      "name": "Set OM Status Draft Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2840,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, propertyId: $('Init Request + Paths').item.json.propertyId, runId: $('Init Request + Paths').item.json.runId, status: 'draft_ready', inputSnapshotPath: $('Init Request + Paths').item.json.storage.omInputSnapshotPath, narrativeSnapshotPath: $('Init Request + Paths').item.json.storage.narrativeSnapshotPath } }}",
+        "options": {}
+      },
+      "id": "Respond_Success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3100,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/status'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'da2d4213752c9a11458774f2e8981c23b7ff2694724da5b7d7ee5f4ef46e5c31'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $('Init Request + Paths').item.json.propertyId, patch: { om: { status: 'failed', error: 'OM input build failed' } }, runId: $('Init Request + Paths').item.json.runId } }}",
+        "options": {}
+      },
+      "id": "HTTP_Status_Failed_Input",
+      "name": "Set OM Status Failed Input",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, propertyId: $('Init Request + Paths').item.json.propertyId, runId: $('Init Request + Paths').item.json.runId, status: 'failed', stage: 'build_input', error: 'OM input build failed' } }}",
+        "options": {}
+      },
+      "id": "Respond_Input_Failure",
+      "name": "Respond Input Failure",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $json.error || $json.message || 'Workflow failed';\nconst propertyId = $('Init Request + Paths').item.json.propertyId;\nconst runId = $('Init Request + Paths').item.json.runId;\nreturn [{ json: { propertyId, runId, error: String(error) } }];"
+      },
+      "id": "Code_Prepare_Error",
+      "name": "Prepare Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        520
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{'https://property-portal-six.vercel.app' + '/api/om/status'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{'da2d4213752c9a11458774f2e8981c23b7ff2694724da5b7d7ee5f4ef46e5c31'}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { propertyId: $json.propertyId, patch: { om: { status: 'failed', error: $json.error } }, runId: $json.runId } }}",
+        "options": {}
+      },
+      "id": "HTTP_Status_Failed_Final",
+      "name": "Set OM Status Failed Final",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2580,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, propertyId: $json.propertyId, runId: $json.runId, status: 'failed', error: $json.error } }}",
+        "options": {}
+      },
+      "id": "Respond_Final_Failure",
+      "name": "Respond Final Failure",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2840,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Init Request + Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Request + Paths": {
+      "main": [
+        [
+          {
+            "node": "Set OM Status Assembling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set OM Status Assembling": {
+      "main": [
+        [
+          {
+            "node": "Build Normalized OM Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Normalized OM Input": {
+      "main": [
+        [
+          {
+            "node": "OM Input OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OM Input OK?": {
+      "main": [
+        [
+          {
+            "node": "Save OM Input Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set OM Status Failed Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save OM Input Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Set OM Status Drafting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set OM Status Drafting": {
+      "main": [
+        [
+          {
+            "node": "Draft Narrative via OpenClaw",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Narrative via OpenClaw": {
+      "main": [
+        [
+          {
+            "node": "Validate Draft Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Draft Response": {
+      "main": [
+        [
+          {
+            "node": "Save Narrative Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Narrative Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Set OM Status Draft Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set OM Status Draft Ready": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set OM Status Failed Input": {
+      "main": [
+        [
+          {
+            "node": "Respond Input Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Error Payload": {
+      "main": [
+        [
+          {
+            "node": "Set OM Status Failed Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set OM Status Failed Final": {
+      "main": [
+        [
+          {
+            "node": "Respond Final Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "errorWorkflow": ""
+  },
+  "versionId": "om-draft-workflow-v1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "Draft-only OM workflow. Calls OM/asset service endpoints, snapshots normalized OM input + OpenClaw response, and updates Firestore OM status."
+  },
+  "id": "om-draft-workflow-v1",
+  "tags": []
+}
