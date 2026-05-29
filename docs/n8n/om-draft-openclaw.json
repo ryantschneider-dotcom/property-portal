@@ -1,0 +1,119 @@
+{
+  "name": "OM Draft OpenClaw Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "om-draft-openclaw",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "Webhook_Trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "om-draft-openclaw"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nif (!body || typeof body !== 'object') throw new Error('Request body must be a JSON object');\nconst requiredTopLevel = ['task','template','systemInstructions','rules','style','sectionsRequired','property'];\nfor (const key of requiredTopLevel) {\n  if (!(key in body)) throw new Error(`Missing required field: ${key}`);\n}\nif (body.task !== 'draft_offering_memorandum_sections') throw new Error('Invalid task');\nif (!Array.isArray(body.sectionsRequired)) throw new Error('sectionsRequired must be an array');\nreturn [{ json: body }];"
+      },
+      "id": "Code_Validate_Request",
+      "name": "Validate Ticket 5 Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1/chat/completions'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENROUTER_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "={{$env.OPENROUTER_HTTP_REFERER || 'https://n8n.local'}}"
+            },
+            {
+              "name": "X-Title",
+              "value": "={{$env.OPENROUTER_X_TITLE || 'PIER OM Draft'}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: ($env.OPENCLAW_MODEL || 'openai/gpt-5.4'), response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $json.systemInstructions }, { role: 'user', content: JSON.stringify({ task: $json.task, rules: $json.rules, style: $json.style, sectionsRequired: $json.sectionsRequired, property: $json.property }) } ] } }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "HTTP_Call_Model",
+      "name": "Call OpenClaw Model",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst content = raw?.choices?.[0]?.message?.content;\nif (typeof content !== 'string' || !content.trim()) throw new Error('Model returned empty content');\nlet parsed;\ntry { parsed = JSON.parse(content); } catch (error) { throw new Error('Model returned non-JSON content'); }\nconst sections = parsed.sections || {};\nconst required = ['executiveSummary','propertyDescription','locationOverview','demographicsSummary','highlights','disclaimer'];\nfor (const key of required) {\n  if (!(key in sections)) throw new Error(`Missing drafted section: ${key}`);\n}\nif (!Array.isArray(sections.highlights)) throw new Error('sections.highlights must be an array');\nif (!Array.isArray(parsed.warnings)) parsed.warnings = [];\nif (!Array.isArray(parsed.missingInputs)) parsed.missingInputs = [];\nif (!parsed.metadata || typeof parsed.metadata !== 'object') parsed.metadata = {};\nif (typeof parsed.metadata.template !== 'string') parsed.metadata.template = $('Validate Ticket 5 Request').item.json.template;\nif (typeof parsed.metadata.draftVersion !== 'number') parsed.metadata.draftVersion = 1;\nreturn [{ json: parsed }];"
+      },
+      "id": "Code_Validate_Response",
+      "name": "Validate Ticket 5 Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "Respond_Success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1320, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate Ticket 5 Request", "type": "main", "index": 0 }]]
+    },
+    "Validate Ticket 5 Request": {
+      "main": [[{ "node": "Call OpenClaw Model", "type": "main", "index": 0 }]]
+    },
+    "Call OpenClaw Model": {
+      "main": [[{ "node": "Validate Ticket 5 Response", "type": "main", "index": 0 }]]
+    },
+    "Validate Ticket 5 Response": {
+      "main": [[{ "node": "Respond Success", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all"
+  },
+  "versionId": "om-draft-openclaw",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "notes": "Dedicated Ticket 5 draft webhook. Receives draft request JSON, calls model, validates response, returns Ticket 5 JSON."
+  },
+  "id": "om-draft-openclaw",
+  "tags": []
+}

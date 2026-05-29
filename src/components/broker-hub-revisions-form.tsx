@@ -141,6 +141,7 @@ export function BrokerHubRevisionsForm() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">How Mack handles it</p>
             <ul className="mt-3 space-y-2 text-sm leading-7 text-zinc-700">
               <li>• Interprets your edit request in plain English</li>
+              <li>• Auto-applies safe structured mutations when confidence is high enough</li>
               <li>• Packages the update with listing context and new files</li>
               <li>• Pushes the draft back into the right review workflow</li>
             </ul>
@@ -284,6 +285,7 @@ export function BrokerHubRevisionsForm() {
               ? `Mack auto-applied ${interpreterResult.summary.length} update${interpreterResult.summary.length === 1 ? "" : "s"} before routing to review.`
               : "Mack captured the request but did not auto-apply a safe structured mutation yet."}
           </p>
+          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-zinc-500">Confidence: {interpreterResult.confidence}</p>
           {interpreterResult.summary.length ? (
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-zinc-700">
               {interpreterResult.summary.map((item) => <li key={item}>{item}</li>)}

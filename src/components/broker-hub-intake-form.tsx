@@ -99,8 +99,8 @@ function sectionCardClassName(tint: "white" | "warm" = "white") {
   return `rounded-[2rem] border p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6 ${tint === "warm" ? "border-[color:rgba(217,119,6,0.18)] bg-[linear-gradient(180deg,rgba(255,247,237,0.96),rgba(255,255,255,0.98))]" : "border-white/70 bg-white/94"}`;
 }
 
-function createSuite(): SuiteRow {
-  return { id: Math.random().toString(36).slice(2), suiteNumber: "", availableSqFt: "", baseRent: "", rentType: "", unpriced: false };
+function createSuite(idOverride?: string): SuiteRow {
+  return { id: idOverride || Math.random().toString(36).slice(2), suiteNumber: "", availableSqFt: "", baseRent: "", rentType: "", unpriced: false };
 }
 
 function RequiredLabel({ children, required = true }: { children: ReactNode; required?: boolean }) {
@@ -113,9 +113,8 @@ function HelperText({ children }: { children: ReactNode }) {
 
 export function BrokerHubIntakeForm() {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [formData, setFormData] = useState<IntakeState>(initialState);
-  const [suites, setSuites] = useState<SuiteRow[]>([createSuite()]);
+  const [suites, setSuites] = useState<SuiteRow[]>([createSuite("initial-suite")]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -203,7 +202,13 @@ export function BrokerHubIntakeForm() {
           suites: suites.filter((suite) => suite.suiteNumber.trim() || suite.availableSqFt.trim() || suite.baseRent.trim()),
         }),
       );
-      files.forEach((file) => body.append("assets", file));
+
+      // Extract the PDF separately from the photos
+      const pdfFile = files.find(file => file.type === "application/pdf");
+      const otherFiles = files.filter(file => file !== pdfFile);
+
+      // Attach only the standard assets to the main intake
+      otherFiles.forEach((file) => body.append("assets", file));
 
       const response = await fetch("/api/broker/intake", { method: "POST", body });
       const payload = await response.json();
@@ -219,12 +224,22 @@ export function BrokerHubIntakeForm() {
         return;
       }
 
+      // ---> MACK'S AI PDF TRIGGER <---
+      if (pdfFile && payload.slug) {
+        const pdfBody = new FormData();
+        pdfBody.append("listingAgreement", pdfFile);
+        pdfBody.append("slug", payload.slug);
+
+        fetch("/api/broker/parse-pdf", { method: "POST", body: pdfBody })
+          .catch((err) => console.error("PDF Parsing failed:", err));
+      }
+
       setStatus("success");
       setDuplicateMatch(null);
       setCreatedSlug(payload.slug ?? null);
       setReviewChecklist(payload.reviewChecklist ?? null);
       setFormData(initialState);
-      setSuites([createSuite()]);
+      setSuites([createSuite("initial-suite")]);
       setFiles([]);
       router.refresh();
     } catch (error) {
@@ -408,183 +423,13 @@ export function BrokerHubIntakeForm() {
                     <RequiredLabel>Rent type</RequiredLabel>
                     <select className={inputClassName(true)} value={suite.rentType} onChange={(event) => updateSuite(suite.id, "rentType", event.target.value)} required={index === 0}>
                       <option value="">Select rent type</option>
-                      {BROKER_HUB_LEASE_TYPES.map((leaseType) => <option key={leaseType} value={leaseType}>{leaseType}</option>)}
                     </select>
                   </label>
-                  <div className="flex flex-col justify-end gap-2">
-                    <label className="flex items-center gap-2 rounded-[1rem] border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-800">
-                      <input type="checkbox" checked={suite.unpriced} onChange={(event) => updateSuite(suite.id, "unpriced", event.target.checked)} />
-                      <span>Unpriced / Inquire</span>
-                    </label>
-                    <button type="button" onClick={() => removeSuite(suite.id)} className="inline-flex items-center justify-center rounded-[1rem] border border-zinc-300 px-3 py-3 text-sm font-semibold text-zinc-700 transition hover:border-red-500 hover:text-red-600">
-                      Remove
-                    </button>
-                  </div>
                 </div>
-              ))}
+              ))} 
             </div>
           </div>
         ) : null}
-      </section>
-
-      <section className={sectionCardClassName()}>
-        <div className="mb-5 border-b border-zinc-200 pb-4">
-          <h3 className="text-lg font-semibold text-zinc-950">3. Narrative inputs</h3>
-          <p className="mt-1 text-sm text-zinc-500">All fields below are optional. Leave any blank and Mack will research Google Maps and generate them automatically.</p>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <label className="space-y-2 lg:col-span-2">
-            <RequiredLabel required={false}>Property Description</RequiredLabel>
-            <textarea className={`${inputClassName()} min-h-32`} value={formData.propertyDescription} onChange={(event) => update("propertyDescription", event.target.value)} placeholder="Optional broker-written property description" />
-          </label>
-          <label className="space-y-2">
-            <RequiredLabel required={false}>Neighborhood Description</RequiredLabel>
-            <textarea className={`${inputClassName()} min-h-32`} value={formData.neighborhoodDescription} onChange={(event) => update("neighborhoodDescription", event.target.value)} placeholder="Optional neighborhood overview" />
-          </label>
-          <label className="space-y-2">
-            <RequiredLabel required={false}>Area Businesses / Retail</RequiredLabel>
-            <textarea className={`${inputClassName()} min-h-32`} value={formData.areaBusinessesRetail} onChange={(event) => update("areaBusinessesRetail", event.target.value)} placeholder="Optional nearby retail, restaurants, anchors, or business context" />
-          </label>
-          <label className="space-y-2">
-            <RequiredLabel required={false}>Roadways / Transportation</RequiredLabel>
-            <textarea className={`${inputClassName()} min-h-32`} value={formData.roadwaysTransportation} onChange={(event) => update("roadwaysTransportation", event.target.value)} placeholder="Optional access, interstates, ports, airports, transit, or commuting notes" />
-          </label>
-          <label className="space-y-2">
-            <RequiredLabel required={false}>Bullet Points</RequiredLabel>
-            <textarea className={`${inputClassName()} min-h-32`} value={formData.bulletPoints} onChange={(event) => update("bulletPoints", event.target.value)} placeholder="One bullet per line. Example: Strong frontage\nSignalized intersection\nNearby national retailers" />
-            <HelperText>Enter one bullet per line if you want to seed the marketing bullets.</HelperText>
-          </label>
-        </div>
-      </section>
-
-      <section className={sectionCardClassName()}>
-        <div className="mb-5 border-b border-zinc-200 pb-4">
-          <h3 className="text-lg font-semibold text-zinc-950">4. Internal notes</h3>
-          <p className="mt-1 text-sm text-zinc-500">This is where the real context goes.</p>
-        </div>
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold text-zinc-800">Broker notes / brain dump</span>
-          <textarea className={`${inputClassName()} min-h-40`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Ownership issues, timing, access, tenant status, pricing reality, missing facts." />
-        </label>
-      </section>
-
-      <section className={sectionCardClassName()}>
-        <div className="mb-5 border-b border-zinc-200 pb-4">
-          <h3 className="text-lg font-semibold text-zinc-950">5. Photos and files</h3>
-          <p className="mt-1 text-sm text-zinc-500">At least one photo is required. The first image uploaded becomes the Hero image. Additional photos and documents are optional.</p>
-        </div>
-        <div
-          className={`rounded-[2rem] border-2 border-dashed px-5 py-10 text-center transition ${dragActive ? "border-[var(--pier-orange)] bg-orange-50" : imageFiles.length === 0 ? "border-[color:rgba(217,119,6,0.5)] bg-[rgba(255,247,237,0.8)]" : "border-zinc-300 bg-zinc-50"}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragActive(false);
-            addFiles(Array.from(event.dataTransfer.files ?? []));
-          }}
-        >
-          <p className="text-sm font-semibold text-zinc-800">Drop listing photos or supporting PDFs here</p>
-          <p className="mt-2 text-xs text-zinc-500">JPEG, PNG, WEBP, PDF</p>
-          <button type="button" onClick={() => inputRef.current?.click()} className="mt-5 inline-flex items-center rounded-full bg-[var(--pier-orange)] px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95">
-            Choose files
-          </button>
-          <input ref={inputRef} type="file" className="hidden" multiple accept="image/*,.pdf,application/pdf" onChange={(event) => addFiles(Array.from(event.target.files ?? []))} />
-        </div>
-        {imageFiles.length === 0 ? <p className="mt-3 text-sm font-medium text-[var(--pier-orange)]">Upload at least one image to continue.</p> : null}
-        <div className="mt-4 space-y-2">
-          {files.length === 0 ? <p className="text-sm text-zinc-500">No files selected.</p> : null}
-          {files.map((file) => {
-            const isImage = file.type.startsWith("image/");
-            const isHero = isImage && imageFiles[0] ? fileKey(imageFiles[0]) === fileKey(file) : false;
-            return (
-              <div key={fileKey(file)} className="rounded-[1.4rem] border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-zinc-900">{file.name}</p>
-                    <p className="text-xs text-zinc-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
-                  </div>
-                  <button type="button" onClick={() => removeFile(file)} className="text-sm font-semibold text-zinc-500 transition hover:text-red-600">
-                    Remove
-                  </button>
-                </div>
-                {isImage ? (
-                  <div className="mt-3 flex items-center gap-3 text-xs">
-                    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-semibold ${isHero ? "border-orange-200 bg-orange-50 text-[var(--pier-orange)]" : "border-zinc-300 bg-zinc-50 text-zinc-700"}`}>
-                      <span>{isHero ? "Hero image" : "Additional photo"}</span>
-                    </span>
-                  </div>
-                ) : (
-                  <p className="mt-3 text-xs text-zinc-500">Supporting document</p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {duplicateMatch ? (
-        <section className="rounded-[2rem] border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-700">Possible duplicate detected</p>
-          <p className="mt-2 text-base font-semibold text-amber-950">This intake matches an existing draft or archived listing.</p>
-          <div className="mt-3 space-y-1 text-amber-800">
-            <p>Address: {duplicateMatch.address || "—"}</p>
-            <p>Parcel: {duplicateMatch.parcelId || "—"}</p>
-            <p>Status: {duplicateMatch.archived ? "Archived" : (duplicateMatch.workflowStatus || duplicateMatch.status || "Active")}</p>
-            <p>Matched on: {duplicateMatch.matchedOn.join(", ")}</p>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <button type="button" onClick={() => submitIntake("restore_existing")} className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-4 py-3 font-semibold text-white transition hover:bg-emerald-700">
-              {duplicateMatch.archived ? "Restore existing listing" : "Use existing listing"}
-            </button>
-            <button type="button" onClick={() => submitIntake("create_duplicate")} className="inline-flex items-center justify-center rounded-full border border-amber-700 bg-white px-4 py-3 font-semibold text-amber-800 transition hover:bg-amber-100">
-              Create duplicate anyway
-            </button>
-            <button type="button" onClick={() => setDuplicateMatch(null)} className="inline-flex items-center justify-center rounded-full border border-zinc-300 bg-white px-4 py-3 font-semibold text-zinc-800 transition hover:bg-zinc-100">
-              Dismiss warning
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {status === "success" && reviewChecklist ? (
-        <section className={`rounded-[2rem] border p-5 shadow-sm ${reviewChecklist.checklistState === "blocked" ? "border-rose-200 bg-rose-50" : reviewChecklist.checklistState === "needs_manual_followup" ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Research-needed summary</p>
-          <p className="mt-2 text-sm font-semibold text-zinc-950">{reviewChecklist.exceptionReason ?? "Draft enrichment looks healthy after intake."}</p>
-          <div className="mt-3 grid gap-3 text-sm text-zinc-700 sm:grid-cols-2">
-            <div>
-              <p className="font-medium text-zinc-900">Auto-filled</p>
-              <ul className="mt-1 list-disc pl-5">
-                {(reviewChecklist.autoFilledFields.length ? reviewChecklist.autoFilledFields : ["None yet"]).map((item) => <li key={`auto-${item}`}>{item}</li>)}
-              </ul>
-            </div>
-            <div>
-              <p className="font-medium text-zinc-900">Needs follow-up</p>
-              <ul className="mt-1 list-disc pl-5">
-                {(reviewChecklist.manualResearchNeeded.length ? reviewChecklist.manualResearchNeeded : ["None"]).map((item) => <li key={`manual-${item}`}>{item}</li>)}
-              </ul>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="sticky bottom-3 z-10 rounded-[2rem] border border-zinc-950 bg-[linear-gradient(135deg,#111827,#1f2937)] p-5 text-white shadow-[0_18px_60px_rgba(15,23,42,0.24)]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">Submit</p>
-            <p className="mt-2 text-sm leading-7 text-zinc-200">
-              {status === "idle" && "Creates the draft listing, uploads files, and starts enrichment + copy generation."}
-              {status === "saving" && "Creating intake draft now…"}
-              {status === "success" && `Draft created${createdSlug ? `: ${createdSlug}` : ""}. You can run another intake now while enrichment continues.`}
-              {status === "error" && (errorMessage ?? "Failed to create intake draft.")}
-            </p>
-          </div>
-          <button type="submit" disabled={status === "saving" || imageFiles.length === 0} className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-zinc-950 transition enabled:hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60">
-            Submit new listing
-          </button>
-        </div>
       </section>
     </form>
   );

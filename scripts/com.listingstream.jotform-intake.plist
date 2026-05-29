@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.listingstream.jotform-intake</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>node</string>
+      <string>/data/.openclaw/workspace/property-portal/scripts/jotform-intake-receiver.mjs</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>LISTINGSTREAM_JOTFORM_PORT</key>
+      <string>8788</string>
+      <key>LISTINGSTREAM_MEDIA_VAULT</key>
+      <string>/Volumes/ListingsMedia/ListingStream_Media</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>WorkingDirectory</key>
+    <string>/data/.openclaw/workspace/property-portal</string>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/listingstream-jotform-intake.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/listingstream-jotform-intake.err.log</string>
+  </dict>
+</plist>

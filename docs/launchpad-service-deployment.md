@@ -8,6 +8,13 @@
   - `LAUNCHPAD_SERVICE_TOKEN`
   - `LAUNCHPAD_SERVICE_TIMEOUT_MS`
 - The Python enrichment service is packaged in `services/launchpad-service/`.
+- The Python enrichment service also supports configurable LLM routing:
+  - `LLM_PROVIDER` (`gemini` or `openai`)
+  - `LLM_FALLBACK_PROVIDER` (`openai` or `gemini`)
+  - `GEMINI_MODEL`
+  - `GOOGLE_API_KEY`
+  - `OPENAI_MODEL`
+  - `OPENAI_API_KEY`
 
 ## Service package contents
 
@@ -52,6 +59,26 @@ Set these in the Vercel project for production:
 LAUNCHPAD_SERVICE_URL=http://YOUR-MAC-MINI-IP-OR-TUNNEL:8787
 LAUNCHPAD_SERVICE_TOKEN=replace-with-shared-secret
 LAUNCHPAD_SERVICE_TIMEOUT_MS=60000
+```
+
+## Launchpad service env vars
+
+Recommended service env for Gemini-primary / OpenAI-fallback:
+
+```bash
+LAUNCHPAD_SERVICE_HOST=127.0.0.1
+LAUNCHPAD_SERVICE_PORT=8787
+LAUNCHPAD_SERVICE_TOKEN=replace-with-shared-secret
+LLM_PROVIDER=gemini
+LLM_FALLBACK_PROVIDER=openai
+GEMINI_MODEL=gemini-2.5-flash
+GOOGLE_API_KEY=replace-with-google-ai-key
+OPENAI_API_KEY=replace-with-openai-key
+OPENAI_MODEL=gpt-4o
+Maps_API_KEY=replace-with-google-maps-key
+GOOGLE_APPLICATION_CREDENTIALS=/Users/ryan/path/to/service-account.json
+BUILDOUT_API_BASE_URL=https://buildout.com/api/v1
+BUILDOUT_API_TOKEN=replace-with-buildout-token
 ```
 
 ## Recommended network pattern

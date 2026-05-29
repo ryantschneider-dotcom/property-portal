@@ -15,7 +15,7 @@ export {
   slugify,
 } from "@/lib/broker-hub-shared";
 
-export async function uploadBrokerAsset(folder: "intake" | "revision", slug: string, file: File, index: number) {
+export async function uploadBrokerAsset(folder: "intake" | "revision" | "listing-agreement", slug: string, file: File, index: number) {
   const bucket = storage.bucket();
   const bytes = Buffer.from(await file.arrayBuffer());
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-");

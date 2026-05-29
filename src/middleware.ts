@@ -43,6 +43,11 @@ export function middleware(request: NextRequest) {
     return new NextResponse('Unauthorized', { status: 401 });
   }
 
+  // Protect /dashboard routes
+  if (!session && path.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/admin/login', request.url));
+  }
+
   // 4. Redirect unauthorized page visits to login
   if (!session && path.startsWith('/admin')) {
     return NextResponse.redirect(new URL('/admin/login', request.url));

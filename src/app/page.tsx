@@ -1,5 +1,7 @@
 import { headers } from "next/headers";
 
+import { OutlookKeeperLog } from "@/components/outlook-keeper-log";
+
 import { BrokerHubHome } from "@/components/broker-hub-home";
 import { FilterToggle } from "@/components/filter-toggle";
 import { PropertyGrid } from "@/components/property-grid";
@@ -24,6 +26,9 @@ async function BrokerHostHome() {
       </header>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <BrokerHubHome countyHealth={countyHealth} listings={listings} />
+        <div className="mt-8">
+          <OutlookKeeperLog />
+        </div>
       </div>
     </div>
   );
