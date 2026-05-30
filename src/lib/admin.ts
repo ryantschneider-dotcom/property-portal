@@ -180,8 +180,8 @@ function visibilityFromTransaction(transactionType: AdminPropertyFormData["trans
   return { transactionLabel: "For Sale/Lease", saleActive: true, leaseActive: true };
 }
 
-function inferCategory(existing?: PropertyDetail | null): string | null {
-  return existing?.property.category ?? null;
+function resolveCategory(input: AdminPropertyFormData, existing?: PropertyDetail | null): string | null {
+  return input.propertyTypeLabel.trim() || existing?.property.category || null;
 }
 
 export async function listAdminProperties(session?: PortalSession | null): Promise<AdminPropertyListItem[]> {
@@ -516,7 +516,7 @@ export async function getAdminPropertyFormData(slug: string): Promise<AdminPrope
 
     propertyTypeId: cleanDisplayText(rawProperty.property_type_id),
     propertySubtypeId: cleanDisplayText(rawProperty.property_subtype_id || meta.copy?.property_subtype_id),
-    propertyTypeLabel: cleanDisplayText(intake.property_type || intake["Property Type"]),
+    propertyTypeLabel: cleanDisplayText(rawProperty.category || intake.property_type || intake["Property Type"]),
     buildingSizeSf: formatNumberString(property.property.buildingSizeSf || rawProperty.building_size_sf || publicRecords.building_size_sf),
     lotSizeAcres: formatNumberString(property.property.lotSizeAcres || rawProperty.lot_size_acres || publicRecords.lot_size_acres, 4),
     yearBuilt: formatNumberString(property.property.yearBuilt || rawProperty.year_built || publicRecords.year_built),
@@ -568,7 +568,7 @@ export async function saveAdminProperty(input: AdminPropertyFormData) {
       lng: parseOptionalNumber(input.longitude),
     },
     property: {
-      category: inferCategory(existing) || input.propertyTypeLabel.trim() || null,
+      category: resolveCategory(input, existing),
       propertyTypeId: input.propertyTypeId.trim() || null,
       propertySubtypeId: input.propertySubtypeId.trim() || null,
       buildingSizeSf: parseOptionalNumber(input.buildingSizeSf),

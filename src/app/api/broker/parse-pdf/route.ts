@@ -11,7 +11,6 @@ import {
   salesforcePatch,
 } from '@/lib/ascendix-sync';
 
-import { PDFParse } from 'pdf-parse'; // MACK: Changed to named import
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -97,8 +96,10 @@ export async function POST(request: Request) {
     );
 
     const pdfBuffer = Buffer.from(await listingAgreementFile.arrayBuffer());
-    // @ts-ignore - MACK: Ignoring TypeScript error for pdfParse function call as it's common runtime usage
-    const data = await PDFParse(pdfBuffer); 
+    const { PDFParse } = await import('pdf-parse');
+    const parser = new PDFParse({ data: pdfBuffer });
+    const data = await parser.getText();
+    await parser.destroy();
     const extractedText = data.text;
 
     console.log(`[parse-pdf] Extracted text from PDF for ${slug}:`, extractedText.substring(0, 500) + '...'); 
