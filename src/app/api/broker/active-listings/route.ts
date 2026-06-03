@@ -6,9 +6,11 @@ import { NextResponse } from "next/server";
 import { listAdminProperties } from "@/lib/admin";
 import { getPortalSession } from "@/lib/portal-session";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const internalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN?.trim();
+  const providedInternalToken = request.headers.get("x-pier-manager-internal")?.trim();
   const session = await getPortalSession();
-  if (!session) {
+  if (!session && !(internalToken && providedInternalToken === internalToken)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -28,6 +30,9 @@ export async function GET() {
       buildoutReady: item.buildoutReady,
       enrichmentStatus: item.enrichmentStatus,
       revisionWorkflow: item.revisionWorkflow,
+      workflowStatus: item.workflowStatus,
+      publishStatus: item.workflowStatus === "draft_preview" ? "draft" : item.workflowStatus === "approved" ? "published" : item.workflowStatus,
+      previewUrl: item.slug ? `/preview/${item.slug}` : `/preview/${item.id}`,
     }));
 
   return NextResponse.json({ items });

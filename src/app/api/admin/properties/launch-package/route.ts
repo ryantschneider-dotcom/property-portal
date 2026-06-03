@@ -4,11 +4,13 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { publishLaunchPackageToListingStream } from "@/lib/launch-package";
+import { deleteDraftLaunchPackage, makeDraftLaunchPackageLive, publishLaunchPackageToListingStream, saveDraftLaunchPackageToListingStream } from "@/lib/launch-package";
 import { syncPropertyToAscendix } from "@/lib/ascendix-sync";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
+import { getPropertyDocumentByIdentifier } from "@/lib/properties";
 
 type LaunchPackageRequest = {
+  action?: "save-draft" | "publish-live" | "delete-draft" | "make-live";
   slug?: string;
   propertyId?: string;
   actorEmail?: string;
@@ -36,15 +38,52 @@ export async function POST(request: Request) {
     if (!identifier) return NextResponse.json({ error: "Slug or propertyId is required" }, { status: 400 });
 
     const actorEmail = String(body.actorEmail || "pier-manager@piercommercial.com").trim();
+    const action = body.action || "publish-live";
+
+    if (action === "delete-draft") {
+      const deleted = await deleteDraftLaunchPackage(identifier);
+      return NextResponse.json({
+        success: true,
+        message: "Draft deleted from Firestore without touching Ascendix.",
+        result: deleted,
+        sync: null,
+        ascendixBypassed: true,
+        wordpressBypassed: true,
+        primaryCms: "ListingStream",
+      });
+    }
+
+    if (action === "make-live") {
+      const publish = await makeDraftLaunchPackageLive(identifier, actorEmail);
+      const sync = await syncPropertyToAscendix(publish.documentId);
+      if (!sync.success) {
+        const normalized = normalizeError(new Error(sync.message), "ascendix");
+        return NextResponse.json({ success: false, result: publish, sync, error: normalized.message }, { status: normalized.transient ? 503 : 502 });
+      }
+      return NextResponse.json({
+        success: true,
+        message: "Draft made live and synced to Ascendix.",
+        result: publish,
+        sync,
+        wordpressBypassed: true,
+        primaryCms: "ListingStream",
+      });
+    }
 
     let save: Record<string, unknown> | null = null;
+    let publishIdentifier = identifier;
     if (body.approvedPayload && typeof body.approvedPayload === "object") {
-      await db.collection(PROPERTIES_COLLECTION).doc(identifier).set(
+      const existingDoc = await getPropertyDocumentByIdentifier(identifier);
+      publishIdentifier = existingDoc?.id || identifier;
+      const existingData = existingDoc?.data() as Record<string, unknown> | undefined;
+      const approvedSlug = String(body.approvedPayload.slug || existingData?.slug || identifier).trim();
+
+      await db.collection(PROPERTIES_COLLECTION).doc(publishIdentifier).set(
         {
           ...body.approvedPayload,
-          slug: identifier,
-          status: String(body.approvedPayload.status || "active"),
-          workflowStatus: "approved",
+          slug: approvedSlug,
+          status: String(body.approvedPayload.status || (action === "save-draft" ? "draft" : "active")),
+          workflowStatus: String(body.approvedPayload.workflowStatus || (action === "save-draft" ? "draft_preview" : "approved")),
           updatedByUserId: actorEmail,
           meta: {
             ...((body.approvedPayload.meta && typeof body.approvedPayload.meta === "object") ? body.approvedPayload.meta : {}),
@@ -62,10 +101,24 @@ export async function POST(request: Request) {
         },
         { merge: true },
       );
-      save = { success: true, slug: identifier, directLaunchPackageSave: true };
+      save = { success: true, slug: approvedSlug, documentId: publishIdentifier, directLaunchPackageSave: true };
     }
 
-    const publish = await publishLaunchPackageToListingStream(identifier, actorEmail);
+    if (action === "save-draft") {
+      const draft = await saveDraftLaunchPackageToListingStream(publishIdentifier, actorEmail);
+      return NextResponse.json({
+        success: true,
+        message: "Saved as ListingStream draft preview. Ascendix was bypassed.",
+        save,
+        result: draft,
+        sync: null,
+        ascendixBypassed: true,
+        wordpressBypassed: true,
+        primaryCms: "ListingStream",
+      });
+    }
+
+    const publish = await publishLaunchPackageToListingStream(publishIdentifier, actorEmail);
 
     const sync = await syncPropertyToAscendix(publish.documentId);
     if (!sync.success) {

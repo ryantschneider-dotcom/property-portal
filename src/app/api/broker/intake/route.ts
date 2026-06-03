@@ -74,13 +74,22 @@ export async function POST(request: Request) {
     const session = parsePortalSession(cookieStore.get("admin_session")?.value);
     const host = (headerStore.get("x-forwarded-host") || headerStore.get("host") || "").toLowerCase();
     const isBrokerHost = host === "broker.piercommercial.com" || host === "www.broker.piercommercial.com";
-    const actor = session ?? (isBrokerHost
+    const internalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN?.trim();
+    const providedInternalToken = headerStore.get("x-pier-manager-internal")?.trim();
+    const isPierManagerInternal = Boolean(internalToken && providedInternalToken === internalToken);
+    const actor = session ?? (isPierManagerInternal
       ? {
-          email: "broker-hub@pier.internal",
-          role: "junior_broker",
-          name: "Broker Hub",
+          email: "pier-manager@piercommercial.com",
+          role: "admin",
+          name: "PIER Manager",
         }
-      : null);
+      : isBrokerHost
+        ? {
+            email: "broker-hub@pier.internal",
+            role: "junior_broker",
+            name: "Broker Hub",
+          }
+        : null);
 
     if (!actor) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

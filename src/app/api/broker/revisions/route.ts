@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 
 import { FieldValue } from "firebase-admin/firestore";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
@@ -14,7 +15,13 @@ import { interpretBrokerEditRequest } from "@/lib/broker-edit-interpreter";
 
 export async function POST(request: Request) {
   const session = await getPortalSession();
-  if (!session) {
+  const headerStore = await headers();
+  const internalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN?.trim();
+  const providedInternalToken = headerStore.get("x-pier-manager-internal")?.trim();
+  const actor = session ?? (internalToken && providedInternalToken === internalToken
+    ? { email: "pier-manager@piercommercial.com", name: "PIER Manager" }
+    : null);
+  if (!actor) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,10 +41,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Property not found." }, { status: 404 });
     }
 
-    const raw = (snapshot.data() as Record<string, any> | undefined) ?? {};
+    const raw = (snapshot.data() as Record<string, unknown> | undefined) ?? {};
     const slug = String(snapshot.get("slug") ?? propertyId);
-    const revisionWorkflow = raw.meta?.revisionWorkflow ?? {};
-    const currentRequest = revisionWorkflow.currentRequest ?? null;
+    const meta = raw.meta && typeof raw.meta === "object" && !Array.isArray(raw.meta) ? raw.meta as Record<string, unknown> : {};
+    const revisionWorkflow = meta.revisionWorkflow && typeof meta.revisionWorkflow === "object" && !Array.isArray(meta.revisionWorkflow) ? meta.revisionWorkflow as Record<string, unknown> : {};
+    const currentRequest = revisionWorkflow.currentRequest && typeof revisionWorkflow.currentRequest === "object" && !Array.isArray(revisionWorkflow.currentRequest) ? revisionWorkflow.currentRequest as Record<string, unknown> : null;
     const interpreter = interpretBrokerEditRequest(raw, instructions);
 
     const uploadedAssets = await Promise.all(files.map((file, index) => uploadBrokerAsset("revision", slug, file, index)));
@@ -68,8 +76,8 @@ export async function POST(request: Request) {
     const brokerResponse = {
       id: responseId,
       createdAt: now,
-      createdByEmail: session.email,
-      createdByName: session.name,
+      createdByEmail: actor.email,
+      createdByName: actor.name,
       instructions,
       uploadedAssets,
       uploadedAssetCount: uploadedAssets.length,
@@ -80,7 +88,7 @@ export async function POST(request: Request) {
 
     const updatePayload: Record<string, unknown> = {
       updatedAt: now,
-      updatedByUserId: session.email,
+      updatedByUserId: actor.email,
       workflowStatus: "broker_updated_pending_review",
       ...interpreter.updatePayload,
       meta: {
@@ -91,8 +99,8 @@ export async function POST(request: Request) {
         }),
         latestRevisionRequest: {
           createdAt: now,
-          createdByEmail: session.email,
-          createdByName: session.name,
+          createdByEmail: actor.email,
+          createdByName: actor.name,
           instructions,
           uploadedAssetCount: uploadedAssets.length,
           requestId: currentRequest?.id ?? null,
@@ -101,8 +109,8 @@ export async function POST(request: Request) {
         brokerHub: {
           latestEditRequest: {
             createdAt: now,
-            createdByEmail: session.email,
-            createdByName: session.name,
+            createdByEmail: actor.email,
+            createdByName: actor.name,
             instructions,
             uploadedAssetCount: uploadedAssets.length,
             propertyId,
@@ -121,8 +129,8 @@ export async function POST(request: Request) {
           editRequest: {
             status: interpreter.summary.length ? "applied_partially" : "queued",
             requestedAt: now,
-            requestedByEmail: session.email,
-            requestedByName: session.name,
+            requestedByEmail: actor.email,
+            requestedByName: actor.name,
             instructions,
             uploadedAssetCount: uploadedAssets.length,
             mode: "enrich_edit_request",
@@ -138,22 +146,22 @@ export async function POST(request: Request) {
                 status: "broker_updated",
                 brokerResponse,
                 brokerUpdatedAt: now,
-                brokerUpdatedBy: session.email,
+                brokerUpdatedBy: actor.email,
               },
               history: FieldValue.arrayUnion({
                 ...currentRequest,
                 status: "broker_updated",
                 brokerResponse,
                 brokerUpdatedAt: now,
-                brokerUpdatedBy: session.email,
+                brokerUpdatedBy: actor.email,
               }),
             }
           : {
               history: FieldValue.arrayUnion({
                 id: responseId,
                 createdAt: now,
-                createdBy: session.email,
-                createdByName: session.name,
+                createdBy: actor.email,
+                createdByName: actor.name,
                 status: "broker_updated",
                 summary: instructions,
                 categories: [],

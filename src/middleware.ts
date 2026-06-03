@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+import { isBrokerHostPublicPreviewPath } from './lib/draft-preview';
+
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const session = request.cookies.get('admin_session');
@@ -23,7 +25,7 @@ export function middleware(request: NextRequest) {
 
     const allowedBrokerPaths = new Set(['/broker', '/broker/new', '/broker/revisions']);
     const isAdminPath = path.startsWith('/admin') || path.startsWith('/api/admin');
-    if (!allowedBrokerPaths.has(path) && !path.startsWith('/api/') && !isAdminPath) {
+    if (!allowedBrokerPaths.has(path) && !path.startsWith('/api/') && !isAdminPath && !isBrokerHostPublicPreviewPath(path)) {
       return NextResponse.redirect(new URL('/broker', request.url));
     }
   }

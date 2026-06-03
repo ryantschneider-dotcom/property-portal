@@ -2,6 +2,8 @@ import "server-only";
 
 import { FieldValue } from "firebase-admin/firestore";
 
+import { buildDraftPreviewPath } from "@/lib/draft-preview";
+import { appendDraftPreviewToken } from "@/lib/draft-preview-token";
 import { db, PROPERTIES_COLLECTION, PUBLIC_LISTINGS_COLLECTION } from "@/lib/firestore";
 import { getPropertyBySlug, getPropertyDocumentByIdentifier } from "@/lib/properties";
 
@@ -15,28 +17,36 @@ function normalizeString(value: unknown): string | null {
   return text || null;
 }
 
-function normalizeSpaces(raw: Record<string, any>, property: NonNullable<Awaited<ReturnType<typeof getPropertyBySlug>>>) {
+type LaunchRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): LaunchRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as LaunchRecord : {};
+}
+
+function normalizeSpaces(raw: LaunchRecord, property: NonNullable<Awaited<ReturnType<typeof getPropertyBySlug>>>) {
+  const rawAvailability = asRecord(raw.availability);
+  const rawBuildout = asRecord(asRecord(raw.raw).buildout);
   const candidates = [
     property.spaces,
     raw.spaces,
     raw.suites,
-    raw.availability?.spaces,
-    raw.availability?.suites,
-    raw.raw?.buildout?.spaces,
-    raw.raw?.buildout?.suites,
-    raw.raw?.buildout?.availabilities,
-    raw.raw?.buildout?.units,
+    rawAvailability.spaces,
+    rawAvailability.suites,
+    rawBuildout.spaces,
+    rawBuildout.suites,
+    rawBuildout.availabilities,
+    rawBuildout.units,
   ].filter(Array.isArray);
 
-  return candidates.flatMap((items: any) =>
-    items.map((item: any) => ({
-      id: item?.id ?? null,
-      name: item?.name ?? item?.title ?? null,
-      suite: item?.suite ?? item?.unit ?? item?.label ?? null,
-      sizeSf: item?.sizeSf ?? item?.availableSqFt ?? item?.squareFeet ?? item?.sqFt ?? item?.size ?? null,
-      ratePerSf: item?.ratePerSf ?? item?.askingPriceRatePerSf ?? item?.pricePerSf ?? item?.leaseRate ?? null,
-      monthlyRate: item?.monthlyRate ?? item?.monthlyRent ?? item?.rentPerMonth ?? null,
-      rawRateLabel: item?.rawRateLabel ?? item?.rateLabel ?? item?.priceLabel ?? null,
+  return candidates.flatMap((items) =>
+    (items as LaunchRecord[]).map((item) => ({
+      id: item.id ?? null,
+      name: item.name ?? item.title ?? null,
+      suite: item.suite ?? item.unit ?? item.label ?? null,
+      sizeSf: item.sizeSf ?? item.availableSqFt ?? item.squareFeet ?? item.sqFt ?? item.size ?? null,
+      ratePerSf: item.ratePerSf ?? item.askingPriceRatePerSf ?? item.pricePerSf ?? item.leaseRate ?? null,
+      monthlyRate: item.monthlyRate ?? item.monthlyRent ?? item.rentPerMonth ?? null,
+      rawRateLabel: item.rawRateLabel ?? item.rateLabel ?? item.priceLabel ?? null,
     })),
   );
 }
@@ -50,7 +60,7 @@ async function resolveProperty(identifier: string) {
   const doc = await getPropertyDocumentByIdentifier(identifier);
   if (!doc?.exists) throw new Error("Property not found");
 
-  const raw = (doc.data() as Record<string, any> | undefined) ?? {};
+  const raw = (doc.data() as LaunchRecord | undefined) ?? {};
   const slug = normalizeString(raw.slug) || doc.id;
   const property = await getPropertyBySlug(doc.id) ?? await getPropertyBySlug(slug);
   if (!property) throw new Error("Property details not found");
@@ -61,7 +71,7 @@ async function resolveProperty(identifier: string) {
 function buildLaunchSnapshot(input: {
   documentId: string;
   slug: string;
-  raw: Record<string, any>;
+  raw: LaunchRecord;
   property: Awaited<ReturnType<typeof getPropertyBySlug>> extends infer T ? Exclude<T, null> : never;
 }) {
   const { documentId, slug, raw, property } = input;
@@ -170,6 +180,137 @@ export async function persistLaunchExecutionState(identifier: string, actorEmail
   };
 }
 
+
+function buildListingStreamPayload(input: {
+  documentId: string;
+  slug: string;
+  snapshot: ReturnType<typeof buildLaunchSnapshot>;
+  actorEmail: string;
+  publishStatus: "draft" | "published";
+  existingPublishedAt?: unknown;
+}) {
+  const now = new Date().toISOString();
+  return {
+    sourceDocumentId: input.documentId,
+    slug: input.slug,
+    title: input.snapshot.title,
+    transactionTypes: input.snapshot.transactionTypes,
+    address: input.snapshot.address,
+    location: input.snapshot.location,
+    property: input.snapshot.property,
+    pricing: input.snapshot.pricing,
+    content: input.snapshot.content,
+    media: input.snapshot.media,
+    links: input.snapshot.links,
+    spaces: input.snapshot.spaces,
+    visibility: input.snapshot.visibility,
+    ownerEmail: input.snapshot.ownerEmail,
+    leadBroker: input.snapshot.leadBroker,
+    publishStatus: input.publishStatus,
+    publishedAt: input.publishStatus === "published" ? (input.existingPublishedAt ?? now) : null,
+    publishedBy: input.publishStatus === "published" ? input.actorEmail : null,
+    draftPreviewUrl: appendDraftPreviewToken(buildDraftPreviewPath(input.slug), input.slug),
+    updatedAt: now,
+  };
+}
+
+export async function saveDraftLaunchPackageToListingStream(identifier: string, actorEmail: string) {
+  const packageState = await persistLaunchExecutionState(identifier, actorEmail);
+  const { doc, raw, slug } = await resolveProperty(identifier);
+  const snapshot = packageState.snapshot;
+  const publicPayload = buildListingStreamPayload({ documentId: doc.id, slug, snapshot, actorEmail, publishStatus: "draft" });
+
+  await db.collection(PUBLIC_LISTINGS_COLLECTION).doc(doc.id).set(publicPayload, { merge: true });
+  await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
+    {
+      status: "draft",
+      workflowStatus: "draft_preview",
+      meta: {
+        updatedAt: FieldValue.serverTimestamp(),
+        exportWorkflow: {
+          status: "draft_preview",
+          destination: "listingstream",
+          readyReasons: packageState.readyReasons,
+          blockingReasons: [],
+          warningReasons: packageState.warningReasons,
+          packageStatus: "built",
+          packageVersion: LAUNCH_PACKAGE_VERSION,
+          draftSavedAt: FieldValue.serverTimestamp(),
+          draftSavedBy: actorEmail,
+          lastExportAttempt: {
+            attemptedAt: FieldValue.serverTimestamp(),
+            attemptedBy: actorEmail,
+            result: "draft",
+            errorMessage: null,
+          },
+          exportCount: Number(raw.meta?.exportWorkflow?.exportCount ?? 0) || 0,
+        },
+      },
+    },
+    { merge: true },
+  );
+
+  return {
+    documentId: doc.id,
+    slug,
+    destination: "listingstream",
+    publishStatus: "draft",
+    publicCollection: PUBLIC_LISTINGS_COLLECTION,
+    previewUrl: appendDraftPreviewToken(buildDraftPreviewPath(slug), slug),
+    ascendixBypassed: true,
+  };
+}
+
+export async function makeDraftLaunchPackageLive(identifier: string, actorEmail: string) {
+  const packageState = await persistLaunchExecutionState(identifier, actorEmail);
+  const { doc, raw, slug } = await resolveProperty(identifier);
+  const snapshot = packageState.snapshot;
+  const publicPayload = buildListingStreamPayload({ documentId: doc.id, slug, snapshot, actorEmail, publishStatus: "published", existingPublishedAt: raw.publishedAt });
+  await db.collection(PUBLIC_LISTINGS_COLLECTION).doc(doc.id).set(publicPayload, { merge: true });
+  await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
+    {
+      status: "active",
+      workflowStatus: "approved",
+      meta: {
+        updatedAt: FieldValue.serverTimestamp(),
+        exportWorkflow: {
+          status: "completed",
+          destination: "listingstream",
+          readyReasons: packageState.readyReasons,
+          blockingReasons: [],
+          warningReasons: packageState.warningReasons,
+          packageStatus: "built",
+          packageVersion: LAUNCH_PACKAGE_VERSION,
+          publishedAt: FieldValue.serverTimestamp(),
+          publishedBy: actorEmail,
+          lastExportAttempt: {
+            attemptedAt: FieldValue.serverTimestamp(),
+            attemptedBy: actorEmail,
+            result: "published",
+            errorMessage: null,
+          },
+          exportCount: (Number(raw.meta?.exportWorkflow?.exportCount ?? 0) || 0) + 1,
+        },
+      },
+    },
+    { merge: true },
+  );
+  return { documentId: doc.id, slug, destination: "listingstream", publishStatus: "published", publicCollection: PUBLIC_LISTINGS_COLLECTION };
+}
+
+export async function deleteDraftLaunchPackage(identifier: string) {
+  const { doc, slug, raw } = await resolveProperty(identifier);
+  const publishStatus = raw.status || raw.workflowStatus || raw.meta?.exportWorkflow?.status;
+  if (!["draft", "draft_preview"].includes(String(publishStatus))) {
+    throw new Error("Only draft preview listings can be deleted from this endpoint.");
+  }
+  await Promise.all([
+    db.collection(PUBLIC_LISTINGS_COLLECTION).doc(doc.id).delete(),
+    db.collection(PROPERTIES_COLLECTION).doc(doc.id).delete(),
+  ]);
+  return { documentId: doc.id, slug, publishStatus: "deleted" };
+}
+
 export async function publishLaunchPackageToListingStream(identifier: string, actorEmail: string) {
   const packageState = await persistLaunchExecutionState(identifier, actorEmail);
   const { doc, raw, slug } = await resolveProperty(identifier);
@@ -205,27 +346,7 @@ export async function publishLaunchPackageToListingStream(identifier: string, ac
     throw new Error("Missing Geolocation");
   }
 
-  const publicPayload = {
-    sourceDocumentId: doc.id,
-    slug,
-    title: snapshot.title,
-    transactionTypes: snapshot.transactionTypes,
-    address: snapshot.address,
-    location: snapshot.location,
-    property: snapshot.property,
-    pricing: snapshot.pricing,
-    content: snapshot.content,
-    media: snapshot.media,
-    links: snapshot.links,
-    spaces: snapshot.spaces,
-    visibility: snapshot.visibility,
-    ownerEmail: snapshot.ownerEmail,
-    leadBroker: snapshot.leadBroker,
-    publishStatus: "published",
-    publishedAt: now,
-    publishedBy: actorEmail,
-    updatedAt: now,
-  };
+  const publicPayload = buildListingStreamPayload({ documentId: doc.id, slug, snapshot, actorEmail, publishStatus: "published", existingPublishedAt: now });
 
   await db.collection(PUBLIC_LISTINGS_COLLECTION).doc(doc.id).set(publicPayload, { merge: true });
 
