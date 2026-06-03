@@ -509,21 +509,30 @@ export function PierManagerListingConsole() {
       </div>
 
       {reviewDraft ? (
-        <section className="rounded-3xl border border-[#CB521E]/30 bg-white p-6 shadow-sm">
+        <section data-testid="review-draft-panel" className="rounded-3xl border border-[#CB521E]/30 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Review Draft</p>
               <h3 className="mt-2 text-2xl font-semibold text-zinc-950">{reviewDraft.title}</h3>
               <p className="mt-2 text-sm text-zinc-500">{reviewDraft.kind === "new-listing" ? "New listing AI enrichment" : "Existing listing AI delta"} • {reviewDraft.status}</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button onClick={() => publishDraft("draft-preview")} disabled={reviewBusy} className="rounded-xl border border-[#CB521E] bg-white px-5 py-3 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:opacity-50">Save as Draft & Preview</button>
-              <button onClick={() => publishDraft("publish-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:opacity-50">Approve & Publish Live</button>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
+              Review all assessor fields, checklist items, revision feedback, and payload preview before final approval.
             </div>
           </div>
           <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm leading-7 text-zinc-800" dangerouslySetInnerHTML={{ __html: reviewDraft.descriptionHtml }} />
 
-          <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">
+          <div data-testid="broker-revise-loop" className="mt-6 rounded-3xl border border-[#CB521E]/25 bg-[#CB521E]/5 p-5">
+            <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Plain-text revise loop</p>
+            <h4 className="mt-2 text-lg font-semibold text-zinc-950">Send corrections back to Hermes before publishing</h4>
+            <p className="mt-2 text-sm leading-6 text-zinc-700">Type broker feedback here to revise the draft copy or structured payload. This keeps review from becoming a forced publish screen.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for Hermes to process before approval" />
+              <button type="button" onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
+            </div>
+          </div>
+
+          <div data-testid="assessor-data-fields" className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Assessor Data Review</p>
             <h4 className="mt-2 text-lg font-semibold text-zinc-950">Editable public-record fields before publish</h4>
             <p className="mt-2 text-sm leading-6 text-amber-900">These fields always remain available for manual broker entry when assessor scrape or enrichment data is blank, partial, or wrong.</p>
@@ -547,7 +556,7 @@ export function PierManagerListingConsole() {
           ) : null}
           {reviewDraft.mediaNotes.length ? <p className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">Media notes: {reviewDraft.mediaNotes.join(" • ")}</p> : null}
 
-          <div className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-5">
+          <div data-testid="review-checklist-panel" className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Review Checklist</p>
             <h4 className="mt-2 text-lg font-semibold text-zinc-950">Mack enrichment review</h4>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -586,15 +595,20 @@ export function PierManagerListingConsole() {
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto]">
-            <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for Hermes to process before approval" />
-            <button onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
-          </div>
-
-          <details className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-950 p-5 text-white" open>
+          <details data-testid="payload-preview" className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-950 p-5 text-white" open>
             <summary className="cursor-pointer text-sm font-semibold uppercase tracking-[0.18em] text-[#f6a87f]">Full data payload preview</summary>
             <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl bg-black/30 p-4 text-xs leading-5 text-zinc-200">{compactJson(reviewDraft)}</pre>
           </details>
+
+          <div data-testid="final-publish-actions" className="mt-5 rounded-3xl border border-[#CB521E]/30 bg-white p-5">
+            <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Final approval after payload review</p>
+            <h4 className="mt-2 text-lg font-semibold text-zinc-950">Save a hidden preview or publish live</h4>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Use Draft Preview for safe review without Ascendix. Use Approve & Publish Live only after the checklist, manual assessor data, and payload preview are correct.</p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button type="button" onClick={() => publishDraft("draft-preview")} disabled={reviewBusy} className="rounded-xl border border-[#CB521E] bg-white px-5 py-3 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:opacity-50">Save as Draft & Preview</button>
+              <button type="button" onClick={() => publishDraft("publish-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:opacity-50">Approve & Publish Live</button>
+            </div>
+          </div>
 
           {draftPreviewUrl ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">

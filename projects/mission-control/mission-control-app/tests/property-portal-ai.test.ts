@@ -382,3 +382,15 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /Editable public-record fields before publish/);
   assert.match(source, /These fields always remain available for manual broker entry/);
 });
+
+test("broker review draft has explicit visible panels and does not force publish before revision", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /data-testid="review-draft-panel"/);
+  assert.match(source, /data-testid="assessor-data-fields"/);
+  assert.match(source, /data-testid="review-checklist-panel"/);
+  assert.match(source, /data-testid="broker-revise-loop"/);
+  assert.match(source, /data-testid="payload-preview"/);
+  assert.match(source, /data-testid="final-publish-actions"/);
+  assert.match(source, /Plain-text revise loop/);
+  assert.match(source, /Final approval after payload review/);
+});
