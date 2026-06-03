@@ -33,6 +33,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const internalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN?.trim();
+  const providedInternalToken = request.headers.get('x-pier-manager-internal')?.trim();
+  if (path === '/api/admin/properties/launch-package' && internalToken && providedInternalToken === internalToken) {
+    return NextResponse.next();
+  }
+
   // 2. Let the visual login page through unconditionally
   if (path.includes('/admin/login')) {
     return NextResponse.next();

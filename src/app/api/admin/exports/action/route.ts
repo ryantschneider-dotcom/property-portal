@@ -7,6 +7,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { revalidatePath } from "next/cache";
 
 import { persistLaunchExecutionState, publishLaunchPackageToListingStream } from "@/lib/launch-package";
+import { syncPropertyToAscendix } from "@/lib/ascendix-sync";
 import { db, PROPERTIES_COLLECTION } from "@/lib/firestore";
 import { parsePortalSession } from "@/lib/portal-session";
 
@@ -54,13 +55,17 @@ export async function POST(request: Request) {
     if (action === "queue_export" || action === "retry_export") {
       try {
         const result = await publishLaunchPackageToListingStream(doc.id, session.email);
+        const sync = await syncPropertyToAscendix(result.documentId);
         revalidatePath("/admin/exports");
         revalidatePath("/admin/properties");
         revalidatePath(`/admin/properties/${doc.id}/edit`);
         return NextResponse.json({
-          success: true,
-          message: action === "retry_export" ? "ListingStream publish retried successfully." : "Published to ListingStream.",
+          success: sync.success,
+          message: sync.success
+            ? (action === "retry_export" ? "ListingStream publish retried successfully and Ascendix synced." : "Published to ListingStream and synced to Ascendix.")
+            : `Published to ListingStream, but Ascendix sync needs retry: ${sync.message}`,
           result,
+          sync,
         });
       } catch (error) {
         if (error instanceof Error && error.message === "Missing Geolocation") {
