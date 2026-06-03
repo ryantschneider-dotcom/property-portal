@@ -30,6 +30,22 @@ function normalizeError(error: unknown, operation: "listingstream" | "ascendix")
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isRecord(value)) return Object.values(value).some(hasMeaningfulValue);
+  return true;
+}
+
+function isGenericReviewTitle(value: unknown) {
+  return /^(ai[- ]drafted listing review|ai draft ready for broker review)$/i.test(String(value ?? "").trim());
+}
+
 export async function POST(request: Request) {
   let identifier = "";
   try {
@@ -76,17 +92,24 @@ export async function POST(request: Request) {
       const existingDoc = await getPropertyDocumentByIdentifier(identifier);
       publishIdentifier = existingDoc?.id || identifier;
       const existingData = existingDoc?.data() as Record<string, unknown> | undefined;
-      const approvedSlug = String(body.approvedPayload.slug || existingData?.slug || identifier).trim();
+      const payloadForSave = { ...body.approvedPayload };
+      if (isGenericReviewTitle(payloadForSave.title) && typeof existingData?.title === "string") {
+        payloadForSave.title = existingData.title;
+      }
+      if (!hasMeaningfulValue(payloadForSave.media) && hasMeaningfulValue(existingData?.media)) {
+        payloadForSave.media = existingData?.media;
+      }
+      const approvedSlug = String(payloadForSave.slug || existingData?.slug || identifier).trim();
 
       await db.collection(PROPERTIES_COLLECTION).doc(publishIdentifier).set(
         {
-          ...body.approvedPayload,
+          ...payloadForSave,
           slug: approvedSlug,
-          status: String(body.approvedPayload.status || (action === "save-draft" ? "draft" : "active")),
-          workflowStatus: String(body.approvedPayload.workflowStatus || (action === "save-draft" ? "draft_preview" : "approved")),
+          status: String(payloadForSave.status || (action === "save-draft" ? "draft" : "active")),
+          workflowStatus: String(payloadForSave.workflowStatus || (action === "save-draft" ? "draft_preview" : "approved")),
           updatedByUserId: actorEmail,
           meta: {
-            ...((body.approvedPayload.meta && typeof body.approvedPayload.meta === "object") ? body.approvedPayload.meta : {}),
+            ...((payloadForSave.meta && typeof payloadForSave.meta === "object") ? payloadForSave.meta : {}),
             updatedAt: FieldValue.serverTimestamp(),
             approval: {
               status: "approved",
