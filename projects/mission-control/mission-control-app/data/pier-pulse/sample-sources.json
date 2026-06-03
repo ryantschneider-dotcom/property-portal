@@ -1,0 +1,28 @@
+[
+  {
+    "title": "Savannah port-adjacent industrial project advances through local review",
+    "url": "https://example.com/savannah-industrial-review",
+    "sourceName": "Sample Development Feed",
+    "publishedAt": "2026-06-01T14:00:00.000Z",
+    "summary": "A port-adjacent industrial project moved through local review, highlighting continued logistics demand and site-access considerations around Savannah.",
+    "topics": ["industrial", "development", "port", "logistics"],
+    "facts": [
+      "Industrial project advanced through local review",
+      "Project is tied to port-adjacent logistics demand"
+    ],
+    "corridorHint": "Savannah / Chatham"
+  },
+  {
+    "title": "Pooler infrastructure funding targets commercial access corridor",
+    "url": "https://example.com/pooler-infrastructure-access",
+    "sourceName": "Sample County Notice",
+    "publishedAt": "2026-06-01T13:00:00.000Z",
+    "summary": "Infrastructure funding is expected to improve access for commercial and industrial sites along a Pooler-area corridor.",
+    "topics": ["infrastructure", "industrial", "development"],
+    "facts": [
+      "Infrastructure funding targets a commercial access corridor",
+      "Access improvements may support industrial and logistics sites"
+    ],
+    "corridorHint": "Pooler / Bloomingdale / Port Wentworth / Garden City"
+  }
+]

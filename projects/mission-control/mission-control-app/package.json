@@ -1,0 +1,30 @@
+{
+  "name": "mission-control-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "postbuild": "mkdir -p .next/standalone/projects/mission-control/mission-control-app/.next .next/standalone/.next && cp -R .next/static .next/standalone/projects/mission-control/mission-control-app/.next/ && cp -R .next/static .next/standalone/.next/ && cp -R public .next/standalone/projects/mission-control/mission-control-app/ 2>/dev/null || true",
+    "start": "MISSION_CONTROL_APP_ROOT=. node .next/standalone/projects/mission-control/mission-control-app/server.js",
+    "lint": "eslint",
+    "test": "tsx --test tests/*.test.ts",
+    "pier-pulse:dry-run": "tsx scripts/pier-pulse-dry-run.ts"
+  },
+  "dependencies": {
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1",
+    "tailwindcss": "^4",
+    "tsx": "^4.22.4",
+    "typescript": "^5"
+  }
+}
