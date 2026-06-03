@@ -73,6 +73,62 @@ function normalizeTransactionTypes(visibility: Record<string, unknown> | undefin
   return [];
 }
 
+function normalizedStatusText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function isUnderContractValue(value: unknown): boolean {
+  if (value === true) return true;
+  const normalized = normalizedStatusText(value);
+  return ["under_contract", "undercontract", "contract_pending", "pending_contract", "pending_sale"].includes(normalized);
+}
+
+function recordHasUnderContractFlag(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).some(([key, flagValue]) => {
+    const normalizedKey = normalizedStatusText(key);
+    if (["under_contract", "undercontract", "is_under_contract"].includes(normalizedKey) && flagValue === true) {
+      return true;
+    }
+    return isUnderContractValue(flagValue);
+  });
+}
+
+function isUnderContractListing(data: Record<string, unknown>): boolean {
+  const visibility = (data.visibility as Record<string, unknown> | undefined) ?? {};
+  const meta = (data.meta as Record<string, unknown> | undefined) ?? {};
+  const listing = (data.listing as Record<string, unknown> | undefined) ?? {};
+  const deal = (data.deal as Record<string, unknown> | undefined) ?? {};
+
+  return [
+    data.underContract,
+    data.isUnderContract,
+    data.status,
+    data.workflowStatus,
+    data.listingStatus,
+    data.saleStatus,
+    data.contractStatus,
+    visibility.status,
+    visibility.listingStatus,
+    visibility.saleStatus,
+    visibility.underContract,
+    meta.status,
+    meta.listingStatus,
+    meta.saleStatus,
+    listing.status,
+    listing.listingStatus,
+    deal.status,
+    deal.stage,
+    data.statusFlags,
+    visibility.statusFlags,
+    meta.statusFlags,
+  ].some((value) => isUnderContractValue(value) || recordHasUnderContractFlag(value));
+}
+
 function buildBadges(data: Record<string, unknown>): string[] {
   const badges: string[] = [];
   const visibility = (data.visibility as Record<string, unknown> | undefined) ?? {};
@@ -96,7 +152,7 @@ export async function listPropertyCards(transaction: "sale" | "lease" | "all" = 
       const data = doc.data() as Record<string, unknown>;
       return { id: doc.id, ...data };
     })
-    .filter((item) => item.status === "active")
+    .filter((item) => item.status === "active" || isUnderContractListing(item))
     .filter((item) => {
       const visibility = (item.visibility as Record<string, unknown> | undefined) ?? {};
       if (transaction === "sale") return visibility.saleActive === true;
@@ -117,6 +173,7 @@ export async function listPropertyCards(transaction: "sale" | "lease" | "all" = 
         id: item.id as string,
         slug: (item.slug as string | null) ?? item.id as string,
         title: (item.title as string | null) ?? "Untitled Property",
+        underContract: isUnderContractListing(item),
         transactionTypes: normalizeTransactionTypes((item.visibility as Record<string, unknown> | undefined) ?? {}),
         propertyCategory: (property.category as string | null) ?? null,
         address: {

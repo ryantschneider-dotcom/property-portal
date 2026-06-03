@@ -136,6 +136,7 @@ export type PropertyCard = {
   id: string;
   slug: string;
   title: string;
+  underContract: boolean;
   transactionTypes: TransactionType[];
   propertyCategory: string | null;
   address: {
