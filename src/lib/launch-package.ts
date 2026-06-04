@@ -56,6 +56,15 @@ function hasValidCoordinates(location: { lat: number | null; lng: number | null 
     && typeof location?.lng === "number" && Number.isFinite(location.lng);
 }
 
+function normalizeListingStatus(value: unknown): "active" | "inactive" | "under_contract" | "leased" | "sold" {
+  const status = normalizeString(value)?.toLowerCase().replace(/[\s-]+/g, "_");
+  if (status === "inactive") return "inactive";
+  if (status === "under_contract" || status === "undercontract" || status === "contract_pending" || status === "pending_contract") return "under_contract";
+  if (status === "leased") return "leased";
+  if (status === "sold") return "sold";
+  return "active";
+}
+
 async function resolveProperty(identifier: string) {
   const doc = await getPropertyDocumentByIdentifier(identifier);
   if (!doc?.exists) throw new Error("Property not found");
@@ -75,10 +84,14 @@ function buildLaunchSnapshot(input: {
   property: Awaited<ReturnType<typeof getPropertyBySlug>> extends infer T ? Exclude<T, null> : never;
 }) {
   const { documentId, slug, raw, property } = input;
+  const listingStatus = normalizeListingStatus(raw.listingStatus ?? raw.status);
   return {
     documentId,
     slug,
     title: property.title,
+    status: listingStatus,
+    listingStatus,
+    underContract: listingStatus === "under_contract",
     transactionTypes: property.transactionTypes,
     address: property.address,
     location: property.location,
@@ -194,6 +207,9 @@ function buildListingStreamPayload(input: {
     sourceDocumentId: input.documentId,
     slug: input.slug,
     title: input.snapshot.title,
+    status: input.snapshot.status,
+    listingStatus: input.snapshot.listingStatus,
+    underContract: input.snapshot.underContract,
     transactionTypes: input.snapshot.transactionTypes,
     address: input.snapshot.address,
     location: input.snapshot.location,
@@ -224,6 +240,8 @@ export async function saveDraftLaunchPackageToListingStream(identifier: string, 
   await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
     {
       status: "draft",
+      listingStatus: snapshot.listingStatus,
+      underContract: snapshot.underContract,
       workflowStatus: "draft_preview",
       meta: {
         updatedAt: FieldValue.serverTimestamp(),
@@ -269,7 +287,9 @@ export async function makeDraftLaunchPackageLive(identifier: string, actorEmail:
   await db.collection(PUBLIC_LISTINGS_COLLECTION).doc(doc.id).set(publicPayload, { merge: true });
   await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
     {
-      status: "active",
+      status: snapshot.status,
+      listingStatus: snapshot.listingStatus,
+      underContract: snapshot.underContract,
       workflowStatus: "approved",
       meta: {
         updatedAt: FieldValue.serverTimestamp(),
@@ -352,6 +372,9 @@ export async function publishLaunchPackageToListingStream(identifier: string, ac
 
   await db.collection(PROPERTIES_COLLECTION).doc(doc.id).set(
     {
+      status: snapshot.status,
+      listingStatus: snapshot.listingStatus,
+      underContract: snapshot.underContract,
       meta: {
         updatedAt: FieldValue.serverTimestamp(),
         exportWorkflow: {

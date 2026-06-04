@@ -712,6 +712,7 @@ export function AdminPropertyForm({ initialData, mode, media, documentId, workfl
                 <select className={inputClassName()} value={formData.listingStatus} onChange={(e) => update("listingStatus", e.target.value as AdminPropertyFormData["listingStatus"])}>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
+                  <option value="under_contract">Under Contract</option>
                   <option value="leased">Leased</option>
                   <option value="sold">Sold</option>
                 </select>

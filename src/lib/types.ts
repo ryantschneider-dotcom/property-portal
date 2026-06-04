@@ -1,5 +1,7 @@
 export type TransactionType = "sale" | "lease";
 
+export type PropertyListingStatus = "active" | "inactive" | "under_contract" | "leased" | "sold";
+
 export type PropertyAssetSource = "buildout_import" | "broker_upload" | "internal_upload" | "generated";
 
 export type PropertyImageKind = "photo" | "hero" | "site_plan_image" | "floorplan_image" | "other";
@@ -188,6 +190,7 @@ export type PropertyDetail = {
   id: string;
   slug: string;
   title: string;
+  listingStatus?: PropertyListingStatus;
   transactionTypes: TransactionType[];
   address: {
     full: string | null;

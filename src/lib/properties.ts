@@ -236,6 +236,7 @@ export async function getPropertyBySlug(slug: string): Promise<PropertyDetail | 
     id: doc.id,
     slug: (data.slug as string | null) ?? doc.id,
     title: (data.title as string | null) ?? "Untitled Property",
+    listingStatus: isUnderContractListing(data) ? "under_contract" : normalizedStatusText(data.status) === "inactive" ? "inactive" : normalizedStatusText(data.status) === "leased" ? "leased" : normalizedStatusText(data.status) === "sold" ? "sold" : "active",
     transactionTypes: normalizeTransactionTypes((data.visibility as Record<string, unknown> | undefined) ?? {}),
     address: (data.address as PropertyDetail["address"]) ?? {
       full: null,

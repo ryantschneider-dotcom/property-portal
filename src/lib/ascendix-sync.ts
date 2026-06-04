@@ -22,7 +22,7 @@ type SalesforceConfig = {
   securityToken: string;
 };
 
-type PortalListingStatus = "active" | "inactive" | "leased" | "sold";
+type PortalListingStatus = "active" | "inactive" | "under_contract" | "leased" | "sold";
 
 function xmlEscape(value: string) {
   return value
@@ -171,6 +171,14 @@ function mapStatusToAscendix(status: PortalListingStatus, transactionLabel: stri
     };
   }
 
+  if (status === "under_contract") {
+    return {
+      listingStatus: "Active",
+      dealStatus: "Open",
+      dealStage: transaction.includes("lease") && !transaction.includes("sale") ? "Lease Execution" : "Execution/In Closing",
+    };
+  }
+
   return {
     listingStatus: "Active",
     dealStatus: "Open",
@@ -195,7 +203,10 @@ export async function syncPropertyToAscendix(documentId: string): Promise<SyncRe
     };
   }
 
+  // Ascendix sync maps a flexible Firestore document shape sourced from multiple importers.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = (snapshot.data() as Record<string, any> | undefined) ?? {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sourceIds = (data.sourceIds ?? {}) as Record<string, any>;
   const propertyId = typeof sourceIds.ascendixPropertyId === "string" ? sourceIds.ascendixPropertyId : null;
   const listingId = typeof sourceIds.ascendixListingId === "string" ? sourceIds.ascendixListingId : null;
@@ -366,7 +377,6 @@ export async function syncPropertyToAscendix(documentId: string): Promise<SyncRe
 export async function createOrUpdateAscendixAccount(
   auth: Awaited<ReturnType<typeof salesforceLogin>>,
   accountName: string,
-  externalIdField: string = 'Name', 
 ): Promise<string> {
   if (!accountName?.trim()) {
     console.log('[ascendix-sync] Skipping Account create/update: No account name provided.');

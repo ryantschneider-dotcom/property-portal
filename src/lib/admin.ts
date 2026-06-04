@@ -82,7 +82,7 @@ export type AdminPropertyFormData = {
   id?: string;
   slug: string;
   title: string;
-  listingStatus: "active" | "inactive" | "leased" | "sold";
+  listingStatus: "active" | "inactive" | "under_contract" | "leased" | "sold";
   transactionType: "sale" | "lease" | "sale-lease";
   websiteUrl: string;
   leadBroker: string;
@@ -454,6 +454,7 @@ export function buildEmptyAdminFormData(): AdminPropertyFormData {
 function adminListingStatusFromStored(value: unknown): AdminPropertyFormData["listingStatus"] {
   const status = asString(value).trim().toLowerCase();
   if (status === "inactive") return "inactive";
+  if (status === "under_contract" || status === "under contract" || status === "under-contract") return "under_contract";
   if (status === "leased") return "leased";
   if (status === "sold") return "sold";
   return "active";
@@ -464,6 +465,8 @@ export async function getAdminPropertyFormData(slug: string): Promise<AdminPrope
   if (!property) return null;
 
   const rawDoc = await db.collection(PROPERTIES_COLLECTION).doc(property.id).get();
+  // Firestore admin form hydration is intentionally dynamic: nested historical keys vary by import source.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw = (rawDoc.data() as Record<string, any> | undefined) ?? {};
   const meta = raw.meta ?? {};
   const intake = meta.intake ?? {};
@@ -471,7 +474,6 @@ export async function getAdminPropertyFormData(slug: string): Promise<AdminPrope
   const places = research.places ?? {};
   const publicRecords = research.public_records ?? {};
   const rawProperty = raw.property ?? {};
-  const rawPricing = raw.pricing ?? {};
   const rawLinks = raw.links ?? {};
   const rawContent = raw.content ?? {};
 
