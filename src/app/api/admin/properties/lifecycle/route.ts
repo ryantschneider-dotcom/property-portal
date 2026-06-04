@@ -12,7 +12,10 @@ export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
     const session = parsePortalSession(cookieStore.get("admin_session")?.value);
-    if (!session || session.role !== "admin") {
+    const internalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN?.trim();
+    const providedInternalToken = request.headers.get("x-pier-manager-internal")?.trim();
+    const internalAuthorized = Boolean(internalToken && providedInternalToken === internalToken);
+    if ((!session || session.role !== "admin") && !internalAuthorized) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -25,10 +28,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unsupported lifecycle action" }, { status: 400 });
     }
 
+    const actorEmail = session?.email ?? "pier-manager@piercommercial.com";
     const result = action === "archive"
-      ? await archiveProperty(slug, session.email)
+      ? await archiveProperty(slug, actorEmail)
       : action === "restore"
-        ? await restoreProperty(slug, session.email)
+        ? await restoreProperty(slug, actorEmail)
         : await hardDeleteProperty(slug);
 
     revalidatePath("/admin/properties");

@@ -23,7 +23,10 @@ export function middleware(request: NextRequest) {
 
   const internalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN?.trim();
   const providedInternalToken = request.headers.get('x-pier-manager-internal')?.trim();
-  if (path === '/api/admin/properties/launch-package' && internalToken && providedInternalToken === internalToken) {
+  if ([
+    '/api/admin/properties/launch-package',
+    '/api/admin/properties/lifecycle',
+  ].includes(path) && internalToken && providedInternalToken === internalToken) {
     return NextResponse.next();
   }
 

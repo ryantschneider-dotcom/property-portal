@@ -74,3 +74,14 @@ test("broker new listing page matches the requested two-bubble hierarchy and exa
   assert.match(revisionsSource, /\/api\/broker\/revisions/);
   assert.doesNotMatch(revisionsSource, /Mack/);
 });
+
+
+test("admin lifecycle endpoint accepts the Mission Control internal bridge token", async () => {
+  const routeSource = await readFile("src/app/api/admin/properties/lifecycle/route.ts", "utf8");
+  const middlewareSource = await readFile("src/middleware.ts", "utf8");
+
+  assert.match(routeSource, /x-pier-manager-internal/);
+  assert.match(routeSource, /internalAuthorized/);
+  assert.match(routeSource, /pier-manager@piercommercial\.com/);
+  assert.match(middlewareSource, /\/api\/admin\/properties\/lifecycle/);
+});
