@@ -19,6 +19,18 @@ eslint: {
         protocol: "https",
         hostname: "d33y5rc9xva21v.cloudfront.net",
       },
+      {
+        protocol: "https",
+        hostname: "storage.googleapis.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.firebasestorage.app",
+      },
+      {
+        protocol: "https",
+        hostname: "firebasestorage.googleapis.com",
+      },
     ],
   },
   async headers() {
