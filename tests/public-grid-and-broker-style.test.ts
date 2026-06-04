@@ -30,12 +30,15 @@ test("broker new listing page matches the requested two-bubble hierarchy and exa
   const layoutSource = await readFile("src/app/broker/layout.tsx", "utf8");
   const pageSource = await readFile("src/app/broker/new/page.tsx", "utf8");
   const formSource = await readFile("src/components/broker-hub-intake-form.tsx", "utf8");
+  const revisionsSource = await readFile("src/components/broker-hub-revisions-form.tsx", "utf8");
 
   assert.match(layoutSource, /Internal Admin/);
   assert.match(layoutSource, /PIER Internal Broker Hub/);
 
   assert.match(pageSource, /PIER COMMERCIAL/);
   assert.match(pageSource, /New Listing Entry/);
+  assert.match(pageSource, /BrokerHubIntakeForm/);
+  assert.match(pageSource, /BrokerHubRevisionsForm/);
   assert.match(pageSource, /A broker-first workflow designed to feel faster, sharper, and more premium than Buildout\./);
   assert.match(pageSource, /bg-\[radial-gradient\(circle_at_top_left,rgba\(203,82,30,0\.22\),transparent_34%\),linear-gradient\(135deg,#111827_0%,#172033_58%,#263245_100%\)\]/);
 
@@ -50,6 +53,24 @@ test("broker new listing page matches the requested two-bubble hierarchy and exa
   assert.match(formSource, /Broker Note/);
   assert.doesNotMatch(formSource, /Mack/);
   assert.match(formSource, /1\. Property basics/);
+  assert.match(formSource, /Street address/);
+  assert.match(formSource, /City/);
+  assert.match(formSource, /Property type/);
+  assert.match(formSource, /Sale price/);
   assert.match(formSource, /2\. Pricing \/ deal structure/);
+  assert.match(formSource, /3\. Broker guidance \/ marketing copy/);
+  assert.match(formSource, /Property description/);
+  assert.match(formSource, /4\. Media \/ source documents/);
+  assert.match(formSource, /Hero Photo/);
+  assert.match(formSource, /Generate Enriched Review Draft/);
+  assert.match(formSource, /\/api\/broker\/intake/);
   assert.match(formSource, /focus:border-\[var\(--pier-orange\)\]/);
+
+  assert.match(revisionsSource, /Existing Listing Modification/);
+  assert.match(revisionsSource, /AI Delta/);
+  assert.match(revisionsSource, /Select active property-portal listing/);
+  assert.match(revisionsSource, /Tell The PIER Big Brain what changed/);
+  assert.match(revisionsSource, /\/api\/broker\/active-listings/);
+  assert.match(revisionsSource, /\/api\/broker\/revisions/);
+  assert.doesNotMatch(revisionsSource, /Mack/);
 });

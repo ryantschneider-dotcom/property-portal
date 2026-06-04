@@ -1,4 +1,5 @@
 import { BrokerHubIntakeForm } from "@/components/broker-hub-intake-form";
+import { BrokerHubRevisionsForm } from "@/components/broker-hub-revisions-form";
 
 export default function BrokerHubNewListingPage() {
   return (
@@ -22,6 +23,10 @@ export default function BrokerHubNewListingPage() {
 
       <section className="mt-4 rounded-[2rem] bg-zinc-100">
         <BrokerHubIntakeForm />
+      </section>
+
+      <section className="mt-6 rounded-[2rem] bg-zinc-100">
+        <BrokerHubRevisionsForm />
       </section>
     </main>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -159,12 +159,6 @@ export function BrokerHubIntakeForm() {
   function removeFile(target: File) {
     setFiles((current) => current.filter((entry) => entry !== target));
   }
-
-  useEffect(() => {
-    if (formData.saleUnpriced && formData.salePrice) {
-      update("salePrice", "");
-    }
-  }, [formData.saleUnpriced]);
 
   function updateSuite(id: string, key: keyof Omit<SuiteRow, "id">, value: string | boolean) {
     setSuites((current) => current.map((suite) => {
@@ -388,7 +382,7 @@ export function BrokerHubIntakeForm() {
               <input className={inputClassName(true, !formData.saleUnpriced && !formData.salePrice)} value={formData.salePrice} onChange={(event) => update("salePrice", event.target.value)} inputMode="decimal" disabled={formData.saleUnpriced} required={!formData.saleUnpriced} />
             </label>
             <label className="flex items-center gap-3 rounded-[1.2rem] border border-zinc-200 bg-zinc-50 px-4 py-3.5 text-sm text-zinc-800">
-              <input type="checkbox" checked={formData.saleUnpriced} onChange={(event) => update("saleUnpriced", event.target.checked)} />
+              <input type="checkbox" checked={formData.saleUnpriced} onChange={(event) => setFormData((current) => ({ ...current, saleUnpriced: event.target.checked, salePrice: event.target.checked ? "" : current.salePrice }))} />
               <span>Unpriced / Inquire</span>
             </label>
           </div>
@@ -423,13 +417,130 @@ export function BrokerHubIntakeForm() {
                     <RequiredLabel>Rent type</RequiredLabel>
                     <select className={inputClassName(true)} value={suite.rentType} onChange={(event) => updateSuite(suite.id, "rentType", event.target.value)} required={index === 0}>
                       <option value="">Select rent type</option>
+                      {BROKER_HUB_LEASE_TYPES.map((rentType) => <option key={rentType} value={rentType}>{rentType}</option>)}
                     </select>
                   </label>
+                  <div className="flex items-end gap-2">
+                    <label className="flex min-h-[3.25rem] flex-1 items-center gap-2 rounded-[1.1rem] border border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold text-zinc-700">
+                      <input type="checkbox" checked={suite.unpriced} onChange={(event) => updateSuite(suite.id, "unpriced", event.target.checked)} />
+                      Inquire
+                    </label>
+                    <button type="button" onClick={() => removeSuite(suite.id)} disabled={suites.length === 1} className="rounded-full border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-500 transition hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
+                  </div>
                 </div>
-              ))} 
+              ))}
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section className={sectionCardClassName("warm")}>
+        <div className="mb-5 border-b border-orange-100 pb-4">
+          <h3 className="text-lg font-semibold text-zinc-950">3. Broker guidance / marketing copy</h3>
+          <p className="mt-1 text-sm text-zinc-600">Type what you know. Leave blanks for The PIER Big Brain to research and draft.</p>
+        </div>
+        <div className="space-y-4">
+          <label className="space-y-2">
+            <RequiredLabel required={false}>Property description</RequiredLabel>
+            <textarea className={`${inputClassName()} min-h-28`} value={formData.propertyDescription} onChange={(event) => update("propertyDescription", event.target.value)} placeholder="Optional listing description, building notes, tenant mix, access, or site context" />
+          </label>
+          <label className="space-y-2">
+            <RequiredLabel required={false}>Neighborhood / trade area notes</RequiredLabel>
+            <textarea className={`${inputClassName()} min-h-24`} value={formData.neighborhoodDescription} onChange={(event) => update("neighborhoodDescription", event.target.value)} placeholder="Optional area drivers, nearby corridors, schools, retailers, or local context" />
+          </label>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <label className="space-y-2">
+              <RequiredLabel required={false}>Area businesses / retail</RequiredLabel>
+              <textarea className={`${inputClassName()} min-h-24`} value={formData.areaBusinessesRetail} onChange={(event) => update("areaBusinessesRetail", event.target.value)} placeholder="Restaurants, anchors, nearby employers, destination retailers" />
+            </label>
+            <label className="space-y-2">
+              <RequiredLabel required={false}>Roadways / transportation</RequiredLabel>
+              <textarea className={`${inputClassName()} min-h-24`} value={formData.roadwaysTransportation} onChange={(event) => update("roadwaysTransportation", event.target.value)} placeholder="Highways, signals, traffic drivers, access notes" />
+            </label>
+          </div>
+          <label className="space-y-2">
+            <RequiredLabel required={false}>Bullet points</RequiredLabel>
+            <textarea className={`${inputClassName()} min-h-24`} value={formData.bulletPoints} onChange={(event) => update("bulletPoints", event.target.value)} placeholder="One per line: frontage, parking, zoning, visibility, improvements" />
+          </label>
+          <label className="space-y-2">
+            <RequiredLabel required={false}>Broker notes</RequiredLabel>
+            <textarea className={`${inputClassName()} min-h-24`} value={formData.brokerNotes} onChange={(event) => update("brokerNotes", event.target.value)} placeholder="Internal nuance The PIER Big Brain should know before drafting" />
+          </label>
+        </div>
+      </section>
+
+      <section className={sectionCardClassName()}>
+        <div className="mb-5 border-b border-zinc-200 pb-4">
+          <h3 className="text-lg font-semibold text-zinc-950">4. Media / source documents</h3>
+          <p className="mt-1 text-sm text-zinc-500">Add the hero photo first. PDFs, flyers, surveys, and extra photos can ride along for enrichment.</p>
+        </div>
+        <div
+          className={`rounded-[2rem] border-2 border-dashed px-5 py-10 text-center transition ${dragActive ? "border-[var(--pier-orange)] bg-orange-50" : "border-zinc-300 bg-zinc-50"}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragActive(false);
+            addFiles(Array.from(event.dataTransfer.files ?? []));
+          }}
+        >
+          <p className="text-sm font-semibold text-zinc-800">Drop hero photo, additional photos, PDFs, or flyers here</p>
+          <p className="mt-1 text-xs text-zinc-500">First image is treated as the Hero Photo required for submission.</p>
+          <label className="mt-5 inline-flex cursor-pointer items-center rounded-full bg-[var(--pier-orange)] px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95">
+            Choose files
+            <input type="file" className="hidden" multiple accept="image/*,.pdf,application/pdf" onChange={(event) => addFiles(Array.from(event.target.files ?? []))} />
+          </label>
+        </div>
+        <div className="mt-4 space-y-2">
+          {files.map((file, index) => (
+            <div key={fileKey(file)} className="flex items-center justify-between rounded-[1.3rem] border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm">
+              <div>
+                <p className="font-medium text-zinc-900">{index === 0 && file.type.startsWith("image/") ? "Hero Photo · " : ""}{file.name}</p>
+                <p className="text-xs text-zinc-500">{Math.max(1, Math.round(file.size / 1024))} KB</p>
+              </div>
+              <button type="button" onClick={() => removeFile(file)} className="text-sm font-semibold text-zinc-500 transition hover:text-red-600">Remove</button>
+            </div>
+          ))}
+          {files.length === 0 ? <p className="rounded-[1.3rem] border border-dashed border-zinc-300 bg-white px-4 py-4 text-sm text-zinc-500">No files attached yet. Add at least one hero image before submitting.</p> : null}
+        </div>
+      </section>
+
+      {duplicateMatch ? (
+        <section className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+          <h3 className="text-lg font-semibold text-zinc-950">Potential duplicate found</h3>
+          <p className="mt-2">{errorMessage}</p>
+          <p className="mt-2 font-semibold">{duplicateMatch.title || duplicateMatch.address || duplicateMatch.slug}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => submitIntake("restore_existing")} className="rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-semibold text-white">Restore existing draft</button>
+            <button type="button" onClick={() => submitIntake("create_duplicate")} className="rounded-full border border-amber-300 bg-white px-5 py-2.5 text-sm font-semibold text-amber-900">Create duplicate anyway</button>
+          </div>
+        </section>
+      ) : null}
+
+      {reviewChecklist ? (
+        <section className={sectionCardClassName("warm")}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--pier-orange)]">Review checklist</p>
+          <h3 className="mt-2 text-lg font-semibold text-zinc-950">The PIER Big Brain enrichment pass is queued.</h3>
+          <p className="mt-2 text-sm text-zinc-600">Checklist state: <span className="font-semibold">{reviewChecklist.checklistState.replace(/_/g, " ")}</span></p>
+          {createdSlug ? <p className="mt-2 text-sm text-zinc-600">Draft slug: <span className="font-semibold">{createdSlug}</span></p> : null}
+        </section>
+      ) : null}
+
+      <section className="rounded-[2rem] border border-zinc-950 bg-[linear-gradient(135deg,#111827,#1f2937)] p-5 text-white shadow-[0_18px_60px_rgba(15,23,42,0.24)] sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-sm leading-7 text-zinc-200">
+            {status === "idle" && "Submit the intake and The PIER Big Brain will create an enriched review draft for the broker workflow."}
+            {status === "saving" && "Creating enriched review draft…"}
+            {status === "success" && "Intake submitted. The listing draft is in the review workflow."}
+            {status === "error" && (errorMessage ?? "Failed to create broker intake draft.")}
+          </p>
+          <button type="submit" disabled={status === "saving" || imageFiles.length === 0} className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-zinc-950 transition enabled:hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-60">
+            {status === "saving" ? "Submitting…" : "Generate Enriched Review Draft"}
+          </button>
+        </div>
       </section>
     </form>
   );

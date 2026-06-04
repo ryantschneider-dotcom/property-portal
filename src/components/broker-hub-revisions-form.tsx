@@ -72,6 +72,7 @@ export function BrokerHubRevisionsForm() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
     void loadListings();
   }, []);
 
@@ -127,19 +128,19 @@ export function BrokerHubRevisionsForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <section className="overflow-hidden rounded-[2.2rem] border border-[color:rgba(217,119,6,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(251,146,60,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] p-6 shadow-[0_24px_70px_rgba(15,23,42,0.1)] sm:p-7">
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-[680px] space-y-3 rounded-[1.35rem] bg-white/85 p-3 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-zinc-200/70">
+      <section className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(203,82,30,0.22),transparent_34%),linear-gradient(135deg,#111827_0%,#172033_58%,#263245_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.24)] sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--pier-orange)]">Enrich / Edit</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Tell Mack what changed. He’ll take it from there.</h2>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-600">
-              Select an existing listing, describe the change in normal broker language, and attach anything helpful. Price reduction, suite leased, fresh photos, corrected zoning, updated access notes — all of it starts here.
+            <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-400">Existing Listing Modification</p>
+            <h2 className="mt-2 max-w-[420px] text-[1.7rem] font-extrabold leading-[0.96] tracking-[-0.045em] text-white sm:text-[2rem]">AI Delta revisions for active listings.</h2>
+            <p className="mt-3 max-w-[430px] text-[12px] font-medium leading-5 text-zinc-300 sm:text-[13px]">
+              Select an active listing, describe the change in plain English, and The PIER Big Brain will package the broker delta into the revision workflow.
             </p>
           </div>
-          <div className="rounded-[1.6rem] border border-[color:rgba(217,119,6,0.16)] bg-white/90 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">How Mack handles it</p>
-            <ul className="mt-3 space-y-2 text-sm leading-7 text-zinc-700">
+          <div className="rounded-[1rem] border border-white/10 bg-white/[0.12] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur">
+            <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-zinc-400">How AI Delta handles it</p>
+            <ul className="mt-3 space-y-2 text-[11px] font-semibold leading-5 text-zinc-200">
               <li>• Interprets your edit request in plain English</li>
               <li>• Auto-applies safe structured mutations when confidence is high enough</li>
               <li>• Packages the update with listing context and new files</li>
@@ -155,6 +156,17 @@ export function BrokerHubRevisionsForm() {
             <label className="block space-y-2">
               <span className="text-sm font-semibold text-zinc-800">Find a listing</span>
               <input className={inputClassName()} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by title, address, or slug" />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-zinc-800">Select active property-portal listing</span>
+              <select className={inputClassName()} value={selectedId} onChange={(event) => setSelectedId(event.target.value)} required>
+                <option value="">Select active property-portal listing</option>
+                {filteredListings.map((listing) => (
+                  <option key={listing.id} value={listing.id}>
+                    {listing.title || listing.address || listing.slug}{listing.transactionLabel ? ` — ${listing.transactionLabel}` : ""}
+                  </option>
+                ))}
+              </select>
             </label>
             <div className="max-h-[28rem] overflow-y-auto rounded-[1.75rem] border border-zinc-200 bg-zinc-50 p-2">
               {filteredListings.map((listing) => {
@@ -271,7 +283,7 @@ export function BrokerHubRevisionsForm() {
       <section className="rounded-[2rem] border border-white/70 bg-white/94 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
         <div className="mb-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Natural-language edit request</p>
-          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-950">Tell me what you want changed in the listing in your own words.</h3>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-950">Tell The PIER Big Brain what changed in the listing in your own words.</h3>
           <p className="mt-1 text-sm text-zinc-500">Examples: “Reduce sale price to $3.95M, update title, and note signalized corner exposure.” “Suite 200 is leased — remove it and adjust available square footage.”</p>
         </div>
         <textarea className={`${inputClassName()} min-h-44`} value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Describe the listing update in plain English..." required />
@@ -282,8 +294,8 @@ export function BrokerHubRevisionsForm() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Interpreter pass</p>
           <p className="mt-2 text-sm font-semibold text-zinc-950">
             {interpreterResult.summary.length
-              ? `Mack auto-applied ${interpreterResult.summary.length} update${interpreterResult.summary.length === 1 ? "" : "s"} before routing to review.`
-              : "Mack captured the request but did not auto-apply a safe structured mutation yet."}
+              ? `The PIER Big Brain auto-applied ${interpreterResult.summary.length} update${interpreterResult.summary.length === 1 ? "" : "s"} before routing to review.`
+              : "The PIER Big Brain captured the request but did not auto-apply a safe structured mutation yet."}
           </p>
           <p className="mt-1 text-xs uppercase tracking-[0.18em] text-zinc-500">Confidence: {interpreterResult.confidence}</p>
           {interpreterResult.summary.length ? (
@@ -305,7 +317,7 @@ export function BrokerHubRevisionsForm() {
       <section className="rounded-[2rem] border border-white/70 bg-white/94 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
         <div className="flex flex-col gap-2">
           <h3 className="text-lg font-semibold tracking-tight text-zinc-950">Optional supporting files</h3>
-          <p className="text-sm text-zinc-500">Upload fresh photos, rent rolls, surveys, OM pages, or any proof Mack should consider with the request.</p>
+          <p className="text-sm text-zinc-500">Upload fresh photos, rent rolls, surveys, OM pages, or any proof The PIER Big Brain should consider with the request.</p>
         </div>
         <div
           className={`mt-4 rounded-[2rem] border-2 border-dashed px-5 py-10 text-center transition ${dragActive ? "border-[var(--pier-orange)] bg-orange-50" : "border-zinc-300 bg-zinc-50"}`}
@@ -344,7 +356,7 @@ export function BrokerHubRevisionsForm() {
       <section className="rounded-[2rem] border border-zinc-950 bg-[linear-gradient(135deg,#111827,#1f2937)] p-5 text-white shadow-[0_18px_60px_rgba(15,23,42,0.24)] sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="max-w-2xl text-sm leading-7 text-zinc-200">
-            {status === "idle" && "Submit this request and Mack will package the change intent, attached evidence, and listing context into the edit workflow."}
+            {status === "idle" && "Submit this request and The PIER Big Brain will package the change intent, attached evidence, and listing context into the edit workflow."}
             {status === "saving" && "Submitting edit request…"}
             {status === "error" && (errorMessage ?? "Failed to save edit request.")}
             {status === "done" && "Edit request submitted. The listing has been pushed back into the workflow with your instructions attached."}
