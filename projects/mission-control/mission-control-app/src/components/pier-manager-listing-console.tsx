@@ -136,6 +136,21 @@ function getAssessorFieldValue(draft: BrokerReviewDraft, key: AssessorReviewFiel
   return "";
 }
 
+function getListingSelectionValue(listing: PropertyPortalActiveListing) {
+  return listing.slug || listing.id;
+}
+
+function getListingSearchLabel(listing: PropertyPortalActiveListing) {
+  const primary = listing.address || listing.title || listing.slug || listing.id;
+  const titleSuffix = listing.title && listing.title !== primary ? ` — ${listing.title}` : "";
+  const transactionSuffix = listing.transactionLabel ? ` — ${listing.transactionLabel}` : "";
+  return `${primary}${titleSuffix}${transactionSuffix}`;
+}
+
+function searchableListingText(listing: PropertyPortalActiveListing) {
+  return [listing.address, listing.title, listing.slug, listing.id, listing.transactionLabel].filter(Boolean).join(" ").toLowerCase();
+}
+
 const initialIntakeState: IntakeFormState = {
   addressStreet: "",
   city: "Savannah",
@@ -167,6 +182,7 @@ export function PierManagerListingConsole() {
   const [activeListings, setActiveListings] = useState<PropertyPortalActiveListing[]>([]);
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from property-portal…");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [listingSearchText, setListingSearchText] = useState("");
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState("Select an active ListingStream property and describe the change in plain English.");
@@ -187,7 +203,6 @@ export function PierManagerListingConsole() {
         if (cancelled) return;
         const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
         setActiveListings(items);
-        setSelectedPropertyId((current) => current || items[0]?.slug || items[0]?.id || "");
         setActiveListingsStatus(items.length ? `${items.length} active ListingStream listings loaded from property-portal.` : "No active property-portal listings returned yet.");
       })
       .catch((error) => {
@@ -201,7 +216,25 @@ export function PierManagerListingConsole() {
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
+  const filteredAddressListings = useMemo(() => {
+    const query = listingSearchText.trim().toLowerCase();
+    const matches = query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
+    return matches.slice(0, 8);
+  }, [activeListings, listingSearchText]);
   const intakeRequiredSummary = useMemo(() => [...requiredFields, isSale ? "Sale Price or Unpriced / Inquire" : "At least one complete suite row"].join(" · "), [isSale]);
+
+  function selectActiveListing(value: string) {
+    setSelectedPropertyId(value);
+    const listing = activeListings.find((item) => item.id === value || item.slug === value);
+    if (listing) setListingSearchText(getListingSearchLabel(listing));
+  }
+
+  function updateListingSearch(value: string) {
+    setListingSearchText(value);
+    const normalized = value.trim().toLowerCase();
+    const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized);
+    if (exactMatch) setSelectedPropertyId(getListingSelectionValue(exactMatch));
+  }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
     setIntakeForm((current) => ({ ...current, [key]: value }));
@@ -377,16 +410,34 @@ export function PierManagerListingConsole() {
       ) : null}
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-3xl border border-[#CB521E]/20 bg-[#CB521E]/10 p-5 lg:col-span-2">
-          <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">PIER Broker Hub</p>
-          <h3 className="mt-2 text-2xl font-semibold text-zinc-950">Launch a listing that already feels half-finished.</h3>
-          <p className="mt-3 text-sm leading-6 text-zinc-700">
-            Brokers enter the deal facts they know, attach a hero photo, and leave the repetitive public-record, location intelligence, and premium copy work to Hermes before review.
+        <div data-testid="broker-hub-premium-header" className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(203,82,30,0.22),transparent_34%),linear-gradient(135deg,#111827_0%,#172033_58%,#263245_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.22)] lg:col-span-2">
+          <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-400">PIER Broker Hub</p>
+          <h3 className="mt-2 text-2xl font-extrabold tracking-[-0.04em] text-white">Launch a listing that already feels half-finished.</h3>
+          <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-zinc-300">
+            Brokers enter the deal facts they know, attach a hero photo, and leave the repetitive public-record, location intelligence, and premium copy work to The PIER Commercial Big Brain before review.
           </p>
         </div>
-        <div className="rounded-3xl border border-zinc-200 bg-zinc-950 p-5 text-white">
-          <p className="text-[10px] uppercase tracking-[0.28em] text-[#f6a87f]">Minimum to submit</p>
+        <div className="rounded-[1.35rem] border border-zinc-950 bg-zinc-950 p-5 text-white shadow-[0_18px_60px_rgba(15,23,42,0.22)]">
+          <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-[#f6a87f]">Minimum to submit</p>
           <p className="mt-3 text-sm leading-6 text-zinc-300">{intakeRequiredSummary}</p>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[1.2rem] border border-[color:rgba(217,119,6,0.16)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+          <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">The PIER Big Brain is Working</p>
+          <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-950">Leave the repetitive parts to me.</h3>
+          <ul className="mt-4 space-y-2 text-sm leading-7 text-zinc-700">
+            <li>• Public-record scrape for parcel, lot, building size, year built, and zoning</li>
+            <li>• Property-portal payload lookup for active listing modifications</li>
+            <li>• Draft title, descriptions, bullet points, and structured deltas where you leave blanks</li>
+          </ul>
+        </div>
+        <div className="rounded-[1.2rem] border border-zinc-200 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+          <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-500">Broker Note</p>
+          <p className="mt-2 text-sm leading-7 text-zinc-700">
+            Use the left form to launch a brand-new listing. Use the right form when a listing is already active and you only need a broker delta — price changes, suite availability, fresh photos, or corrected property details.
+          </p>
         </div>
       </section>
 
@@ -476,13 +527,30 @@ export function PierManagerListingConsole() {
           <div className="mb-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Existing Listing Modification</p>
             <h3 className="mt-2 text-xl font-semibold text-zinc-950">Active ListingStream property → plain-English edit</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Hermes fetches the current property-portal payload and applies only the broker delta.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">The PIER Commercial Big Brain fetches the current property-portal payload and applies only the broker delta.</p>
           </div>
           <div className="space-y-4">
-            <select value={selectedPropertyId} onChange={(event) => setSelectedPropertyId(event.target.value)} className={inputClass} required>
+            <label className="space-y-2 block">
+              {requiredLabel("Find listing by address or name", false)}
+              <input
+                data-testid="listing-address-search"
+                value={listingSearchText}
+                onChange={(event) => updateListingSearch(event.target.value)}
+                list="active-listing-address-options"
+                className={inputClass}
+                placeholder="Start entering address or property name"
+                autoComplete="off"
+              />
+              <datalist id="active-listing-address-options">
+                {filteredAddressListings.map((listing) => (
+                  <option key={listing.id} value={getListingSearchLabel(listing)} />
+                ))}
+              </datalist>
+            </label>
+            <select value={selectedPropertyId} onChange={(event) => selectActiveListing(event.target.value)} className={inputClass} required>
               <option value="">Select active property-portal listing</option>
               {activeListings.map((listing) => (
-                <option key={listing.id} value={listing.slug || listing.id}>{listing.title || listing.address || listing.slug} {listing.transactionLabel ? `— ${listing.transactionLabel}` : ""}</option>
+                <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug} {listing.transactionLabel ? `— ${listing.transactionLabel}` : ""}</option>
               ))}
             </select>
             {selectedListing ? <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p> : null}

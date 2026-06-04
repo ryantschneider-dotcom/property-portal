@@ -359,6 +359,40 @@ test("broker review UI exposes Mack checklist and before/after delta review", as
   assert.match(source, /Interpreter Confidence/);
 });
 
+test("broker listing console uses premium broker hub styling and functional search defaults", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /data-testid="broker-hub-premium-header"/);
+  assert.match(source, /bg-\[radial-gradient\(circle_at_top_left,rgba\(203,82,30,0\.22\),transparent_34%\),linear-gradient\(135deg,#111827_0%,#172033_58%,#263245_100%\)\]/);
+  assert.match(source, /text-white/);
+  assert.match(source, /The PIER Big Brain is Working/);
+  assert.match(source, /Broker Note/);
+
+  assert.match(source, /data-testid="listing-address-search"/);
+  assert.match(source, /Start entering address or property name/);
+  assert.match(source, /const \[listingSearchText, setListingSearchText\] = useState\(""\)/);
+  assert.doesNotMatch(source, /setSelectedPropertyId\(\(current\) => current \|\| items\[0\]/);
+  assert.match(source, /function searchableListingText\(listing: PropertyPortalActiveListing\) \{\n\s+return \[listing\.address, listing\.title/);
+  assert.match(source, /The PIER Commercial Big Brain fetches/);
+});
+
+test("broker listing console flows headers then explanatory cards before functional forms", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  const headerIndex = source.indexOf('data-testid="broker-hub-premium-header"');
+  const workingIndex = source.indexOf("The PIER Big Brain is Working");
+  const noteIndex = source.indexOf("Broker Note");
+  const intakeIndex = source.indexOf("New Listing Intake");
+  const modificationIndex = source.indexOf("Existing Listing Modification");
+
+  assert.notEqual(headerIndex, -1);
+  assert.notEqual(workingIndex, -1);
+  assert.notEqual(noteIndex, -1);
+  assert.notEqual(intakeIndex, -1);
+  assert.notEqual(modificationIndex, -1);
+  assert.ok(headerIndex < workingIndex, "premium header should render before explanatory cards");
+  assert.ok(workingIndex < intakeIndex, "explanatory cards should render before intake form");
+  assert.ok(noteIndex < modificationIndex, "broker note should render before modification form");
+});
+
 test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise Draft, assessor fields, and payload preview", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /Review Draft/);
