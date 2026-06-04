@@ -256,26 +256,26 @@ export function BrokerHubIntakeForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mx-auto flex max-w-[680px] flex-col gap-4">
-      <section className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(203,82,30,0.22),transparent_34%),linear-gradient(135deg,#111827_0%,#172033_58%,#263245_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.24)] sm:p-6">
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+      <section className="rounded-[1.35rem] bg-white/85 p-3 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ring-1 ring-zinc-200/70">
+        <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(203,82,30,0.22),transparent_34%),linear-gradient(135deg,#111827_0%,#172033_58%,#263245_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.24)] sm:p-6">
+          <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-400">PIER BIG BRAIN</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-400">PIER BROKER HUB</p>
             <h3 className="mt-2 max-w-[420px] text-[1.7rem] font-extrabold leading-[0.96] tracking-[-0.045em] text-white sm:text-[2rem]">Launch a listing that already feels half-finished.</h3>
             <p className="mt-3 max-w-[410px] text-[12px] font-medium leading-5 text-zinc-300 sm:text-[13px]">
-              The PIER Commercial Big Brain automatically researches public records, validates missing details, studies the trade area, and prepares polished marketing copy wherever you leave blanks.
+              The PIER Big Brain, your senior associate broker assistant, will automatically scrape public records to fill in missing property details, research the trade area, and generate polished marketing copy and descriptions where you leave blanks
             </p>
           </div>
-          <div className="rounded-[1rem] border border-white/10 bg-white/[0.08] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur">
-            <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-zinc-400">Minimum to submit</p>
+          <div className="rounded-[1rem] border border-white/10 bg-white/[0.12] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur">
+            <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-zinc-400">Minimum to Submit</p>
             <p className="mt-3 text-[11px] font-semibold leading-5 text-zinc-200">{requiredSummary.join(" · ")}</p>
           </div>
+          </div>
         </div>
-      </section>
 
-      <section className={sectionCardClassName("warm")}>
-        <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[1.6rem] border border-[color:rgba(217,119,6,0.22)] bg-white/80 p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--pier-orange)]">The PIER Commercial Big Brain is working</p>
+        <div className="mt-3 grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="rounded-[1.2rem] border border-[color:rgba(217,119,6,0.16)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-[var(--pier-orange)]">The PIER Big Brain is Working</p>
             <h3 className="mt-2 text-xl font-semibold tracking-tight text-zinc-950">Leave the repetitive parts to me.</h3>
             <ul className="mt-4 space-y-2 text-sm leading-7 text-zinc-700">
               <li>• Public-record scrape for parcel, lot, building size, year built, and zoning</li>
@@ -283,10 +283,10 @@ export function BrokerHubIntakeForm() {
               <li>• Draft title, descriptions, and bullet points when you leave them blank</li>
             </ul>
           </div>
-          <div className="rounded-[1.6rem] border border-zinc-200 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Broker note</p>
+          <div className="rounded-[1.2rem] border border-zinc-200 bg-[linear-gradient(180deg,#ffffff,#f8fafc)] p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+            <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-500">Broker Note</p>
             <p className="mt-2 text-sm leading-7 text-zinc-700">
-              If you know the nuance, type it. If you do not, keep moving — The PIER Commercial Big Brain will enrich the draft and flag any true blockers instead of making you guess.
+              If you know the nuance, type it. If you do not, keep moving — The PIER Big Brain will enrich the draft and flag any true blockers instead of making you guess.
             </p>
           </div>
         </div>
@@ -358,7 +358,7 @@ export function BrokerHubIntakeForm() {
             <label className="space-y-2">
               <RequiredLabel required={false}>Listing Title</RequiredLabel>
               <input className={inputClassName()} value={formData.listingTitle} onChange={(event) => update("listingTitle", event.target.value)} placeholder="Optional custom listing title" />
-              <HelperText>If left blank, The PIER Commercial Big Brain will auto-generate the listing title.</HelperText>
+              <HelperText>If left blank, The PIER Big Brain will auto-generate the listing title.</HelperText>
             </label>
             {isLand ? (
               <label className="space-y-2">

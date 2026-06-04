@@ -26,27 +26,29 @@ test("root route is a public Firestore-backed map plus property grid, not broker
   assert.match(mapSource, /href=\{`\/properties\/\$\{property\.slug\}`\}/);
 });
 
-test("broker new listing page matches the dark-bubble mockup hierarchy and copy", async () => {
+test("broker new listing page matches the requested two-bubble hierarchy and exact PIER Big Brain copy", async () => {
   const layoutSource = await readFile("src/app/broker/layout.tsx", "utf8");
   const pageSource = await readFile("src/app/broker/new/page.tsx", "utf8");
   const formSource = await readFile("src/components/broker-hub-intake-form.tsx", "utf8");
 
+  assert.match(layoutSource, /Internal Admin/);
   assert.match(layoutSource, /PIER Internal Broker Hub/);
-  assert.doesNotMatch(layoutSource, /Internal Admin/);
-  assert.match(layoutSource, /py-2/);
 
-  assert.match(pageSource, /A broker-first workflow designed to feel faster, sharper, and more premium than Buildout\./);
-  assert.match(pageSource, /max-w-\[680px\]/);
-  assert.match(pageSource, /rounded-\[1\.35rem\]/);
-  assert.match(pageSource, /bg-\[radial-gradient\(circle_at_top_left,rgba\(203,82,30,0\.22\),transparent_34%\),linear-gradient\(135deg,#111827_0%,#172033_58%,#263245_100%\)\]/);
-  assert.match(pageSource, /Dashboard/);
+  assert.match(pageSource, /PIER COMMERCIAL/);
   assert.match(pageSource, /New Listing Entry/);
+  assert.match(pageSource, /A broker-first workflow designed to feel faster, sharper, and more premium than Buildout\./);
+  assert.match(pageSource, /bg-\[radial-gradient\(circle_at_top_left,rgba\(203,82,30,0\.22\),transparent_34%\),linear-gradient\(135deg,#111827_0%,#172033_58%,#263245_100%\)\]/);
 
-  assert.match(formSource, /max-w-\[680px\]/);
+  assert.match(formSource, /className="mx-auto flex max-w-\[680px\] flex-col gap-4"/);
+  assert.match(formSource, /rounded-\[1\.35rem\] bg-white\/85 p-3 shadow-\[0_18px_60px_rgba\(15,23,42,0\.10\)\]/);
+  assert.match(formSource, /PIER BROKER HUB/);
   assert.match(formSource, /Launch a listing that already feels half-finished\./);
-  assert.match(formSource, /The PIER Commercial Big Brain/);
+  assert.match(formSource, /The PIER Big Brain, your senior associate broker assistant, will automatically scrape public records to fill in missing property details, research the trade area, and generate polished marketing copy and descriptions where you leave blanks/);
+  assert.match(formSource, /Minimum to Submit/);
+  assert.match(formSource, /grid gap-3 lg:grid-cols-\[1\.05fr_0\.95fr\]/);
+  assert.match(formSource, /The PIER Big Brain is Working/);
+  assert.match(formSource, /Broker Note/);
   assert.doesNotMatch(formSource, /Mack/);
-  assert.match(formSource, /rounded-\[1\.35rem\]/);
   assert.match(formSource, /1\. Property basics/);
   assert.match(formSource, /2\. Pricing \/ deal structure/);
   assert.match(formSource, /focus:border-\[var\(--pier-orange\)\]/);
