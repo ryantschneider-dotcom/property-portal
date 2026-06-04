@@ -155,6 +155,10 @@ export type PropertyCard = {
     lotSizeAcres: number | null;
     yearBuilt: number | null;
   };
+  location: {
+    lat: number | null;
+    lng: number | null;
+  };
   pricing: {
     hideSalePrice: boolean;
     hiddenPriceLabel: string | null;

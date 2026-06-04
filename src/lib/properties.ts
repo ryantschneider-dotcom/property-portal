@@ -4,6 +4,7 @@ import { db } from "@/lib/firestore";
 import type { PropertyCard, PropertyDetail, PropertyMapMarker, TransactionType } from "@/lib/types";
 
 const PROPERTIES_COLLECTION = "properties";
+const PUBLIC_LISTINGS_COLLECTION = "public_listings";
 
 function coalesce<T>(...values: Array<T | null | undefined>): T | null {
   for (const value of values) {
@@ -145,6 +146,76 @@ function buildBadges(data: Record<string, unknown>): string[] {
 
 type PropertyRecord = Record<string, unknown> & { id: string };
 
+function normalizePropertyCard(item: PropertyRecord): PropertyCard {
+  const address = (item.address as Record<string, unknown> | undefined) ?? {};
+  const property = (item.property as Record<string, unknown> | undefined) ?? {};
+  const pricing = (item.pricing as Record<string, unknown> | undefined) ?? {};
+  const media = (item.media as Record<string, unknown> | undefined) ?? {};
+  const meta = (item.meta as Record<string, unknown> | undefined) ?? {};
+  const location = (item.location as Record<string, unknown> | undefined) ?? {};
+  const images = (media.images as Array<Record<string, unknown>> | undefined) ?? [];
+  const firstImage = images[0] ?? undefined;
+  const firstUrls = (firstImage?.urls as Record<string, unknown> | undefined) ?? {};
+
+  return {
+    id: item.id as string,
+    slug: (item.slug as string | null) ?? item.id as string,
+    title: (item.title as string | null) ?? "Untitled Property",
+    underContract: isUnderContractListing(item),
+    transactionTypes: normalizeTransactionTypes((item.visibility as Record<string, unknown> | undefined) ?? {}),
+    propertyCategory: (property.category as string | null) ?? null,
+    address: {
+      street: (address.street as string | null) ?? null,
+      city: (address.city as string | null) ?? null,
+      state: (address.state as string | null) ?? null,
+      zip: (address.zip as string | null) ?? null,
+      full: (address.full as string | null) ?? null,
+    },
+    heroImageUrl: (media.heroImageUrl as string | null) ?? null,
+    thumbnailUrl: coalesce(firstUrls.thumb as string | null, firstUrls.medium as string | null, media.heroImageUrl as string | null),
+    stats: {
+      buildingSizeSf: (property.buildingSizeSf as number | null) ?? null,
+      lotSizeAcres: (property.lotSizeAcres as number | null) ?? null,
+      yearBuilt: (property.yearBuilt as number | null) ?? null,
+    },
+    location: {
+      lat: asPositiveNumber(location.lat) ?? asPositiveNumber(item.lat),
+      lng: asPositiveNumber(location.lng) ?? asPositiveNumber(item.lng),
+    },
+    pricing: {
+      hideSalePrice: pricing.hideSalePrice === true,
+      hiddenPriceLabel: (pricing.hiddenPriceLabel as string | null) ?? null,
+      salePriceDollars: (pricing.salePriceDollars as number | null) ?? null,
+      teaserText: formatTeaserText(pricing),
+    },
+    badges: buildBadges(item),
+    updatedAt: (meta.updatedAt as string | null) ?? null,
+  };
+}
+
+function filterPropertyCards(items: PropertyRecord[], transaction: "sale" | "lease" | "all") {
+  return items
+    .filter((item) => {
+      const visibility = (item.visibility as Record<string, unknown> | undefined) ?? {};
+      if (transaction === "sale") return visibility.saleActive === true;
+      if (transaction === "lease") return visibility.leaseActive === true;
+      return true;
+    })
+    .map(normalizePropertyCard);
+}
+
+export async function listPublicPropertyCards(transaction: "sale" | "lease" | "all" = "all"): Promise<PropertyCard[]> {
+  const snapshot = await db.collection(PUBLIC_LISTINGS_COLLECTION).get();
+  const items = snapshot.docs
+    .map((doc): PropertyRecord => {
+      const data = doc.data() as Record<string, unknown>;
+      return { id: doc.id, ...data };
+    })
+    .filter((item) => item.status === "active" && item.publishStatus === "published");
+
+  return filterPropertyCards(items, transaction);
+}
+
 export async function listPropertyCards(transaction: "sale" | "lease" | "all" = "all"): Promise<PropertyCard[]> {
   const snapshot = await db.collection(PROPERTIES_COLLECTION).get();
   const items = snapshot.docs
@@ -152,56 +223,9 @@ export async function listPropertyCards(transaction: "sale" | "lease" | "all" = 
       const data = doc.data() as Record<string, unknown>;
       return { id: doc.id, ...data };
     })
-    .filter((item) => item.status === "active" || isUnderContractListing(item))
-    .filter((item) => {
-      const visibility = (item.visibility as Record<string, unknown> | undefined) ?? {};
-      if (transaction === "sale") return visibility.saleActive === true;
-      if (transaction === "lease") return visibility.leaseActive === true;
-      return true;
-    })
-    .map((item): PropertyCard => {
-      const address = (item.address as Record<string, unknown> | undefined) ?? {};
-      const property = (item.property as Record<string, unknown> | undefined) ?? {};
-      const pricing = (item.pricing as Record<string, unknown> | undefined) ?? {};
-      const media = (item.media as Record<string, unknown> | undefined) ?? {};
-      const meta = (item.meta as Record<string, unknown> | undefined) ?? {};
-      const images = (media.images as Array<Record<string, unknown>> | undefined) ?? [];
-      const firstImage = images[0] ?? undefined;
-      const firstUrls = (firstImage?.urls as Record<string, unknown> | undefined) ?? {};
+    .filter((item) => item.status === "active" || isUnderContractListing(item));
 
-      return {
-        id: item.id as string,
-        slug: (item.slug as string | null) ?? item.id as string,
-        title: (item.title as string | null) ?? "Untitled Property",
-        underContract: isUnderContractListing(item),
-        transactionTypes: normalizeTransactionTypes((item.visibility as Record<string, unknown> | undefined) ?? {}),
-        propertyCategory: (property.category as string | null) ?? null,
-        address: {
-          street: (address.street as string | null) ?? null,
-          city: (address.city as string | null) ?? null,
-          state: (address.state as string | null) ?? null,
-          zip: (address.zip as string | null) ?? null,
-          full: (address.full as string | null) ?? null,
-        },
-        heroImageUrl: (media.heroImageUrl as string | null) ?? null,
-        thumbnailUrl: coalesce(firstUrls.thumb as string | null, firstUrls.medium as string | null, media.heroImageUrl as string | null),
-        stats: {
-          buildingSizeSf: (property.buildingSizeSf as number | null) ?? null,
-          lotSizeAcres: (property.lotSizeAcres as number | null) ?? null,
-          yearBuilt: (property.yearBuilt as number | null) ?? null,
-        },
-        pricing: {
-          hideSalePrice: pricing.hideSalePrice === true,
-          hiddenPriceLabel: (pricing.hiddenPriceLabel as string | null) ?? null,
-          salePriceDollars: (pricing.salePriceDollars as number | null) ?? null,
-          teaserText: formatTeaserText(pricing),
-        },
-        badges: buildBadges(item),
-        updatedAt: (meta.updatedAt as string | null) ?? null,
-      };
-    });
-
-  return items;
+  return filterPropertyCards(items, transaction);
 }
 
 export async function getPropertyDocumentByIdentifier(identifier: string): Promise<FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot | null> {

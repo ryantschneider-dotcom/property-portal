@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-import { isBrokerHostPublicPreviewPath } from './lib/draft-preview';
-
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const session = request.cookies.get('admin_session');
@@ -10,24 +8,12 @@ export function middleware(request: NextRequest) {
 
   const isBrokerHost = host === 'broker.piercommercial.com' || host === 'www.broker.piercommercial.com';
 
-  if (isBrokerHost) {
-    if (path === '/' || path === '') {
-      return NextResponse.redirect(new URL('/broker', request.url));
-    }
+  if (isBrokerHost && path === '/new') {
+    return NextResponse.redirect(new URL('/broker/new', request.url));
+  }
 
-    if (path === '/new') {
-      return NextResponse.redirect(new URL('/broker/new', request.url));
-    }
-
-    if (path === '/revisions') {
-      return NextResponse.redirect(new URL('/broker/revisions', request.url));
-    }
-
-    const allowedBrokerPaths = new Set(['/broker', '/broker/new', '/broker/revisions']);
-    const isAdminPath = path.startsWith('/admin') || path.startsWith('/api/admin');
-    if (!allowedBrokerPaths.has(path) && !path.startsWith('/api/') && !isAdminPath && !isBrokerHostPublicPreviewPath(path)) {
-      return NextResponse.redirect(new URL('/broker', request.url));
-    }
+  if (isBrokerHost && path === '/revisions') {
+    return NextResponse.redirect(new URL('/broker/revisions', request.url));
   }
 
   // 1. Let the login API through unconditionally

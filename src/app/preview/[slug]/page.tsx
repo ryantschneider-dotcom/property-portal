@@ -6,6 +6,7 @@ import { MapPlaceholder } from "@/components/map-placeholder";
 import { PropertyDocuments } from "@/components/property-documents";
 import { PropertyGallery } from "@/components/property-gallery";
 import { PropertyHero } from "@/components/property-hero";
+import { PropertySpacesTable } from "@/components/property-spaces-table";
 import { PropertyWebsiteLink } from "@/components/property-website-link";
 import { isValidDraftPreviewToken } from "@/lib/draft-preview-token";
 import { getPropertyBySlug } from "@/lib/properties";
@@ -82,6 +83,8 @@ export default async function PropertyDraftPreviewPage({
                 {property.content.exteriorDescription ? <p>{property.content.exteriorDescription}</p> : null}
               </div>
             </section>
+
+            <PropertySpacesTable spaces={property.spaces ?? []} />
 
             <section className="space-y-4">
               <div>
