@@ -202,6 +202,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [draftPreviewUrl, setDraftPreviewUrl] = useState("");
   const [publishSuccessMessage, setPublishSuccessMessage] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [omGenerating, setOmGenerating] = useState(false);
+  const [omError, setOmError] = useState("");
   const reviewPanelRef = useRef<HTMLElement | null>(null);
   const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
   const isMasterAdmin = userRole === "master";
@@ -253,6 +255,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setRevisionFeedback("");
     setDraftPreviewUrl("");
     setReviewStatus("No draft ready yet.");
+    setOmGenerating(false);
+    setOmError("");
     setFormResetKey((current) => current + 1);
   }
 
@@ -275,10 +279,16 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     const matches = query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
     return matches.slice(0, 8);
   }, [activeListings, listingSearchText]);
+  const scrollableListingMatches = useMemo(() => {
+    const query = listingSearchText.trim().toLowerCase();
+    return query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
+  }, [activeListings, listingSearchText]);
   const intakeRequiredSummary = useMemo(() => [...requiredFields, isSale ? "Sale Price or Unpriced / Inquire" : "At least one complete suite row"].join(" · "), [isSale]);
 
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
+    setOmGenerating(false);
+    setOmError("");
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
     if (listing) setListingSearchText(getListingSearchLabel(listing));
   }
@@ -377,6 +387,55 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setModificationStatus(error instanceof Error ? error.message : "Could not generate listing modification draft.");
     } finally {
       setModificationSubmitting(false);
+    }
+  }
+
+
+  async function generateOfferingMemorandum(format: "pdf" | "html") {
+    if (!selectedListing) return;
+    setOmGenerating(true);
+    setOmError("");
+    setModificationStatus(format === "pdf" ? "Generating Offering Memorandum PDF. This can take a few minutes while maps, demographics, and PDF rendering complete…" : "Generating Offering Memorandum HTML preview…");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 780_000);
+    try {
+      const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
+      const url = `/api/listingstream/offering-memorandums/${slug}/pdf${format === "html" ? "?format=html" : ""}`;
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json") ? await response.json().catch(() => ({})) as { error?: string } : { error: await response.text().catch(() => "") };
+        throw new Error(payload.error || `Offering Memorandum generation failed (${response.status}).`);
+      }
+      if (format === "html") {
+        const html = await response.text();
+        const win = window.open("", "_blank", "noopener,noreferrer");
+        if (!win) throw new Error("Popup blocker prevented the OM preview from opening. Please allow popups for Mission Control and try again.");
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        setModificationStatus("Offering Memorandum HTML preview opened in a new tab.");
+      } else {
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = `${getListingSelectionValue(selectedListing)}-offering-memorandum.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
+        setModificationStatus("Offering Memorandum PDF generated successfully. Check your downloads.");
+      }
+    } catch (error) {
+      const message = error instanceof DOMException && error.name === "AbortError"
+        ? "Offering Memorandum generation timed out in the browser after 13 minutes. Please try again; if it repeats, the backend returned no PDF before the Vercel limit."
+        : error instanceof Error ? error.message : "Could not generate Offering Memorandum.";
+      setOmError(message);
+      setModificationStatus(message);
+    } finally {
+      window.clearTimeout(timeout);
+      setOmGenerating(false);
     }
   }
 
@@ -649,23 +708,49 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 ))}
               </datalist>
             </label>
-            <select value={selectedPropertyId} onChange={(event) => selectActiveListing(event.target.value)} className={inputClass} required>
+            <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1} required>
               <option value="">Select active ListingStream listing</option>
               {activeListings.map((listing) => (
-                <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug} {listing.transactionLabel ? `— ${listing.transactionLabel}` : ""}</option>
+                <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
               ))}
             </select>
+            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
+              {activeListings.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
+              ) : scrollableListingMatches.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
+              ) : (
+                scrollableListingMatches.map((listing) => {
+                  const value = getListingSelectionValue(listing);
+                  const isSelected = selectedPropertyId === value;
+                  return (
+                    <button
+                      key={listing.id}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => selectActiveListing(value)}
+                      className={`w-full border-b border-zinc-100 px-4 py-3 text-left text-sm transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40 ${isSelected ? "bg-[#CB521E]/10 font-semibold text-[#CB521E]" : "text-zinc-700"}`}
+                    >
+                      <span>{getListingSearchLabel(listing)}</span>
+                      <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
             {selectedListing ? (
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
                 <p>Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <a href={`/api/listingstream/offering-memorandums/${encodeURIComponent(getListingSelectionValue(selectedListing))}/pdf`} target="_blank" rel="noreferrer" className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318]">
-                    Generate OM
-                  </a>
-                  <a href={`/api/listingstream/offering-memorandums/${encodeURIComponent(getListingSelectionValue(selectedListing))}/pdf?format=html`} target="_blank" rel="noreferrer" className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">
+                  <button type="button" onClick={() => generateOfferingMemorandum("pdf")} disabled={omGenerating} aria-busy={omGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+                    {omGenerating ? "Generating OM…" : "Generate OM"}
+                  </button>
+                  <button type="button" onClick={() => generateOfferingMemorandum("html")} disabled={omGenerating} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60">
                     Preview OM HTML
-                  </a>
+                  </button>
                 </div>
+                {omError ? <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{omError}</p> : null}
               </div>
             ) : null}
             {selectedListing?.publishStatus === "draft" ? (

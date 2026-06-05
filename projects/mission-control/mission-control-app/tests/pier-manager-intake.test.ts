@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   buildBrokerHubIntakePayload,
@@ -93,4 +94,21 @@ test("Broker Hub FormData forwards rich payload and hero/media assets without Wo
   assert.equal(formData.getAll("heroPhoto").length, 1);
   assert.equal(formData.getAll("assets").length, 1);
   assert.doesNotMatch(JSON.stringify(payload), /wordpress|wp-json|wp-admin/i);
+});
+
+test("PIER Manager active listing picker is scrollable and OM generation has loading/error UX", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /data-testid=\"active-listing-scrollbox\"/);
+  assert.match(source, /max-h-64 overflow-y-auto/);
+  assert.match(source, /Generating OM…/);
+  assert.match(source, /setOmError/);
+  assert.match(source, /AbortController/);
+});
+
+test("Mission Control OM proxy route uses max Vercel duration and graceful timeout handling", () => {
+  const source = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/pdf/route.ts", import.meta.url), "utf8");
+  assert.match(source, /export const maxDuration = 800/);
+  assert.match(source, /OM_PROXY_TIMEOUT_MS = 780_000/);
+  assert.match(source, /withPropertyPortalTimeout/);
+  assert.match(source, /Offering Memorandum generation timed out/);
 });
