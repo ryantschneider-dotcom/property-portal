@@ -107,7 +107,12 @@ export function getPropertyPortalInternalHeaders(): Record<string, string> {
 }
 
 export function getPropertyPortalBaseUrl(explicitBaseUrl?: string) {
-  return clean(explicitBaseUrl) || clean(process.env.PROPERTY_PORTAL_BASE_URL) || clean(process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL) || DEFAULT_PROPERTY_PORTAL_BASE_URL;
+  return clean(explicitBaseUrl)
+    || clean(process.env.LISTINGSTREAM_PORTAL_BASE_URL)
+    || clean(process.env.NEXT_PUBLIC_LISTINGSTREAM_PORTAL_BASE_URL)
+    || clean(process.env.PROPERTY_PORTAL_BASE_URL)
+    || clean(process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL)
+    || DEFAULT_PROPERTY_PORTAL_BASE_URL;
 }
 
 export function buildPropertyPortalUrl(path: string, explicitBaseUrl?: string) {
