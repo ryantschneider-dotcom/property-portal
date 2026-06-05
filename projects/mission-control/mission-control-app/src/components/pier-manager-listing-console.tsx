@@ -204,6 +204,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [reviewBusy, setReviewBusy] = useState(false);
   const [omGenerating, setOmGenerating] = useState(false);
   const [omError, setOmError] = useState("");
+  const [includeRetailAerial, setIncludeRetailAerial] = useState(false);
   const reviewPanelRef = useRef<HTMLElement | null>(null);
   const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
   const isMasterAdmin = userRole === "master";
@@ -400,7 +401,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     const timeout = window.setTimeout(() => controller.abort(), 780_000);
     try {
       const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
-      const url = `/api/listingstream/offering-memorandums/${slug}/pdf${format === "html" ? "?format=html" : ""}`;
+      const params = new URLSearchParams();
+      if (format === "html") params.set("format", "html");
+      if (includeRetailAerial) params.set("includeAerial", "1");
+      const query = params.toString();
+      const url = `/api/listingstream/offering-memorandums/${slug}/pdf${query ? `?${query}` : ""}`;
       const response = await fetch(url, { cache: "no-store", signal: controller.signal });
       if (!response.ok) {
         const contentType = response.headers.get("content-type") || "";
@@ -742,6 +747,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             {selectedListing ? (
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
                 <p>Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
+                <label className="mt-3 flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+                  <input type="checkbox" checked={includeRetailAerial} onChange={(event) => setIncludeRetailAerial(event.target.checked)} disabled={omGenerating} className="mt-1 h-4 w-4 accent-[#CB521E]" />
+                  <span><strong className="text-zinc-900">Include advanced retail aerial map</strong><br />On-demand only: queries nearby businesses and composites logo badges onto an aerial map before the Location/Demographics pages.</span>
+                </label>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={() => generateOfferingMemorandum("pdf")} disabled={omGenerating} aria-busy={omGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
                     {omGenerating ? "Generating OM…" : "Generate OM"}

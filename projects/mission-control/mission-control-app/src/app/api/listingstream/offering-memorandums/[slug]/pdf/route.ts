@@ -23,6 +23,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const { slug } = await params;
   const format = request.nextUrl.searchParams.get("format") === "html" ? "html" : "pdf";
+  const includeAerial = request.nextUrl.searchParams.get("includeAerial") === "1" || request.nextUrl.searchParams.get("includeAerial") === "true";
   let response: Response;
   try {
     response = await withPropertyPortalTimeout(fetch(buildPropertyPortalUrl(`/api/admin/offering-memorandums/${encodeURIComponent(slug)}/pdf`), {
@@ -34,6 +35,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       },
       body: JSON.stringify({
         format,
+        includeAerial,
+        mapMode: includeAerial ? "compose" : "placeholder",
         broker: getBrokerProfileForSession(session),
       }),
     }), OM_PROXY_TIMEOUT_MS, "Offering Memorandum generation timed out before ListingStream returned a PDF. Please try again; the backend may still be warming Chromium or map rendering.");
