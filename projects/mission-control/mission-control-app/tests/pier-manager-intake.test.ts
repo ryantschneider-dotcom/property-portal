@@ -108,7 +108,7 @@ test("PIER Manager active listing picker is scrollable and OM generation has loa
 test("Mission Control OM proxy route uses max Vercel duration and graceful timeout handling", () => {
   const source = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/pdf/route.ts", import.meta.url), "utf8");
   assert.match(source, /export const maxDuration = 800/);
-  assert.match(source, /OM_PROXY_TIMEOUT_MS = 780_000/);
+  assert.match(source, /OM_PROXY_TIMEOUT_MS = 280_000/);
   assert.match(source, /withPropertyPortalTimeout/);
   assert.match(source, /Offering Memorandum generation timed out/);
 });

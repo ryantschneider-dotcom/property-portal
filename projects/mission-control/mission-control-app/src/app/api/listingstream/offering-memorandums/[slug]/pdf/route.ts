@@ -7,9 +7,9 @@ import { getBrokerProfileForSession } from "@/lib/offering-summary-pdf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 800;
+export const maxDuration = 300;
 
-const OM_PROXY_TIMEOUT_MS = 780_000;
+const OM_PROXY_TIMEOUT_MS = 280_000;
 
 type Params = { params: Promise<{ slug: string }> };
 
