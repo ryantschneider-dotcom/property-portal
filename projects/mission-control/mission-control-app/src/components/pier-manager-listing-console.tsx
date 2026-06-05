@@ -1,9 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { buildBrokerHubIntakePayload, type BrokerHubIntakeInput, type BrokerHubSuiteInput, type BrokerHubTransactionType } from "@/lib/pier-manager-intake";
-import { type PropertyPortalActiveListing } from "@/lib/property-portal-client";
+import type { AuthRole } from "@/lib/auth";
+import { normalizeIncomingBrokerReviewDraft } from "@/lib/broker-review-draft-normalizer";
+import { normalizePropertyPortalDraftPreviewUrl, type PropertyPortalActiveListing } from "@/lib/property-portal-client";
 import type { BrokerReviewDraft } from "@/lib/property-portal-ai";
 
 const inputClass = "w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-[#CB521E]/50 focus:ring-2 focus:ring-[#CB521E]/10";
@@ -35,7 +37,7 @@ function requiredLabel(label: string, required = true) {
 
 async function parseJsonResponse(response: Response) {
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(String(data.error ?? "Property portal request failed."));
+  if (!response.ok) throw new Error(String(data.error ?? "ListingStream backend request failed."));
   return data;
 }
 
@@ -153,13 +155,13 @@ function searchableListingText(listing: PropertyPortalActiveListing) {
 
 const initialIntakeState: IntakeFormState = {
   addressStreet: "",
-  city: "Savannah",
-  state: "GA",
-  county: "Chatham",
+  city: "",
+  state: "",
+  county: "",
   parcelId: "",
-  propertyType: "Retail",
-  leadBroker: "Ryan T. Schneider",
-  transactionType: "Sale",
+  propertyType: "",
+  leadBroker: "",
+  transactionType: "" as BrokerHubTransactionType,
   salePrice: "",
   saleUnpriced: false,
   listingTitle: "",
@@ -171,39 +173,48 @@ const initialIntakeState: IntakeFormState = {
   notes: "",
 };
 
-export function PierManagerListingConsole() {
+const initialIntakeStatus = "Ready for Broker Hub intake — launch a listing that already feels half-finished.";
+const initialModificationStatus = "Select an active ListingStream property and describe the change in plain English.";
+const submissionSuccessLabel = "Submission Successful";
+
+export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) {
   const [intakeForm, setIntakeForm] = useState<IntakeFormState>(initialIntakeState);
   const [suites, setSuites] = useState<BrokerHubSuiteInput[]>([createSuite()]);
   const [heroPhoto, setHeroPhoto] = useState<File | null>(null);
   const [intakeAssets, setIntakeAssets] = useState<File[]>([]);
-  const [intakeStatus, setIntakeStatus] = useState("Ready for Broker Hub intake — launch a listing that already feels half-finished.");
+  const [intakeStatus, setIntakeStatus] = useState(initialIntakeStatus);
   const [intakeSubmitting, setIntakeSubmitting] = useState(false);
+  const [formResetKey, setFormResetKey] = useState(0);
 
   const [activeListings, setActiveListings] = useState<PropertyPortalActiveListing[]>([]);
-  const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from property-portal…");
+  const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [listingSearchText, setListingSearchText] = useState("");
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
-  const [modificationStatus, setModificationStatus] = useState("Select an active ListingStream property and describe the change in plain English.");
+  const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
   const [modificationSubmitting, setModificationSubmitting] = useState(false);
 
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
-  const [reviewStatus, setReviewStatus] = useState("No AI draft ready yet.");
+  const [reviewStatus, setReviewStatus] = useState("No draft ready yet.");
   const [toastMessage, setToastMessage] = useState("");
   const [draftPreviewUrl, setDraftPreviewUrl] = useState("");
+  const [publishSuccessMessage, setPublishSuccessMessage] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const reviewPanelRef = useRef<HTMLElement | null>(null);
+  const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
+  const isMasterAdmin = userRole === "master";
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/property-portal/active-listings", { cache: "no-store" })
+    fetch("/api/listingstream/active-listings", { cache: "no-store" })
       .then(parseJsonResponse)
       .then((data) => {
         if (cancelled) return;
         const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
         setActiveListings(items);
-        setActiveListingsStatus(items.length ? `${items.length} active ListingStream listings loaded from property-portal.` : "No active property-portal listings returned yet.");
+        setActiveListingsStatus(items.length ? `${items.length} active ListingStream listings loaded from the ListingStream backend.` : "No active ListingStream listings returned yet.");
       })
       .catch((error) => {
         if (!cancelled) setActiveListingsStatus(error instanceof Error ? error.message : "Could not load active listings.");
@@ -212,6 +223,49 @@ export function PierManagerListingConsole() {
       cancelled = true;
     };
   }, []);
+
+  function revealReviewDraft(target: "panel" | "actions" = "panel") {
+    window.setTimeout(() => {
+      const element = target === "actions" ? finalPublishActionsRef.current ?? reviewPanelRef.current : reviewPanelRef.current;
+      element?.scrollIntoView({ behavior: "smooth", block: "start" });
+      element?.focus?.({ preventScroll: true });
+    }, 75);
+  }
+
+  function scrollToSubmissionSuccess() {
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 75);
+  }
+
+  function resetPierManagerSubmissionState() {
+    setIntakeForm(initialIntakeState);
+    setSuites([createSuite()]);
+    setHeroPhoto(null);
+    setIntakeAssets([]);
+    setIntakeStatus(initialIntakeStatus);
+    setSelectedPropertyId("");
+    setListingSearchText("");
+    setModificationInstructions("");
+    setModificationAssets([]);
+    setModificationStatus(initialModificationStatus);
+    setReviewDraft(null);
+    setRevisionFeedback("");
+    setDraftPreviewUrl("");
+    setReviewStatus("No draft ready yet.");
+    setFormResetKey((current) => current + 1);
+  }
+
+  function completeSuccessfulSubmission() {
+    resetPierManagerSubmissionState();
+    setPublishSuccessMessage(submissionSuccessLabel);
+    setToastMessage("");
+    scrollToSubmissionSuccess();
+  }
+
+  useEffect(() => {
+    if (reviewDraft) revealReviewDraft("actions");
+  }, [reviewDraft]);
 
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
@@ -274,18 +328,22 @@ export function PierManagerListingConsole() {
   async function submitBrokerHubIntake(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIntakeSubmitting(true);
+    setPublishSuccessMessage("");
+    setToastMessage("");
     setIntakeStatus("AI is analyzing property data... Drafting premium marketing copy, assessor/parcel gaps, and location intelligence...");
     try {
       const input = buildBrokerHubIntakePayload({ ...intakeForm, suites, heroPhotoCount: heroPhoto ? 1 : 0 });
-      const response = await fetch("/api/property-portal/ai-draft", {
+      const response = await fetch("/api/listingstream/ai-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "new-listing", input }),
       });
-      const data = (await parseJsonResponse(response)) as { draft: BrokerReviewDraft };
-      setReviewDraft(data.draft);
-      setReviewStatus(`Review Draft ready for ${data.draft.title}. Hero photo and media stay staged until approval.`);
-      setIntakeStatus(`AI enrichment draft ready for broker review. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
+      const data = (await parseJsonResponse(response)) as { draft: unknown };
+      const draft = normalizeIncomingBrokerReviewDraft(data.draft, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
+      setReviewDraft(draft);
+      revealReviewDraft("actions");
+      setReviewStatus(`Review Draft ready for ${draft.title}. Hero photo and media stay staged until approval.`);
+      setIntakeStatus(`The PIER Commercial Big Brain enrichment draft is ready for broker review. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
     } catch (error) {
       setIntakeStatus(error instanceof Error ? error.message : "Could not generate listing review draft.");
     } finally {
@@ -296,17 +354,25 @@ export function PierManagerListingConsole() {
   async function submitModification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setModificationSubmitting(true);
+    setPublishSuccessMessage("");
+    setToastMessage("");
     setModificationStatus("AI is analyzing property data... Fetching the current portal payload and drafting premium marketing copy from your delta...");
     try {
-      const response = await fetch("/api/property-portal/ai-draft", {
+      const response = await fetch("/api/listingstream/ai-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "modification", propertyIdOrSlug: selectedPropertyId, instructions: modificationInstructions.trim() }),
       });
-      const data = (await parseJsonResponse(response)) as { draft: BrokerReviewDraft };
-      setReviewDraft(data.draft);
+      const data = (await parseJsonResponse(response)) as { draft: unknown };
+      const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
+        kind: "modification",
+        title: selectedListing?.title || selectedListing?.address || selectedPropertyId || "Listing modification draft",
+        sourceInput: { propertyIdOrSlug: selectedPropertyId, instructions: modificationInstructions.trim() },
+      });
+      setReviewDraft(draft);
+      revealReviewDraft("actions");
       setReviewStatus(`Review Draft ready for modification. ${modificationAssets.length} media/document file(s) staged for the portal update.`);
-      setModificationStatus("AI delta draft ready for broker review; nothing has been published yet.");
+      setModificationStatus("Revised listing draft ready for broker review; nothing has been published yet.");
     } catch (error) {
       setModificationStatus(error instanceof Error ? error.message : "Could not generate listing modification draft.");
     } finally {
@@ -317,17 +383,25 @@ export function PierManagerListingConsole() {
   async function reviseDraft() {
     if (!reviewDraft || !revisionFeedback.trim()) return;
     setReviewBusy(true);
-    setReviewStatus("Hermes is revising the draft from broker feedback…");
+    setPublishSuccessMessage("");
+    setToastMessage("");
+    setReviewStatus("The PIER Commercial Big Brain is revising the draft from broker feedback…");
     try {
-      const response = await fetch("/api/property-portal/ai-draft", {
+      const response = await fetch("/api/listingstream/ai-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "revise", draft: reviewDraft, feedback: revisionFeedback.trim() }),
       });
-      const data = (await parseJsonResponse(response)) as { draft: BrokerReviewDraft };
-      setReviewDraft(data.draft);
+      const data = (await parseJsonResponse(response)) as { draft: unknown };
+      const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
+        kind: reviewDraft.kind,
+        title: reviewDraft.title,
+        sourceInput: reviewDraft.sourceInput,
+        currentListing: reviewDraft.currentListing,
+      });
+      setReviewDraft(draft);
       setRevisionFeedback("");
-      setReviewStatus(`Revised draft ready. Revision count: ${getDraftRevisionCount(data.draft)}.`);
+      setReviewStatus(`Revised draft ready. Revision count: ${getDraftRevisionCount(draft)}.`);
     } catch (error) {
       setReviewStatus(error instanceof Error ? error.message : "Could not revise draft.");
     } finally {
@@ -339,6 +413,7 @@ export function PierManagerListingConsole() {
     if (!reviewDraft) return;
     setReviewBusy(true);
     setToastMessage("");
+    setPublishSuccessMessage("");
     setDraftPreviewUrl("");
     setReviewStatus(mode === "draft-preview"
       ? "Saving ListingStream draft preview... Ascendix will be bypassed for this safety test."
@@ -349,23 +424,25 @@ export function PierManagerListingConsole() {
       formData.set("mode", mode);
       const stagedAssets = reviewDraft.kind === "new-listing" ? [heroPhoto, ...intakeAssets].filter((asset): asset is File => Boolean(asset)) : modificationAssets;
       for (const asset of stagedAssets) formData.append("assets", asset);
-      const response = await fetch("/api/property-portal/approve-draft", {
+      const response = await fetch("/api/listingstream/approve-draft", {
         method: "POST",
         body: formData,
       });
       const result = await parseJsonResponse(response) as { previewUrl?: string; launch?: { previewUrl?: string; result?: { previewUrl?: string } } };
       if (mode === "draft-preview") {
         const previewUrl = result.previewUrl || result.launch?.previewUrl || result.launch?.result?.previewUrl;
-        setDraftPreviewUrl(previewUrl || "");
-        const message = "Listing saved as draft preview. Ascendix was not touched.";
-        setToastMessage(previewUrl ? `${message} Preview URL is ready below.` : `${message} Preview URL was not returned; check the dropdown for the saved draft.`);
-        setReviewStatus(`${message} ${previewUrl ? `Open the Draft Preview link: ${previewUrl}` : "No preview URL came back from property-portal."} It is hidden from the public grid until Make Live / Approve & Publish Live.`);
+        const normalizedPreviewUrl = previewUrl ? normalizePropertyPortalDraftPreviewUrl(previewUrl) : "";
+        setDraftPreviewUrl(normalizedPreviewUrl);
+        const message = "Success! Draft preview saved. Ascendix was not touched and the draft remains hidden from the public website grid.";
+        setPublishSuccessMessage(message);
+        setToastMessage(normalizedPreviewUrl ? `${message} Open the clickable Draft Preview link below.` : `${message} Preview URL was not returned; check the dropdown for the saved draft.`);
+        setReviewStatus(`${message} ${normalizedPreviewUrl ? `Draft URL: ${normalizedPreviewUrl}` : "No preview URL came back from ListingStream."}`);
       } else {
-        const message = "Listing successfully approved and published to the property-portal live ListingStream path, then queued/synced to Ascendix.";
-        setToastMessage(message);
-        setReviewStatus(`${message} WordPress was not involved.`);
+        const message = "Success! Modifications have been published and will be live on the website shortly.";
+        setReviewStatus(`${message} The live ListingStream publish path completed; WordPress was not involved.`);
+        completeSuccessfulSubmission();
       }
-      fetch("/api/property-portal/active-listings", { cache: "no-store" }).then(parseJsonResponse).then((data) => {
+      fetch("/api/listingstream/active-listings", { cache: "no-store" }).then(parseJsonResponse).then((data) => {
         const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
         setActiveListings(items);
       }).catch(() => undefined);
@@ -381,13 +458,13 @@ export function PierManagerListingConsole() {
     setReviewBusy(true);
     setModificationStatus(action === "delete-draft" ? "Deleting draft from Firestore..." : "Making draft live and triggering Ascendix sync...");
     try {
-      const response = await fetch("/api/property-portal/approve-draft", {
+      const response = await fetch("/api/listingstream/approve-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, propertyIdOrSlug: selectedPropertyId }),
       });
       await parseJsonResponse(response);
-      const data = await parseJsonResponse(await fetch("/api/property-portal/active-listings", { cache: "no-store" }));
+      const data = await parseJsonResponse(await fetch("/api/listingstream/active-listings", { cache: "no-store" }));
       const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
       setActiveListings(items);
       setSelectedPropertyId(items[0]?.slug || items[0]?.id || "");
@@ -399,13 +476,38 @@ export function PierManagerListingConsole() {
     }
   }
 
-  const reviewChecklist = reviewDraft ? getDraftReviewChecklist(reviewDraft) : defaultReviewChecklist();
+  const visibleReviewDraft = reviewDraft
+    ? normalizeIncomingBrokerReviewDraft(reviewDraft, {
+      kind: reviewDraft.kind,
+      title: reviewDraft.title,
+      sourceInput: reviewDraft.sourceInput,
+      currentListing: reviewDraft.currentListing,
+    })
+    : null;
+  const reviewChecklist = visibleReviewDraft ? getDraftReviewChecklist(visibleReviewDraft) : defaultReviewChecklist();
 
   return (
     <div className="space-y-6">
       {toastMessage ? (
         <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800 shadow-sm">
           {toastMessage}
+        </div>
+      ) : null}
+
+      {publishSuccessMessage ? (
+        <div data-testid="submission-success-bubble" role="status" className="rounded-3xl border border-emerald-300 bg-emerald-50 px-5 py-4 text-sm text-emerald-900 shadow-[0_18px_50px_rgba(16,185,129,0.18)]">
+          <div data-testid="publish-success-banner" className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xl font-extrabold tracking-tight">{publishSuccessMessage}</p>
+            <button type="button" onClick={() => setPublishSuccessMessage("")} className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100">
+              Close message
+            </button>
+          </div>
+          {draftPreviewUrl ? (
+            <div className="mt-3">
+              <a href={draftPreviewUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#a94318]">Open Draft Preview</a>
+              <p className="mt-2 break-all text-xs">{draftPreviewUrl}</p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -442,10 +544,10 @@ export function PierManagerListingConsole() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <form onSubmit={submitBrokerHubIntake} className={`${cardClass} space-y-6`}>
+        <form key={`intake-${formResetKey}`} onSubmit={submitBrokerHubIntake} className={`${cardClass} space-y-6`}>
           <div>
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">New Listing Intake</p>
-            <h3 className="mt-2 text-xl font-semibold text-zinc-950">Broker Hub structure → AI enrichment review</h3>
+            <h3 className="mt-2 text-xl font-semibold text-zinc-950">Broker Hub structure → Big Brain enrichment review</h3>
             <p className="mt-2 text-sm leading-6 text-zinc-600">Required fields keep the launch grounded. Optional narrative seeds let brokers add nuance without slowing down.</p>
           </div>
 
@@ -454,11 +556,11 @@ export function PierManagerListingConsole() {
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">{requiredLabel("Street Address")}<input value={intakeForm.addressStreet} onChange={(event) => updateIntake("addressStreet", event.target.value)} className={inputClass} required /></label>
               <label className="space-y-2">{requiredLabel("City")}<input value={intakeForm.city} onChange={(event) => updateIntake("city", event.target.value)} className={inputClass} required /></label>
-              <label className="space-y-2">{requiredLabel("State")}<select value={intakeForm.state} onChange={(event) => updateIntake("state", event.target.value)} className={inputClass} required><option value="GA">GA</option><option value="SC">SC</option></select></label>
-              <label className="space-y-2">{requiredLabel("County")}<select value={intakeForm.county} onChange={(event) => updateIntake("county", event.target.value)} className={inputClass} required>{counties.map((county) => <option key={county}>{county}</option>)}</select></label>
+              <label className="space-y-2">{requiredLabel("State")}<select value={intakeForm.state} onChange={(event) => updateIntake("state", event.target.value)} className={inputClass} required><option value="">Select state</option><option value="GA">GA</option><option value="SC">SC</option></select></label>
+              <label className="space-y-2">{requiredLabel("County")}<select value={intakeForm.county} onChange={(event) => updateIntake("county", event.target.value)} className={inputClass} required><option value="">Select county</option>{counties.map((county) => <option key={county}>{county}</option>)}</select></label>
               <label className="space-y-2">{requiredLabel("Parcel ID")}<input value={intakeForm.parcelId} onChange={(event) => updateIntake("parcelId", event.target.value)} className={inputClass} required /></label>
-              <label className="space-y-2">{requiredLabel("Property Type")}<select value={intakeForm.propertyType} onChange={(event) => updateIntake("propertyType", event.target.value)} className={inputClass} required>{propertyTypes.map((propertyType) => <option key={propertyType}>{propertyType}</option>)}</select></label>
-              <label className="space-y-2">{requiredLabel("Lead Broker")}<select value={intakeForm.leadBroker} onChange={(event) => updateIntake("leadBroker", event.target.value)} className={inputClass} required>{brokers.map((broker) => <option key={broker}>{broker}</option>)}</select></label>
+              <label className="space-y-2">{requiredLabel("Property Type")}<select value={intakeForm.propertyType} onChange={(event) => updateIntake("propertyType", event.target.value)} className={inputClass} required><option value="">Select property type</option>{propertyTypes.map((propertyType) => <option key={propertyType}>{propertyType}</option>)}</select></label>
+              <label className="space-y-2">{requiredLabel("Lead Broker")}<select value={intakeForm.leadBroker} onChange={(event) => updateIntake("leadBroker", event.target.value)} className={inputClass} required><option value="">Select lead broker</option>{brokers.map((broker) => <option key={broker}>{broker}</option>)}</select></label>
             </div>
           </section>
 
@@ -523,11 +625,11 @@ export function PierManagerListingConsole() {
           <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{intakeStatus}</p>
         </form>
 
-        <form onSubmit={submitModification} className={`${cardClass} h-fit`}>
+        <form key={`modification-${formResetKey}`} onSubmit={submitModification} className={`${cardClass} h-fit`}>
           <div className="mb-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Existing Listing Modification</p>
             <h3 className="mt-2 text-xl font-semibold text-zinc-950">Active ListingStream property → plain-English edit</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">The PIER Commercial Big Brain fetches the current property-portal payload and applies only the broker delta.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">The PIER Commercial Big Brain is wired directly to the ListingStream backend and applies only the broker delta.</p>
           </div>
           <div className="space-y-4">
             <label className="space-y-2 block">
@@ -548,12 +650,24 @@ export function PierManagerListingConsole() {
               </datalist>
             </label>
             <select value={selectedPropertyId} onChange={(event) => selectActiveListing(event.target.value)} className={inputClass} required>
-              <option value="">Select active property-portal listing</option>
+              <option value="">Select active ListingStream listing</option>
               {activeListings.map((listing) => (
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug} {listing.transactionLabel ? `— ${listing.transactionLabel}` : ""}</option>
               ))}
             </select>
-            {selectedListing ? <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p> : null}
+            {selectedListing ? (
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                <p>Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a href={`/api/listingstream/offering-memorandums/${encodeURIComponent(getListingSelectionValue(selectedListing))}/pdf`} target="_blank" rel="noreferrer" className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318]">
+                    Generate OM
+                  </a>
+                  <a href={`/api/listingstream/offering-memorandums/${encodeURIComponent(getListingSelectionValue(selectedListing))}/pdf?format=html`} target="_blank" rel="noreferrer" className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">
+                    Preview OM HTML
+                  </a>
+                </div>
+              </div>
+            ) : null}
             {selectedListing?.publishStatus === "draft" ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm font-semibold text-amber-950">Draft lifecycle controls</p>
@@ -567,8 +681,8 @@ export function PierManagerListingConsole() {
             ) : null}
             <textarea value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={textareaClass} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF."'} required />
             <input type="file" multiple onChange={(event) => setModificationAssets(fileListToArray(event.target.files))} className={inputClass} />
-            <button disabled={modificationSubmitting || !selectedPropertyId} className="rounded-xl bg-zinc-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
-              {modificationSubmitting ? "Drafting…" : "Generate AI Delta Draft"}
+            <button disabled={modificationSubmitting || !selectedPropertyId} aria-busy={modificationSubmitting} className="rounded-xl bg-zinc-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-70">
+              {modificationSubmitting ? "Generating Draft... Please Wait" : "Generate Revised Listing Draft"}
             </button>
             <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{activeListingsStatus}</p>
             <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
@@ -576,26 +690,26 @@ export function PierManagerListingConsole() {
         </form>
       </div>
 
-      {reviewDraft ? (
-        <section data-testid="review-draft-panel" className="rounded-3xl border border-[#CB521E]/30 bg-white p-6 shadow-sm">
+      {visibleReviewDraft ? (
+        <section ref={reviewPanelRef} id="broker-review-draft" tabIndex={-1} data-testid="review-draft-panel" className="rounded-3xl border border-[#CB521E]/30 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Review Draft</p>
-              <h3 className="mt-2 text-2xl font-semibold text-zinc-950">{reviewDraft.title}</h3>
-              <p className="mt-2 text-sm text-zinc-500">{reviewDraft.kind === "new-listing" ? "New listing AI enrichment" : "Existing listing AI delta"} • {reviewDraft.status}</p>
+              <h3 className="mt-2 text-2xl font-semibold text-zinc-950">{visibleReviewDraft.title}</h3>
+              <p className="mt-2 text-sm text-zinc-500">{visibleReviewDraft.kind === "new-listing" ? "New listing Big Brain enrichment" : "Existing listing revised draft"} • {visibleReviewDraft.status}</p>
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
               Review all assessor fields, checklist items, revision feedback, and payload preview before final approval.
             </div>
           </div>
-          <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm leading-7 text-zinc-800" dangerouslySetInnerHTML={{ __html: reviewDraft.descriptionHtml }} />
+          <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm leading-7 text-zinc-800" dangerouslySetInnerHTML={{ __html: visibleReviewDraft.descriptionHtml }} />
 
           <div data-testid="broker-revise-loop" className="mt-6 rounded-3xl border border-[#CB521E]/25 bg-[#CB521E]/5 p-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Plain-text revise loop</p>
-            <h4 className="mt-2 text-lg font-semibold text-zinc-950">Send corrections back to Hermes before publishing</h4>
+            <h4 className="mt-2 text-lg font-semibold text-zinc-950">Send corrections back to The PIER Commercial Big Brain before publishing</h4>
             <p className="mt-2 text-sm leading-6 text-zinc-700">Type broker feedback here to revise the draft copy or structured payload. This keeps review from becoming a forced publish screen.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-              <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for Hermes to process before approval" />
+              <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for The PIER Commercial Big Brain to process before approval" />
               <button type="button" onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
             </div>
           </div>
@@ -609,7 +723,7 @@ export function PierManagerListingConsole() {
                 <label key={field.key} className="space-y-2">
                   {requiredLabel(field.label, false)}
                   <input
-                    value={getAssessorFieldValue(reviewDraft, field.key)}
+                    value={getAssessorFieldValue(visibleReviewDraft, field.key)}
                     onChange={(event) => updateDraftAssessorField(field.key, event.target.value)}
                     className={inputClass}
                     placeholder={field.placeholder}
@@ -619,10 +733,10 @@ export function PierManagerListingConsole() {
             </div>
           </div>
 
-          {reviewDraft.highlights.length ? (
-            <ul className="mt-5 grid gap-2 md:grid-cols-2">{reviewDraft.highlights.map((highlight) => <li key={highlight} className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">{highlight}</li>)}</ul>
+          {visibleReviewDraft.highlights.length ? (
+            <ul className="mt-5 grid gap-2 md:grid-cols-2">{visibleReviewDraft.highlights.map((highlight) => <li key={highlight} className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">{highlight}</li>)}</ul>
           ) : null}
-          {reviewDraft.mediaNotes.length ? <p className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">Media notes: {reviewDraft.mediaNotes.join(" • ")}</p> : null}
+          {visibleReviewDraft.mediaNotes.length ? <p className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">Media notes: {visibleReviewDraft.mediaNotes.join(" • ")}</p> : null}
 
           <div data-testid="review-checklist-panel" className="mt-6 rounded-3xl border border-zinc-200 bg-zinc-50 p-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Review Checklist</p>
@@ -635,43 +749,47 @@ export function PierManagerListingConsole() {
             </div>
           </div>
 
-          {reviewDraft.kind === "modification" && reviewDraft.review.deltaPreview ? (
+          {visibleReviewDraft.kind === "modification" && visibleReviewDraft.review.deltaPreview ? (
             <div className="mt-6 rounded-3xl border border-zinc-200 bg-white p-5">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Before / After Delta</p>
                   <h4 className="mt-2 text-lg font-semibold text-zinc-950">Natural-language structured changes</h4>
                 </div>
-                {reviewDraft.review.interpreter ? <p className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">Interpreter Confidence: {reviewDraft.review.interpreter.confidence}</p> : null}
+                {visibleReviewDraft.review.interpreter ? <p className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">Interpreter Confidence: {visibleReviewDraft.review.interpreter.confidence}</p> : null}
               </div>
-              {reviewDraft.review.interpreter?.summary.length ? (
-                <ul className="mt-4 grid gap-2 md:grid-cols-2">{reviewDraft.review.interpreter.summary.map((item) => <li key={item} className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{item}</li>)}</ul>
+              {visibleReviewDraft.review.interpreter?.summary.length ? (
+                <ul className="mt-4 grid gap-2 md:grid-cols-2">{visibleReviewDraft.review.interpreter.summary.map((item) => <li key={item} className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{item}</li>)}</ul>
               ) : null}
-              {reviewDraft.review.interpreter?.flags.length ? (
-                <ul className="mt-4 grid gap-2 md:grid-cols-2">{reviewDraft.review.interpreter.flags.map((item) => <li key={item} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{item}</li>)}</ul>
+              {visibleReviewDraft.review.interpreter?.flags.length ? (
+                <ul className="mt-4 grid gap-2 md:grid-cols-2">{visibleReviewDraft.review.interpreter.flags.map((item) => <li key={item} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{item}</li>)}</ul>
               ) : null}
-              <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                  <h5 className="text-sm font-semibold text-zinc-900">Before</h5>
-                  <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-700">{compactJson(reviewDraft.review.deltaPreview.before)}</pre>
+              {isMasterAdmin ? (
+                <div data-testid="delta-raw-json" className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <h5 className="text-sm font-semibold text-zinc-900">Before</h5>
+                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-700">{compactJson(visibleReviewDraft.review.deltaPreview.before)}</pre>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                    <h5 className="text-sm font-semibold text-zinc-900">After</h5>
+                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-700">{compactJson(visibleReviewDraft.review.deltaPreview.after)}</pre>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                  <h5 className="text-sm font-semibold text-zinc-900">After</h5>
-                  <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-700">{compactJson(reviewDraft.review.deltaPreview.after)}</pre>
-                </div>
-              </div>
+              ) : null}
             </div>
           ) : null}
 
-          <details data-testid="payload-preview" className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-950 p-5 text-white" open>
-            <summary className="cursor-pointer text-sm font-semibold uppercase tracking-[0.18em] text-[#f6a87f]">Full data payload preview</summary>
-            <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl bg-black/30 p-4 text-xs leading-5 text-zinc-200">{compactJson(reviewDraft)}</pre>
-          </details>
+          {isMasterAdmin ? (
+            <details data-testid="payload-preview" className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-950 p-5 text-white" open>
+              <summary className="cursor-pointer text-sm font-semibold uppercase tracking-[0.18em] text-[#f6a87f]">Full data payload preview</summary>
+              <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl bg-black/30 p-4 text-xs leading-5 text-zinc-200">{compactJson(visibleReviewDraft)}</pre>
+            </details>
+          ) : null}
 
-          <div data-testid="final-publish-actions" className="mt-5 rounded-3xl border border-[#CB521E]/30 bg-white p-5">
+          <div ref={finalPublishActionsRef} id="final-publish-actions" data-testid="final-publish-actions" className="mt-5 rounded-3xl border border-[#CB521E]/30 bg-white p-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Final approval after payload review</p>
             <h4 className="mt-2 text-lg font-semibold text-zinc-950">Save a hidden preview or publish live</h4>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Use Draft Preview for safe review without Ascendix. Use Approve & Publish Live only after the checklist, manual assessor data, and payload preview are correct.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Use Draft Preview for safe review without Ascendix. Use Approve & Publish Live only after the checklist, manual assessor data, and visible review fields are correct.</p>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <button type="button" onClick={() => publishDraft("draft-preview")} disabled={reviewBusy} className="rounded-xl border border-[#CB521E] bg-white px-5 py-3 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:opacity-50">Save as Draft & Preview</button>
               <button type="button" onClick={() => publishDraft("publish-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:opacity-50">Approve & Publish Live</button>
