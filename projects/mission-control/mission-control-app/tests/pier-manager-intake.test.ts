@@ -106,6 +106,15 @@ test("PIER Manager active listing picker is scrollable and OM generation has loa
   assert.match(source, /AbortController/);
 });
 
+test("PIER Manager active listing picker closes dropdown after selecting a listing", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /const \[listingResultsOpen, setListingResultsOpen\] = useState\(false\)/);
+  assert.match(source, /function selectActiveListing[\s\S]*setListingResultsOpen\(false\)/);
+  assert.match(source, /function updateListingSearch[\s\S]*setListingResultsOpen\(Boolean\(value\.trim\(\)\)\)/);
+  assert.match(source, /\{listingResultsOpen && !selectedListing \? \(/);
+  assert.match(source, /No listings match your search\./);
+});
+
 test("PIER Manager AI draft requests have browser timeout cleanup and visible errors", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
   assert.match(source, /fetchJsonWithTimeout\("\/api\/listingstream\/ai-draft"/);

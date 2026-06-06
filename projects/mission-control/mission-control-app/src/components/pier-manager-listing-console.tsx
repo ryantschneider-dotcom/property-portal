@@ -209,6 +209,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [listingSearchText, setListingSearchText] = useState("");
+  const [listingResultsOpen, setListingResultsOpen] = useState(false);
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
@@ -268,6 +269,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIntakeStatus(initialIntakeStatus);
     setSelectedPropertyId("");
     setListingSearchText("");
+    setListingResultsOpen(false);
     setModificationInstructions("");
     setModificationAssets([]);
     setModificationStatus(initialModificationStatus);
@@ -307,6 +309,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
+    setListingResultsOpen(false);
     setOmGenerating(false);
     setOmError("");
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
@@ -315,9 +318,15 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function updateListingSearch(value: string) {
     setListingSearchText(value);
+    setListingResultsOpen(Boolean(value.trim()));
     const normalized = value.trim().toLowerCase();
     const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized);
-    if (exactMatch) setSelectedPropertyId(getListingSelectionValue(exactMatch));
+    if (exactMatch) {
+      setSelectedPropertyId(getListingSelectionValue(exactMatch));
+      setListingResultsOpen(false);
+      return;
+    }
+    setSelectedPropertyId("");
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -735,31 +744,34 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
               ))}
             </select>
-            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
-              {activeListings.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
-              ) : scrollableListingMatches.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
-              ) : (
-                scrollableListingMatches.map((listing) => {
-                  const value = getListingSelectionValue(listing);
-                  const isSelected = selectedPropertyId === value;
-                  return (
-                    <button
-                      key={listing.id}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => selectActiveListing(value)}
-                      className={`w-full border-b border-zinc-100 px-4 py-3 text-left text-sm transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40 ${isSelected ? "bg-[#CB521E]/10 font-semibold text-[#CB521E]" : "text-zinc-700"}`}
-                    >
-                      <span>{getListingSearchLabel(listing)}</span>
-                      <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+            {listingResultsOpen && !selectedListing ? (
+              <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
+                {activeListings.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
+                ) : scrollableListingMatches.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
+                ) : (
+                  scrollableListingMatches.map((listing) => {
+                    const value = getListingSelectionValue(listing);
+                    const isSelected = selectedPropertyId === value;
+                    return (
+                      <button
+                        key={listing.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectActiveListing(value)}
+                        className={`w-full border-b border-zinc-100 px-4 py-3 text-left text-sm transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40 ${isSelected ? "bg-[#CB521E]/10 font-semibold text-[#CB521E]" : "text-zinc-700"}`}
+                      >
+                        <span>{getListingSearchLabel(listing)}</span>
+                        <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
             {selectedListing ? (
               <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
                 <p>Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
