@@ -2,15 +2,109 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+import { normalizeIncomingBrokerReviewDraft } from "../src/lib/broker-review-draft-normalizer";
 import {
   buildBrokerReviewState,
   buildModificationDeltaPrompt,
   buildNewListingEnrichmentPrompt,
   createModificationReviewDraft,
   createNewListingReviewDraft,
+  parseCloudWriterJson,
   reviseBrokerReviewDraft,
   type PropertyPortalCloudWriter,
 } from "../src/lib/property-portal-ai";
+
+test("broker review draft normalizer preserves review rendering for partial graphic-design AI output", () => {
+  const draft = normalizeIncomingBrokerReviewDraft(
+    {
+      kind: "modification",
+      title: "12 W State Street",
+      description: "Please use the submitted graphic/image direction for the listing media.",
+      highlights: "not-an-array",
+      mediaNotes: "also-not-an-array",
+      review: {
+        interpreter: {
+          confidence: "unexpected",
+          summary: "image-only request",
+          flags: "needs human design review",
+        },
+        deltaPreview: {
+          before: null,
+          after: "bad-shape",
+        },
+      },
+    },
+    { kind: "modification", title: "12 W State Street", sourceInput: { propertyIdOrSlug: "12-w-state-street" } },
+  );
+
+  assert.equal(draft.title, "12 W State Street");
+  assert.equal(draft.kind, "modification");
+  assert.equal(Array.isArray(draft.highlights), true);
+  assert.equal(Array.isArray(draft.mediaNotes), true);
+  assert.equal(draft.review.interpreter?.confidence, "low");
+  assert.deepEqual(draft.review.interpreter?.summary, []);
+  assert.deepEqual(draft.review.deltaPreview?.before, {});
+  assert.deepEqual(draft.review.deltaPreview?.after, {});
+  assert.match(draft.descriptionHtml, /graphic\/image direction|partial draft/i);
+  assert.ok(draft.review.checklist.listingStreamReady.includes("Approval controls"));
+});
+
+test("missing AI draft still normalizes into a publishable review shell", () => {
+  const draft = normalizeIncomingBrokerReviewDraft(undefined, { kind: "modification", title: "Fallback Listing" });
+
+  assert.equal(draft.title, "Fallback Listing");
+  assert.equal(draft.status, "ready_for_broker_review");
+  assert.equal(draft.publishLive, false);
+  assert.match(draft.descriptionHtml, /partial draft/i);
+  assert.ok(draft.review.checklist.needsManualInput.length > 0);
+});
+
+test("cloud writer parser accepts fenced or prefixed JSON instead of throwing raw parse errors", () => {
+  const parsed = parseCloudWriterJson([
+    "Here is the draft:",
+    "```json",
+    JSON.stringify({
+      title: "Leased Draft",
+      descriptionHtml: "<p>Status updated.</p>",
+      highlights: ["Leased"],
+      structuredUpdates: { status: "leased" },
+      mediaNotes: [],
+    }),
+    "```",
+  ].join("\n"));
+
+  assert.equal(parsed.title, "Leased Draft");
+  assert.equal(parsed.structuredUpdates.status, "leased");
+});
+
+test("cloud writer parser surfaces clear invalid-json errors", () => {
+  assert.throws(
+    () => parseCloudWriterJson("not json at all"),
+    /Cloud writer returned invalid JSON/,
+  );
+});
+
+test("ready_for_broker_review wrapper normalizes into visible review draft payload", () => {
+  const draft = normalizeIncomingBrokerReviewDraft(
+    {
+      ready_for_broker_review: {
+        kind: "modification",
+        title: "12 W State Street",
+        descriptionHtml: "<p>Status changed to under contract.</p>",
+        structuredUpdates: { status: "under_contract" },
+        review: {
+          checklist: { listingStreamReady: ["Status flag"] },
+        },
+      },
+    },
+    { kind: "modification", title: "Fallback" },
+  );
+
+  assert.equal(draft.title, "12 W State Street");
+  assert.equal(draft.status, "ready_for_broker_review");
+  assert.deepEqual(draft.structuredUpdates, { status: "under_contract" });
+  assert.ok(draft.review.checklist.listingStreamReady.includes("Status flag"));
+});
 
 test("new listing enrichment prompt requires CCIM-level premium brokerage copy", () => {
   const prompt = buildNewListingEnrichmentPrompt({
@@ -129,53 +223,6 @@ test("modification interpreter mutates structured fields before AI copy refineme
   assert.deepEqual(draft.review.deltaPreview?.after.pricing, { availableSqFt: 5000, askingPriceRatePerSf: 22, suiteNumbers: "200", listingPriceVisibility: "per_sf" });
 });
 
-test("modification delta prompt includes current listing payload and broker instruction only", () => {
-  const prompt = buildModificationDeltaPrompt({
-    currentListing: {
-      slug: "2812-williams-street",
-      content: { saleDescription: "Old roof language." },
-      pricing: { askingPriceRatePerSf: 24 },
-    },
-    instructions: "Remove old roof language, add new TPO roof, and drop asking rate to $22/SF.",
-  });
-
-  assert.match(prompt, /current property-portal listing payload/i);
-  assert.match(prompt, /plain-text broker instruction/i);
-  assert.match(prompt, /update specs/i);
-  assert.match(prompt, /flag media changes/i);
-  assert.match(prompt, /drop asking rate to \$22\/SF/i);
-});
-
-test("modification AI draft fetches current listing from property-portal before writing delta", async () => {
-  const calls: string[] = [];
-  const writer: PropertyPortalCloudWriter = async (prompt) => {
-    assert.match(prompt, /Existing description/);
-    return {
-      title: "Updated Listing Draft",
-      descriptionHtml: "<p>Updated with the new TPO roof and revised rate.</p>",
-      highlights: ["New TPO roof", "$22/SF asking rate"],
-      structuredUpdates: { pricing: { askingPriceRatePerSf: 22 } },
-      mediaNotes: ["Attach uploaded roof warranty document."],
-    };
-  };
-
-  const draft = await createModificationReviewDraft({
-    propertyIdOrSlug: "2812-williams-street",
-    instructions: "Add new TPO roof and drop asking rate to $22/SF.",
-    baseUrl: "https://portal.example.com",
-    fetchImpl: async (url) => {
-      calls.push(String(url));
-      return Response.json({ slug: "2812-williams-street", content: { saleDescription: "Existing description" } });
-    },
-    writer,
-  });
-
-  assert.equal(calls[0], "https://portal.example.com/api/properties/2812-williams-street");
-  assert.equal(draft.kind, "modification");
-  assert.equal(draft.status, "ready_for_broker_review");
-  assert.deepEqual(draft.structuredUpdates.pricing, { askingPriceRatePerSf: 22, listingPriceVisibility: "per_sf" });
-});
-
 
 test("plain-English status changes produce ListingStream status fields before AI copy refinement", async () => {
   const draft = await createModificationReviewDraft({
@@ -221,6 +268,102 @@ test("plain-English status changes produce ListingStream status fields before AI
     underContract: false,
   });
   assert.equal((draft.review.deltaPreview?.after as Record<string, unknown>).status, "leased");
+});
+
+
+
+test("plain-English archive modification creates high-confidence lifecycle review without cloud writer", async () => {
+  let writerCalled = false;
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "3-mall-ter",
+    instructions: "remove this listing and archive it",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "3-mall-ter",
+      title: "3 Mall Ter",
+      content: { saleDescription: "Existing description" },
+      visibility: { transactionLabel: "For Sale" },
+    }),
+    writer: async () => {
+      writerCalled = true;
+      throw new Error("writer should not be called for lifecycle-only archive requests");
+    },
+  });
+
+  assert.equal(writerCalled, false);
+  assert.equal(draft.review.interpreter?.confidence, "high");
+  assert.equal(draft.review.interpreter?.lifecycleAction, "archive");
+  assert.deepEqual(draft.structuredUpdates.lifecycle, { action: "archive", requestedByPlainEnglish: true });
+  assert.match(draft.title, /Archive Listing: 3 Mall Ter/);
+});
+
+test("polite archive and removal instructions remain high-confidence lifecycle requests", async () => {
+  const { interpretBrokerEditRequest } = await import("../src/lib/broker-edit-interpreter");
+  for (const instructions of [
+    "please remove this listing and archive it",
+    "please take this listing down and archive it",
+    "pull this property from the live site",
+    "delist this listing from public listings",
+  ]) {
+    const result = interpretBrokerEditRequest({ title: "3 Mall Ter", visibility: { transactionLabel: "For Sale" } }, instructions);
+    assert.equal(result.confidence, "high", instructions);
+    assert.equal(result.lifecycleAction, "archive", instructions);
+    assert.deepEqual(result.updatePayload.lifecycle, { action: "archive", requestedByPlainEnglish: true });
+  }
+});
+
+test("pier-manager copy names ListingStream backend instead of deprecated property-portal payload", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /wired directly to the ListingStream backend/i);
+  assert.doesNotMatch(source, /current property-portal payload/i);
+  assert.doesNotMatch(source, /loaded from property-portal|active property-portal listings|Select active property-portal listing/i);
+});
+
+test("modification delta prompt includes current listing payload and broker instruction only", () => {
+  const prompt = buildModificationDeltaPrompt({
+    currentListing: {
+      slug: "2812-williams-street",
+      content: { saleDescription: "Old roof language." },
+      pricing: { askingPriceRatePerSf: 24 },
+    },
+    instructions: "Remove old roof language, add new TPO roof, and drop asking rate to $22/SF.",
+  });
+
+  assert.match(prompt, /current property-portal listing payload/i);
+  assert.match(prompt, /plain-text broker instruction/i);
+  assert.match(prompt, /update specs/i);
+  assert.match(prompt, /flag media changes/i);
+  assert.match(prompt, /drop asking rate to \$22\/SF/i);
+});
+
+test("modification AI draft fetches current listing from property-portal before writing delta", async () => {
+  const calls: string[] = [];
+  const writer: PropertyPortalCloudWriter = async (prompt) => {
+    assert.match(prompt, /Existing description/);
+    return {
+      title: "Updated Listing Draft",
+      descriptionHtml: "<p>Updated with the new TPO roof and revised rate.</p>",
+      highlights: ["New TPO roof", "$22/SF asking rate"],
+      structuredUpdates: { pricing: { askingPriceRatePerSf: 22 } },
+      mediaNotes: ["Attach uploaded roof warranty document."],
+    };
+  };
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "2812-williams-street",
+    instructions: "Add new TPO roof and drop asking rate to $22/SF.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async (url) => {
+      calls.push(String(url));
+      return Response.json({ slug: "2812-williams-street", content: { saleDescription: "Existing description" } });
+    },
+    writer,
+  });
+
+  assert.equal(calls[0], "https://portal.example.com/api/properties/2812-williams-street");
+  assert.equal(draft.kind, "modification");
+  assert.equal(draft.status, "ready_for_broker_review");
+  assert.deepEqual(draft.structuredUpdates.pricing, { askingPriceRatePerSf: 22, listingPriceVisibility: "per_sf" });
 });
 
 test("broker revise loop sends existing draft plus feedback back through AI", async () => {
@@ -291,7 +434,6 @@ test("approve helper executes true ListingStream publish path and bypasses WordP
   assert.equal(result.ascendix?.success, true);
 });
 
-
 test("approve helper publishes status-change payload through ListingStream launch-package", async () => {
   const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
@@ -332,7 +474,6 @@ test("approve helper publishes status-change payload through ListingStream launc
   assert.equal((approvedPayload.visibility as Record<string, unknown>).status, "leased");
   assert.equal(result.save.success, true);
 });
-
 
 test("draft preview helper saves ListingStream draft and explicitly bypasses Ascendix", async () => {
   const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
@@ -377,7 +518,7 @@ test("draft preview helper saves ListingStream draft and explicitly bypasses Asc
     assert.equal((launchBody.approvedPayload as Record<string, unknown>).workflowStatus, "draft_preview");
     assert.equal((result.launch.result as Record<string, unknown>).publishStatus, "draft");
     assert.equal(result.ascendix, null);
-    assert.equal(result.previewUrl, "https://portal.example.com/properties/safe-test-preview");
+    assert.equal(result.previewUrl, "https://portal.example.com/preview/safe-test-preview");
   } finally {
     if (previousToken === undefined) delete process.env.PROPERTY_PORTAL_INTERNAL_TOKEN;
     else process.env.PROPERTY_PORTAL_INTERNAL_TOKEN = previousToken;
@@ -438,15 +579,14 @@ test("approve helper surfaces ListingStream and Ascendix transient failures clea
   );
 });
 
-test("broker review UI exposes Mack checklist and before/after delta review", async () => {
-  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
-  assert.match(source, /Review Checklist/);
-  assert.match(source, /Auto-filled/);
-  assert.match(source, /Needs manual input/);
-  assert.match(source, /Failed \/ blocked scrapes/);
-  assert.match(source, /ListingStream-ready/);
-  assert.match(source, /Before \/ After Delta/);
-  assert.match(source, /Interpreter Confidence/);
+test("Mission Control login submits password with Enter key through a form", async () => {
+  const source = await readFile("src/app/login/page.tsx", "utf8");
+
+  assert.match(source, /async function handleLogin\(event\?: FormEvent<HTMLFormElement>\)/);
+  assert.match(source, /event\?\.preventDefault\(\)/);
+  assert.match(source, /<form[^>]*onSubmit=\{handleLogin\}/);
+  assert.match(source, /type="submit"/);
+  assert.doesNotMatch(source, /onClick=\{handleLogin\}/);
 });
 
 test("broker listing console uses premium broker hub styling and functional search defaults", async () => {
@@ -460,9 +600,12 @@ test("broker listing console uses premium broker hub styling and functional sear
   assert.match(source, /data-testid="listing-address-search"/);
   assert.match(source, /Start entering address or property name/);
   assert.match(source, /const \[listingSearchText, setListingSearchText\] = useState\(""\)/);
-  assert.doesNotMatch(source, /setSelectedPropertyId\(\(current\) => current \|\| items\[0\]/);
+  assert.doesNotMatch(source, /setListingSearchText\(\(current\) => current \|\|/);
   assert.match(source, /function searchableListingText\(listing: PropertyPortalActiveListing\) \{\n\s+return \[listing\.address, listing\.title/);
-  assert.match(source, /The PIER Commercial Big Brain fetches/);
+  assert.match(source, /Generate Revised Listing Draft/);
+  assert.match(source, /The PIER Commercial Big Brain is wired directly to the ListingStream backend/);
+  assert.doesNotMatch(source, /Generate AI Delta Draft/);
+  assert.doesNotMatch(source, /Hermes fetches/);
 });
 
 test("broker listing console flows headers then explanatory cards before functional forms", async () => {
@@ -483,13 +626,24 @@ test("broker listing console flows headers then explanatory cards before functio
   assert.ok(noteIndex < modificationIndex, "broker note should render before modification form");
 });
 
+test("broker review UI exposes Mack checklist and before/after delta review", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /Review Checklist/);
+  assert.match(source, /Auto-filled/);
+  assert.match(source, /Needs manual input/);
+  assert.match(source, /Failed \/ blocked scrapes/);
+  assert.match(source, /ListingStream-ready/);
+  assert.match(source, /Before \/ After Delta/);
+  assert.match(source, /Interpreter Confidence/);
+});
+
 test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise Draft, assessor fields, and payload preview", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /Review Draft/);
   assert.match(source, /Save as Draft & Preview/);
   assert.match(source, /draftPreviewUrl/);
   assert.match(source, /Open Draft Preview/);
-  assert.match(source, /Preview URL is ready below/);
+  assert.match(source, /Open the clickable Draft Preview link below/);
   assert.match(source, /Approve & Publish Live/);
   assert.match(source, /Delete Draft/);
   assert.match(source, /Make Live/);
@@ -501,15 +655,43 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /Lot Size/);
   assert.match(source, /Zoning/);
   assert.match(source, /Full data payload preview/);
+  assert.match(source, /isMasterAdmin \? \(/);
   assert.match(source, /getDraftReviewChecklist/);
   assert.match(source, /defaultReviewChecklist/);
   assert.match(source, /Editable public-record fields before publish/);
   assert.match(source, /These fields always remain available for manual broker entry/);
 });
 
+test("broker role hides raw JSON while master admin keeps payload and delta previews", async () => {
+  const pageSource = await readFile("src/app/pier-manager/page.tsx", "utf8");
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(pageSource, /getAuthSession/);
+  assert.match(pageSource, /userRole=\{session\?\.role \?\? "broker"\}/);
+  assert.match(source, /export function PierManagerListingConsole\(\{ userRole \}: \{ userRole: AuthRole \}\)/);
+  assert.match(source, /const isMasterAdmin = userRole === "master"/);
+  assert.match(source, /data-testid="delta-raw-json"/);
+  assert.match(source, /data-testid="payload-preview"/);
+});
+
+test("publish buttons expose clear success feedback and live publish clears review state", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /data-testid="publish-success-banner"/);
+  assert.match(source, /Success! Modifications have been published and will be live on the website shortly\./);
+  assert.match(source, /Success! Draft preview saved/);
+  assert.match(source, /Draft URL:/);
+  assert.match(source, /setReviewDraft\(null\)/);
+  assert.match(source, /setModificationInstructions\(""\)/);
+});
+
 test("broker review draft has explicit visible panels and does not force publish before revision", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /data-testid="review-draft-panel"/);
+  assert.match(source, /visibleReviewDraft \? \(/);
+  assert.match(source, /ref=\{reviewPanelRef\}/);
+  assert.match(source, /ref=\{finalPublishActionsRef\}/);
+  assert.match(source, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
+  assert.match(source, /Generating Draft\.\.\. Please Wait/);
+  assert.match(source, /aria-busy=\{modificationSubmitting\}/);
   assert.match(source, /data-testid="assessor-data-fields"/);
   assert.match(source, /data-testid="review-checklist-panel"/);
   assert.match(source, /data-testid="broker-revise-loop"/);

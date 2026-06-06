@@ -68,6 +68,29 @@ function normalizeWriterResult(value: unknown): PropertyPortalAiWriterResult {
   };
 }
 
+export function parseCloudWriterJson(content: string): PropertyPortalAiWriterResult {
+  const text = asString(content);
+  if (!text) throw new Error("Cloud writer returned an empty message while drafting premium marketing copy.");
+
+  const candidates = [text];
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  if (fenced) candidates.push(fenced);
+
+  const objectStart = text.indexOf("{");
+  const objectEnd = text.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) candidates.push(text.slice(objectStart, objectEnd + 1));
+
+  for (const candidate of candidates) {
+    try {
+      return normalizeWriterResult(JSON.parse(candidate));
+    } catch {
+      // Try the next extraction strategy before surfacing a clean route error.
+    }
+  }
+
+  throw new Error("Cloud writer returned invalid JSON while drafting premium marketing copy. Please retry with a shorter, specific instruction.");
+}
+
 export function buildNewListingEnrichmentPrompt(input: Record<string, unknown>) {
   return `You are Hermes writing for PIER Commercial Real Estate. Produce a premium fully formatted commercial real estate property description from Broker Hub intake notes. Return strict JSON only.
 
@@ -108,8 +131,8 @@ Task:
 - For a status-only change, keep title, media, images, description, pricing, location, brokers, and unchanged content out of structuredUpdates
 - For status changes, use the deterministic interpreter fields exactly. The frontend normalizer reads top-level status, statusBadgeLabel, underContract, leased, sold and nested visibility.status/statusBadgeLabel/underContract/leased/sold; set data.leased=true for Leased, data.sold=true for Sold, and data.underContract=true for Under Contract
 - Valid status values are: "leased", "sold", and "under_contract". Matching display labels are: "Leased", "Sold", and "Under Contract"
+- Return only fields that should change in structuredUpdates; unchanged fields are merged by backend from the canonical listing
 - Do not invent unsupported facts
-- Return only fields that should change in structuredUpdates
 
 Required JSON keys:
 - title
@@ -177,7 +200,7 @@ export async function defaultPropertyPortalCloudWriter(prompt: string): Promise<
   if (!response.ok) throw new Error(`Cloud writer failed (${response.status}): ${text.slice(0, 600)}`);
   const payload = JSON.parse(text) as Record<string, unknown>;
   const content = asString((payload.choices as Array<{ message?: { content?: string } }> | undefined)?.[0]?.message?.content);
-  return normalizeWriterResult(JSON.parse(content));
+  return parseCloudWriterJson(content);
 }
 
 function normalizeReviewChecklist(structuredUpdates: Record<string, unknown>): PropertyPortalReviewChecklist {
@@ -299,9 +322,13 @@ export async function createNewListingReviewDraft(input: { input: Record<string,
 
 export async function fetchPropertyPortalListing(input: { propertyIdOrSlug: string; baseUrl?: string; fetchImpl?: PropertyPortalFetch }) {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const response = await fetchImpl(buildPropertyPortalUrl(`/api/properties/${encodeURIComponent(input.propertyIdOrSlug)}`, input.baseUrl), {
-    cache: "no-store",
-  });
+  const response = await withPropertyPortalTimeout(
+    fetchImpl(buildPropertyPortalUrl(`/api/properties/${encodeURIComponent(input.propertyIdOrSlug)}`, input.baseUrl), {
+      cache: "no-store",
+    }),
+    Number(process.env.PROPERTY_PORTAL_LISTING_FETCH_TIMEOUT_MS ?? 20_000),
+    "ListingStream backend request timed out while fetching the current listing for AI drafting. Please try again shortly.",
+  );
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) throw new Error(asString(data.error) || "Could not fetch property-portal listing.");
   return data;
@@ -316,15 +343,42 @@ export async function createModificationReviewDraft(input: {
 }) {
   const currentListing = await fetchPropertyPortalListing(input);
   const interpreter = interpretBrokerEditRequest(currentListing, input.instructions);
+  const currentTitle = asString(currentListing.title) || asString((currentListing.content as Record<string, unknown> | undefined)?.saleTitle) || input.propertyIdOrSlug;
+
+  if (interpreter.lifecycleAction) {
+    const lifecycleLabel = interpreter.lifecycleAction === "archive" ? "Archive Listing" : "Delete Listing";
+    const structuredUpdates = { ...interpreter.updatePayload };
+    const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
+    return buildBrokerReviewState({
+      kind: "modification",
+      sourceInput: { propertyIdOrSlug: input.propertyIdOrSlug, instructions: input.instructions, lifecycleAction: interpreter.lifecycleAction },
+      currentListing,
+      writerResult: {
+        title: `${lifecycleLabel}: ${currentTitle}`,
+        descriptionHtml: `<p>${interpreter.summary.join(" ")}</p>`,
+        highlights: interpreter.summary,
+        structuredUpdates,
+        mediaNotes: [],
+      },
+      interpreter,
+      deltaPreview,
+    });
+  }
+
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
   const structuredUpdates = deepMergeRecords(interpreter.updatePayload, writerResult.structuredUpdates);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
+  const safeWriterResult = {
+    ...writerResult,
+    title: /^(ai[- ]drafted listing review|ai draft ready for broker review)$/i.test(asString(writerResult.title)) ? currentTitle || writerResult.title : writerResult.title,
+    structuredUpdates,
+  };
   return buildBrokerReviewState({
     kind: "modification",
     sourceInput: { propertyIdOrSlug: input.propertyIdOrSlug, instructions: input.instructions },
     currentListing,
-    writerResult: { ...writerResult, structuredUpdates },
+    writerResult: safeWriterResult,
     interpreter,
     deltaPreview,
   });

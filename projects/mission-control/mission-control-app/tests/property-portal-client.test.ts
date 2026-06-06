@@ -374,6 +374,14 @@ test("mission-control revision proxy forwards property-portal internal token hel
   assert.match(routeSource, /headers:\s*getPropertyPortalInternalHeaders\(\)/);
 });
 
+test("mission-control ai-draft route has bounded Vercel/runtime timeout handling", async () => {
+  const routeSource = await readFile("src/app/api/listingstream/ai-draft/route.ts", "utf8");
+  assert.match(routeSource, /export const maxDuration = 60/);
+  assert.match(routeSource, /AI_DRAFT_ROUTE_TIMEOUT_MS/);
+  assert.match(routeSource, /withPropertyPortalTimeout/);
+  assert.match(routeSource, /timed out before a modification draft was returned/);
+});
+
 test("pier-manager listing foundation has no WordPress listing dependency", async () => {
   const clientSource = await readFile("src/lib/property-portal-client.ts", "utf8");
   const routeSource = await readFile("src/app/api/listingstream/intake/route.ts", "utf8").catch(() => "");

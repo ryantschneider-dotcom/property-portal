@@ -3,10 +3,13 @@ import { NextResponse } from "next/server";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
 import { createModificationReviewDraft, createNewListingReviewDraft, reviseBrokerReviewDraft, type BrokerReviewDraft } from "@/lib/property-portal-ai";
-import { createPropertyPortalProxyError } from "@/lib/property-portal-client";
+import { createPropertyPortalProxyError, withPropertyPortalTimeout } from "@/lib/property-portal-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const AI_DRAFT_ROUTE_TIMEOUT_MS = Number(process.env.PIER_MANAGER_AI_DRAFT_ROUTE_TIMEOUT_MS ?? 55_000);
 
 type AiDraftRequest =
   | {
@@ -41,15 +44,27 @@ export async function POST(request: Request) {
     await requirePierManagerAuth();
     const body = (await request.json()) as AiDraftRequest;
     if (body.mode === "new-listing") {
-      const draft = await createNewListingReviewDraft({ input: body.input });
+      const draft = await withPropertyPortalTimeout(
+        createNewListingReviewDraft({ input: body.input }),
+        AI_DRAFT_ROUTE_TIMEOUT_MS,
+        "AI broker review drafting timed out before a draft was returned. Please retry with shorter instructions.",
+      );
       return NextResponse.json({ ok: true, draft });
     }
     if (body.mode === "modification") {
-      const draft = await createModificationReviewDraft({ propertyIdOrSlug: body.propertyIdOrSlug, instructions: body.instructions });
+      const draft = await withPropertyPortalTimeout(
+        createModificationReviewDraft({ propertyIdOrSlug: body.propertyIdOrSlug, instructions: body.instructions }),
+        AI_DRAFT_ROUTE_TIMEOUT_MS,
+        "AI broker review drafting timed out before a modification draft was returned. Please retry with shorter instructions.",
+      );
       return NextResponse.json({ ok: true, draft });
     }
     if (body.mode === "revise") {
-      const draft = await reviseBrokerReviewDraft({ draft: body.draft, feedback: body.feedback });
+      const draft = await withPropertyPortalTimeout(
+        reviseBrokerReviewDraft({ draft: body.draft, feedback: body.feedback }),
+        AI_DRAFT_ROUTE_TIMEOUT_MS,
+        "AI broker review drafting timed out before a revised draft was returned. Please retry with shorter feedback.",
+      );
       return NextResponse.json({ ok: true, draft });
     }
     return NextResponse.json({ error: "Unsupported AI draft mode" }, { status: 400 });

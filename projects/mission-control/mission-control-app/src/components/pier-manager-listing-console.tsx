@@ -36,9 +36,28 @@ function requiredLabel(label: string, required = true) {
 }
 
 async function parseJsonResponse(response: Response) {
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(String(data.error ?? "ListingStream backend request failed."));
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : { error: await response.text().catch(() => "") };
+  if (!response.ok) throw new Error(String((data as { error?: unknown }).error ?? "ListingStream backend request failed."));
   return data;
+}
+
+function getAbortableErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return "AI draft generation timed out in the browser. The request was stopped so the page would not stay stuck; please try again with shorter instructions.";
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return await parseJsonResponse(response);
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function reviewChecklistItems(items: string[]) {
@@ -190,7 +209,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [listingSearchText, setListingSearchText] = useState("");
-  const [listingResultsOpen, setListingResultsOpen] = useState(true);
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
@@ -276,6 +294,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
+  const filteredAddressListings = useMemo(() => {
+    const query = listingSearchText.trim().toLowerCase();
+    const matches = query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
+    return matches.slice(0, 8);
+  }, [activeListings, listingSearchText]);
   const scrollableListingMatches = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
     return query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
@@ -284,7 +307,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
-    setListingResultsOpen(false);
     setOmGenerating(false);
     setOmError("");
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
@@ -293,12 +315,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function updateListingSearch(value: string) {
     setListingSearchText(value);
-    setListingResultsOpen(true);
-    setOmGenerating(false);
-    setOmError("");
     const normalized = value.trim().toLowerCase();
-    const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized || listing.id?.toLowerCase() === normalized);
-    setSelectedPropertyId(exactMatch ? getListingSelectionValue(exactMatch) : "");
+    const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized);
+    if (exactMatch) setSelectedPropertyId(getListingSelectionValue(exactMatch));
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -344,19 +363,18 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIntakeStatus("AI is analyzing property data... Drafting premium marketing copy, assessor/parcel gaps, and location intelligence...");
     try {
       const input = buildBrokerHubIntakePayload({ ...intakeForm, suites, heroPhotoCount: heroPhoto ? 1 : 0 });
-      const response = await fetch("/api/listingstream/ai-draft", {
+      const data = (await fetchJsonWithTimeout("/api/listingstream/ai-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "new-listing", input }),
-      });
-      const data = (await parseJsonResponse(response)) as { draft: unknown };
+      }, 90_000)) as { draft: unknown };
       const draft = normalizeIncomingBrokerReviewDraft(data.draft, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
       setReviewDraft(draft);
       revealReviewDraft("actions");
       setReviewStatus(`Review Draft ready for ${draft.title}. Hero photo and media stay staged until approval.`);
       setIntakeStatus(`The PIER Commercial Big Brain enrichment draft is ready for broker review. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
     } catch (error) {
-      setIntakeStatus(error instanceof Error ? error.message : "Could not generate listing review draft.");
+      setIntakeStatus(getAbortableErrorMessage(error, "Could not generate listing review draft."));
     } finally {
       setIntakeSubmitting(false);
     }
@@ -369,12 +387,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setToastMessage("");
     setModificationStatus("AI is analyzing property data... Fetching the current portal payload and drafting premium marketing copy from your delta...");
     try {
-      const response = await fetch("/api/listingstream/ai-draft", {
+      const data = (await fetchJsonWithTimeout("/api/listingstream/ai-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "modification", propertyIdOrSlug: selectedPropertyId, instructions: modificationInstructions.trim() }),
-      });
-      const data = (await parseJsonResponse(response)) as { draft: unknown };
+      }, 90_000)) as { draft: unknown };
       const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
         kind: "modification",
         title: selectedListing?.title || selectedListing?.address || selectedPropertyId || "Listing modification draft",
@@ -385,7 +402,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setReviewStatus(`Review Draft ready for modification. ${modificationAssets.length} media/document file(s) staged for the portal update.`);
       setModificationStatus("Revised listing draft ready for broker review; nothing has been published yet.");
     } catch (error) {
-      setModificationStatus(error instanceof Error ? error.message : "Could not generate listing modification draft.");
+      setModificationStatus(getAbortableErrorMessage(error, "Could not generate listing modification draft."));
     } finally {
       setModificationSubmitting(false);
     }
@@ -451,12 +468,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setToastMessage("");
     setReviewStatus("The PIER Commercial Big Brain is revising the draft from broker feedback…");
     try {
-      const response = await fetch("/api/listingstream/ai-draft", {
+      const data = (await fetchJsonWithTimeout("/api/listingstream/ai-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "revise", draft: reviewDraft, feedback: revisionFeedback.trim() }),
-      });
-      const data = (await parseJsonResponse(response)) as { draft: unknown };
+      }, 90_000)) as { draft: unknown };
       const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
         kind: reviewDraft.kind,
         title: reviewDraft.title,
@@ -467,7 +483,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setRevisionFeedback("");
       setReviewStatus(`Revised draft ready. Revision count: ${getDraftRevisionCount(draft)}.`);
     } catch (error) {
-      setReviewStatus(error instanceof Error ? error.message : "Could not revise draft.");
+      setReviewStatus(getAbortableErrorMessage(error, "Could not revise draft."));
     } finally {
       setReviewBusy(false);
     }
@@ -702,37 +718,24 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 data-testid="listing-address-search"
                 value={listingSearchText}
                 onChange={(event) => updateListingSearch(event.target.value)}
-                onFocus={() => setListingResultsOpen(true)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setListingResultsOpen(false);
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setListingResultsOpen(true);
-                    document.querySelector<HTMLButtonElement>('[data-testid="active-listing-option"]')?.focus();
-                  }
-                }}
-                role="combobox"
-                aria-expanded={listingResultsOpen}
-                aria-controls="active-listing-scrollbox"
-                aria-autocomplete="list"
+                list="active-listing-address-options"
                 className={inputClass}
                 placeholder="Start entering address or property name"
                 autoComplete="off"
               />
+              <datalist id="active-listing-address-options">
+                {filteredAddressListings.map((listing) => (
+                  <option key={listing.id} value={getListingSearchLabel(listing)} />
+                ))}
+              </datalist>
             </label>
-            <select value={selectedPropertyId} onChange={(event) => selectActiveListing(event.target.value)} className="sr-only" aria-hidden="true" tabIndex={-1} required>
+            <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1} required>
               <option value="">Select active ListingStream listing</option>
               {activeListings.map((listing) => (
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
               ))}
             </select>
-            <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
-              <span>{scrollableListingMatches.length} matching ListingStream propert{scrollableListingMatches.length === 1 ? "y" : "ies"}</span>
-              <button type="button" onClick={() => setListingResultsOpen((current) => !current)} className="font-semibold text-[#CB521E] hover:text-[#a94318]">
-                {listingResultsOpen ? "Hide list" : "Show list"}
-              </button>
-            </div>
-            <div id="active-listing-scrollbox" data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className={`${listingResultsOpen ? "block" : "hidden"} max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner`}>
+            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
               {activeListings.length === 0 ? (
                 <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
               ) : scrollableListingMatches.length === 0 ? (
@@ -744,11 +747,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                   return (
                     <button
                       key={listing.id}
-                      data-testid="active-listing-option"
                       type="button"
                       role="option"
                       aria-selected={isSelected}
-                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => selectActiveListing(value)}
                       className={`w-full border-b border-zinc-100 px-4 py-3 text-left text-sm transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40 ${isSelected ? "bg-[#CB521E]/10 font-semibold text-[#CB521E]" : "text-zinc-700"}`}
                     >
