@@ -12,7 +12,7 @@ export default async function PierManagerPage() {
       title="PIER Manager"
       subtitle="Broker-facing listing uptake and AI-driven listing modification wired directly to the property-portal backend. WordPress is bypassed for listing workflows."
       currentPath="/pier-manager"
-      actions={[{ href: "/projects", label: "Local listings" }, { href: "/daily-control", label: "Task board" }]}
+      actions={[{ href: "/daily-control", label: "Task board" }]}
     >
       <PierManagerListingConsole userRole={session?.role ?? "broker"} />
     </MissionShell>

@@ -99,6 +99,11 @@ test("Broker Hub FormData forwards rich payload and hero/media assets without Wo
 test("PIER Manager active listing picker is scrollable and OM generation has loading/error UX", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
   assert.match(source, /data-testid=\"active-listing-scrollbox\"/);
+  assert.match(source, /data-testid=\"active-listing-option\"/);
+  assert.match(source, /aria-controls=\"active-listing-scrollbox\"/);
+  assert.match(source, /setListingResultsOpen\(true\)/);
+  assert.match(source, /setSelectedPropertyId\(exactMatch \? getListingSelectionValue\(exactMatch\) : \"\"\)/);
+  assert.match(source, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
   assert.match(source, /max-h-64 overflow-y-auto/);
   assert.match(source, /Generating OM…/);
   assert.match(source, /setOmError/);

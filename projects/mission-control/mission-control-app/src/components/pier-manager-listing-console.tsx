@@ -190,6 +190,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [listingSearchText, setListingSearchText] = useState("");
+  const [listingResultsOpen, setListingResultsOpen] = useState(true);
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
@@ -275,11 +276,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
-  const filteredAddressListings = useMemo(() => {
-    const query = listingSearchText.trim().toLowerCase();
-    const matches = query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
-    return matches.slice(0, 8);
-  }, [activeListings, listingSearchText]);
   const scrollableListingMatches = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
     return query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
@@ -288,6 +284,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
+    setListingResultsOpen(false);
     setOmGenerating(false);
     setOmError("");
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
@@ -296,9 +293,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function updateListingSearch(value: string) {
     setListingSearchText(value);
+    setListingResultsOpen(true);
+    setOmGenerating(false);
+    setOmError("");
     const normalized = value.trim().toLowerCase();
-    const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized);
-    if (exactMatch) setSelectedPropertyId(getListingSelectionValue(exactMatch));
+    const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized || listing.id?.toLowerCase() === normalized);
+    setSelectedPropertyId(exactMatch ? getListingSelectionValue(exactMatch) : "");
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -702,24 +702,37 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 data-testid="listing-address-search"
                 value={listingSearchText}
                 onChange={(event) => updateListingSearch(event.target.value)}
-                list="active-listing-address-options"
+                onFocus={() => setListingResultsOpen(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setListingResultsOpen(false);
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setListingResultsOpen(true);
+                    document.querySelector<HTMLButtonElement>('[data-testid="active-listing-option"]')?.focus();
+                  }
+                }}
+                role="combobox"
+                aria-expanded={listingResultsOpen}
+                aria-controls="active-listing-scrollbox"
+                aria-autocomplete="list"
                 className={inputClass}
                 placeholder="Start entering address or property name"
                 autoComplete="off"
               />
-              <datalist id="active-listing-address-options">
-                {filteredAddressListings.map((listing) => (
-                  <option key={listing.id} value={getListingSearchLabel(listing)} />
-                ))}
-              </datalist>
             </label>
-            <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1} required>
+            <select value={selectedPropertyId} onChange={(event) => selectActiveListing(event.target.value)} className="sr-only" aria-hidden="true" tabIndex={-1} required>
               <option value="">Select active ListingStream listing</option>
               {activeListings.map((listing) => (
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
               ))}
             </select>
-            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
+            <div className="flex items-center justify-between gap-3 text-xs text-zinc-500">
+              <span>{scrollableListingMatches.length} matching ListingStream propert{scrollableListingMatches.length === 1 ? "y" : "ies"}</span>
+              <button type="button" onClick={() => setListingResultsOpen((current) => !current)} className="font-semibold text-[#CB521E] hover:text-[#a94318]">
+                {listingResultsOpen ? "Hide list" : "Show list"}
+              </button>
+            </div>
+            <div id="active-listing-scrollbox" data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className={`${listingResultsOpen ? "block" : "hidden"} max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner`}>
               {activeListings.length === 0 ? (
                 <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
               ) : scrollableListingMatches.length === 0 ? (
@@ -731,9 +744,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                   return (
                     <button
                       key={listing.id}
+                      data-testid="active-listing-option"
                       type="button"
                       role="option"
                       aria-selected={isSelected}
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={() => selectActiveListing(value)}
                       className={`w-full border-b border-zinc-100 px-4 py-3 text-left text-sm transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40 ${isSelected ? "bg-[#CB521E]/10 font-semibold text-[#CB521E]" : "text-zinc-700"}`}
                     >
