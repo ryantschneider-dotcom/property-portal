@@ -22,7 +22,6 @@ const navGroups: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/", label: "Executive Dashboard", match: "exact" },
       { href: "/pier-manager", label: "PIER Manager", match: "prefix" },
-      { href: "/projects", label: "Local Listings", match: "prefix" },
       { href: "/offering-summaries", label: "Offering Summaries", match: "prefix" },
       { href: "/listing-agreements", label: "Listing Agreements", match: "prefix" },
       { href: "/sales-contracts", label: "Sales Contracts", match: "prefix" },

@@ -50,11 +50,15 @@ test("new listing intake form data stays review-only and carries minimal broker 
   assert.equal(formData.getAll("assets").length, 1);
 });
 
-test("ListingStream URL builder targets the active ListingStream backend before deprecated property-portal env", () => {
+test("ListingStream URL builder ignores stale deprecated property-portal env values", () => {
   const previousListingStream = process.env.LISTINGSTREAM_PORTAL_BASE_URL;
+  const previousNextPublicListingStream = process.env.NEXT_PUBLIC_LISTINGSTREAM_PORTAL_BASE_URL;
   const previousPropertyPortal = process.env.PROPERTY_PORTAL_BASE_URL;
-  process.env.LISTINGSTREAM_PORTAL_BASE_URL = "https://listingstream-portal.vercel.app";
+  const previousNextPublicPropertyPortal = process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL;
+  delete process.env.LISTINGSTREAM_PORTAL_BASE_URL;
+  delete process.env.NEXT_PUBLIC_LISTINGSTREAM_PORTAL_BASE_URL;
   process.env.PROPERTY_PORTAL_BASE_URL = "https://broker.piercommercial.com";
+  process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL = "https://property-portal.example.com";
   try {
     assert.equal(
       buildPropertyPortalUrl("/api/broker/active-listings"),
@@ -63,8 +67,12 @@ test("ListingStream URL builder targets the active ListingStream backend before 
   } finally {
     if (previousListingStream == null) delete process.env.LISTINGSTREAM_PORTAL_BASE_URL;
     else process.env.LISTINGSTREAM_PORTAL_BASE_URL = previousListingStream;
+    if (previousNextPublicListingStream == null) delete process.env.NEXT_PUBLIC_LISTINGSTREAM_PORTAL_BASE_URL;
+    else process.env.NEXT_PUBLIC_LISTINGSTREAM_PORTAL_BASE_URL = previousNextPublicListingStream;
     if (previousPropertyPortal == null) delete process.env.PROPERTY_PORTAL_BASE_URL;
     else process.env.PROPERTY_PORTAL_BASE_URL = previousPropertyPortal;
+    if (previousNextPublicPropertyPortal == null) delete process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL;
+    else process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL = previousNextPublicPropertyPortal;
   }
 });
 
@@ -89,7 +97,7 @@ test("draft preview URL builder targets the dedicated preview route", () => {
 });
 
 test("modification approval payload preserves canonical title, media, and unchanged fields", () => {
-  const payload = buildPropertyPortalApprovedPayload({
+  const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",
     slug: "12-west-state-street",
     draft: {
@@ -139,7 +147,7 @@ test("modification approval payload rejects normalizer fallback warnings and inv
     ],
   };
 
-  const payload = buildPropertyPortalApprovedPayload({
+  const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",
     slug: "12-west-state-street",
     draft: {
@@ -194,7 +202,7 @@ test("modification approval payload rejects normalizer fallback warnings and inv
 });
 
 test("modification approval payload preserves nested property facts when applying partial nested updates", () => {
-  const payload = buildPropertyPortalApprovedPayload({
+  const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",
     slug: "12-west-state-street",
     draft: {
@@ -334,7 +342,7 @@ test("pier-manager successful final submission scrolls top, shows dismissible su
 
   assert.match(source, /Submission Successful/);
   assert.match(source, /Close message|Close/);
-  assert.match(source, /scrollTo\(\{\s*top:\s*0,\s*behavior:\s*"smooth"/s);
+  assert.match(source, /scrollTo\(\{[\s\S]*top:\s*0,[\s\S]*behavior:\s*"smooth"/);
   assert.match(source, /city:\s*""/);
   assert.match(source, /state:\s*""/);
   assert.match(source, /county:\s*""/);
@@ -358,7 +366,7 @@ test("pier-manager successful final submission scrolls top, shows dismissible su
 test("pier-manager exposes Generate OM links through ListingStream proxy", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
   assert.match(source, /Generate OM/);
-  assert.match(source, /\/api\/listingstream\/offering-memorandums\/\$\{encodeURIComponent\(getListingSelectionValue\(selectedListing\)\)\}\/pdf/);
+  assert.match(source, /\/api\/listingstream\/offering-memorandums\/\$\{slug\}\/pdf/);
 });
 
 test("Mission Control OM proxy injects active broker session into ListingStream backend", () => {

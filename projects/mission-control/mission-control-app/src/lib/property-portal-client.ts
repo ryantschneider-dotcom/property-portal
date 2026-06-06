@@ -70,7 +70,6 @@ export type PropertyPortalApprovalResult = {
 export type PropertyPortalPublishMode = "draft-preview" | "publish-live";
 export type PropertyPortalPropertyLifecycleAction = "archive" | "restore" | "delete";
 
-const DEFAULT_PROPERTY_PORTAL_BASE_URL = "http://localhost:3000";
 const DEFAULT_LISTINGSTREAM_PORTAL_BASE_URL = "https://listingstream-portal.vercel.app";
 const DEFAULT_PROPERTY_PORTAL_TIMEOUT_MS = 30_000;
 
@@ -223,12 +222,14 @@ export function getPropertyPortalInternalHeaders(): Record<string, string> {
 }
 
 export function getPropertyPortalBaseUrl(explicitBaseUrl?: string) {
+  // Mission Control's PIER Manager now talks to ListingStream exclusively.
+  // Keep the legacy function name for compatibility, but do not let stale
+  // PROPERTY_PORTAL_* Vercel env vars route active-listing search back to the
+  // deprecated broker/property portal.
   return clean(explicitBaseUrl)
     || clean(process.env.LISTINGSTREAM_PORTAL_BASE_URL)
     || clean(process.env.NEXT_PUBLIC_LISTINGSTREAM_PORTAL_BASE_URL)
-    || clean(process.env.PROPERTY_PORTAL_BASE_URL)
-    || clean(process.env.NEXT_PUBLIC_PROPERTY_PORTAL_BASE_URL)
-    || (process.env.NODE_ENV === "production" ? DEFAULT_LISTINGSTREAM_PORTAL_BASE_URL : DEFAULT_PROPERTY_PORTAL_BASE_URL);
+    || DEFAULT_LISTINGSTREAM_PORTAL_BASE_URL;
 }
 
 export function buildPropertyPortalUrl(path: string, explicitBaseUrl?: string) {
