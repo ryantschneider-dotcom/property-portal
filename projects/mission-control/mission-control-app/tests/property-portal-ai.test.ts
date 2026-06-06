@@ -176,6 +176,53 @@ test("modification AI draft fetches current listing from property-portal before 
   assert.deepEqual(draft.structuredUpdates.pricing, { askingPriceRatePerSf: 22, listingPriceVisibility: "per_sf" });
 });
 
+
+test("plain-English status changes produce ListingStream status fields before AI copy refinement", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "12-west-state-street",
+    instructions: "Change this property to Leased.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "12-west-state-street",
+      title: "12 West State Street",
+      visibility: { transactionLabel: "For Lease" },
+      content: { leaseDescription: "Existing lease copy." },
+    }),
+    writer: async (prompt) => {
+      assert.match(prompt, /status-only change/i);
+      assert.match(prompt, /statusBadgeLabel/i);
+      assert.match(prompt, /data\.leased/i);
+      return {
+        title: "12 West State Street",
+        descriptionHtml: "",
+        highlights: [],
+        structuredUpdates: {},
+        mediaNotes: [],
+      };
+    },
+  });
+
+  assert.equal(draft.review.interpreter?.confidence, "medium");
+  assert.equal(draft.structuredUpdates.status, "leased");
+  assert.equal(draft.structuredUpdates.statusBadgeLabel, "Leased");
+  assert.equal(draft.structuredUpdates.leased, true);
+  assert.equal(draft.structuredUpdates.sold, false);
+  assert.equal(draft.structuredUpdates.underContract, false);
+  assert.deepEqual(draft.structuredUpdates.visibility, {
+    status: "leased",
+    listingStatus: "leased",
+    availabilityStatus: "leased",
+    transactionStatus: "leased",
+    dealStatus: "leased",
+    statusBadgeLabel: "Leased",
+    statusLabel: "Leased",
+    leased: true,
+    sold: false,
+    underContract: false,
+  });
+  assert.equal((draft.review.deltaPreview?.after as Record<string, unknown>).status, "leased");
+});
+
 test("broker revise loop sends existing draft plus feedback back through AI", async () => {
   const initial = buildBrokerReviewState({
     kind: "new-listing",
@@ -243,6 +290,49 @@ test("approve helper executes true ListingStream publish path and bypasses WordP
   assert.equal(launchPayload.publicCollection, "public_listings");
   assert.equal(result.ascendix?.success, true);
 });
+
+
+test("approve helper publishes status-change payload through ListingStream launch-package", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+  const result = await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    draft: buildBrokerReviewState({
+      kind: "modification",
+      sourceInput: { propertyIdOrSlug: "12-west-state-street" },
+      currentListing: { slug: "12-west-state-street", title: "12 West State Street", visibility: { transactionLabel: "For Lease" } },
+      writerResult: {
+        title: "12 West State Street",
+        descriptionHtml: "",
+        highlights: [],
+        structuredUpdates: {
+          status: "leased",
+          statusBadgeLabel: "Leased",
+          leased: true,
+          sold: false,
+          underContract: false,
+          visibility: { status: "leased", statusBadgeLabel: "Leased", leased: true, sold: false, underContract: false },
+        },
+        mediaNotes: [],
+      },
+    }),
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, save: { success: true, slug: "12-west-state-street", id: "12-west-state-street" }, result: { previewUrl: "/preview/12-west-state-street" }, sync: null });
+    },
+  });
+
+  const approvedPayload = calls[0].body.approvedPayload as Record<string, unknown>;
+  assert.equal(calls[0].url, "https://portal.example.com/api/admin/properties/launch-package");
+  assert.equal(calls[0].body.action, "publish-live");
+  assert.equal(approvedPayload.status, "leased");
+  assert.equal(approvedPayload.statusBadgeLabel, "Leased");
+  assert.equal(approvedPayload.leased, true);
+  assert.equal((approvedPayload.visibility as Record<string, unknown>).status, "leased");
+  assert.equal(result.save.success, true);
+});
+
 
 test("draft preview helper saves ListingStream draft and explicitly bypasses Ascendix", async () => {
   const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");

@@ -160,6 +160,12 @@ function buildSlugFromTitle(title: string) {
   return clean(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+function getApprovedPayloadStatus(updates: Record<string, unknown>, mode?: PropertyPortalPublishMode) {
+  if (mode === "draft-preview") return "draft";
+  const status = clean(updates.status as string | undefined).toLowerCase();
+  return ["leased", "sold", "under_contract"].includes(status) ? status : "active";
+}
+
 export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPortalReviewDraftForApproval; mode?: PropertyPortalPublishMode; slug?: string }) {
   const rawUpdates = isRecord(input.draft.structuredUpdates) ? input.draft.structuredUpdates : {};
   const existing = isRecord(input.draft.currentListing) ? input.draft.currentListing : {};
@@ -198,7 +204,7 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     ...merged,
     slug: input.slug || clean(merged.slug as string | undefined) || clean(existing.slug as string | undefined) || undefined,
     title: finalTitle,
-    status: input.mode === "draft-preview" ? "draft" : "active",
+    status: getApprovedPayloadStatus(updates, input.mode),
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,
     media: input.draft.kind === "modification" ? (updateMediaIsValid ? mergedMedia : existingMedia) : mergedMedia,

@@ -126,6 +126,41 @@ function shouldMarkUnpriced(instructions: string) {
   return /(?:mark\s+)?(?:sale\s+price\s+)?(?:as\s+)?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions);
 }
 
+function getRequestedListingStatus(instructions: string): "leased" | "sold" | "under_contract" | null {
+  if (/\b(?:mark|change|set|move|update)?\s*(?:this\s+)?(?:property|listing)?\s*(?:as|to|status\s*(?:as|to|=|is)?)?\s*(?:leased|fully\s+leased|lease\s+executed)\b/i.test(instructions)) return "leased";
+  if (/\b(?:mark|change|set|move|update)?\s*(?:this\s+)?(?:property|listing)?\s*(?:as|to|status\s*(?:as|to|=|is)?)?\s*(?:sold|closed|sale\s+closed)\b/i.test(instructions)) return "sold";
+  if (/\b(?:mark|change|set|move|update)?\s*(?:this\s+)?(?:property|listing)?\s*(?:as|to|status\s*(?:as|to|=|is)?)?\s*(?:under\s+contract|pending\s+contract|contract\s+pending)\b/i.test(instructions)) return "under_contract";
+  return null;
+}
+
+function buildListingStatusPayload(status: "leased" | "sold" | "under_contract") {
+  const label = status === "under_contract" ? "Under Contract" : status === "leased" ? "Leased" : "Sold";
+  return {
+    status,
+    listingStatus: status,
+    availabilityStatus: status,
+    transactionStatus: status,
+    dealStatus: status,
+    statusBadgeLabel: label,
+    statusLabel: label,
+    leased: status === "leased",
+    sold: status === "sold",
+    underContract: status === "under_contract",
+    visibility: {
+      status,
+      listingStatus: status,
+      availabilityStatus: status,
+      transactionStatus: status,
+      dealStatus: status,
+      statusBadgeLabel: label,
+      statusLabel: label,
+      leased: status === "leased",
+      sold: status === "sold",
+      underContract: status === "under_contract",
+    },
+  };
+}
+
 function splitBulletLines(value: string) {
   return value
     .split(/\r?\n|;/)
@@ -217,6 +252,13 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   const nextAdmin: Record<string, unknown> = {};
   const transactionLabel = asString(visibility.transactionLabel).toLowerCase();
   const isLease = transactionLabel.includes("lease");
+
+  const requestedListingStatus = getRequestedListingStatus(instructions);
+  if (requestedListingStatus) {
+    Object.assign(updatePayload, buildListingStatusPayload(requestedListingStatus));
+    const label = requestedListingStatus === "under_contract" ? "Under Contract" : requestedListingStatus === "leased" ? "Leased" : "Sold";
+    summary.push(`Prepared ListingStream status update to ${label}.`);
+  }
 
   const title = extractTitle(instructions);
   if (title) {

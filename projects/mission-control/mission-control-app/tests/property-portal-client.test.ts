@@ -132,6 +132,52 @@ test("modification approval payload preserves canonical title, media, and unchan
   assert.equal(payload.workflowStatus, "draft_preview");
 });
 
+test("approved status-change payload preserves ListingStream lifecycle status fields", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "publish-live",
+    slug: "12-west-state-street",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "12-west-state-street" },
+      currentListing: {
+        slug: "12-west-state-street",
+        title: "12 W State Street",
+        status: "active",
+        visibility: { transactionLabel: "For Lease" },
+        content: { saleTitle: "12 W State Street", leaseDescription: "Existing public copy." },
+      },
+      structuredUpdates: {
+        status: "leased",
+        statusBadgeLabel: "Leased",
+        leased: true,
+        sold: false,
+        underContract: false,
+        visibility: {
+          status: "leased",
+          statusBadgeLabel: "Leased",
+          leased: true,
+          sold: false,
+          underContract: false,
+        },
+      },
+    },
+  });
+
+  assert.equal(payload.status, "leased");
+  assert.equal(payload.statusBadgeLabel, "Leased");
+  assert.equal(payload.leased, true);
+  assert.equal(payload.sold, false);
+  assert.equal(payload.underContract, false);
+  assert.equal((payload.visibility as Record<string, unknown>).status, "leased");
+  assert.equal((payload.visibility as Record<string, unknown>).statusBadgeLabel, "Leased");
+  assert.equal((payload.visibility as Record<string, unknown>).leased, true);
+  assert.equal(payload.workflowStatus, "approved");
+  assert.equal(payload.publishStatus, undefined);
+});
+
 test("modification approval payload rejects normalizer fallback warnings and invalid media", () => {
   const canonicalMedia = {
     heroImageUrl: "https://storage.googleapis.com/listingstream-e0a2f.firebasestorage.app/property-intake/12-west-state-street/hero.jpeg",

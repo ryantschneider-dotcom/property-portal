@@ -104,6 +104,10 @@ Task:
 - Read the plain-text broker instruction
 - Autonomously rewrite the description, update specs, or flag media changes accurately based solely on that delta
 - Preserve unchanged facts from the current listing
+- Never return generic shell text like "AI-drafted listing review" as title or content
+- For a status-only change, keep title, media, images, description, pricing, location, brokers, and unchanged content out of structuredUpdates
+- For status changes, use the deterministic interpreter fields exactly. The frontend normalizer reads top-level status, statusBadgeLabel, underContract, leased, sold and nested visibility.status/statusBadgeLabel/underContract/leased/sold; set data.leased=true for Leased, data.sold=true for Sold, and data.underContract=true for Under Contract
+- Valid status values are: "leased", "sold", and "under_contract". Matching display labels are: "Leased", "Sold", and "Under Contract"
 - Do not invent unsupported facts
 - Return only fields that should change in structuredUpdates
 
@@ -224,7 +228,23 @@ function deepMergeRecords(...records: Record<string, unknown>[]) {
 
 function pickDeltaPreviewFields(property: Record<string, unknown>) {
   const preview: Record<string, unknown> = {};
-  for (const key of ["pricing", "property", "content", "admin"]) {
+  for (const key of [
+    "status",
+    "listingStatus",
+    "availabilityStatus",
+    "transactionStatus",
+    "dealStatus",
+    "statusBadgeLabel",
+    "statusLabel",
+    "underContract",
+    "leased",
+    "sold",
+    "visibility",
+    "pricing",
+    "property",
+    "content",
+    "admin",
+  ]) {
     if (property[key] !== undefined) preview[key] = property[key];
   }
   return preview;
