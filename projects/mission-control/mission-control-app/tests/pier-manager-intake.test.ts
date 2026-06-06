@@ -106,13 +106,17 @@ test("PIER Manager active listing picker is scrollable and OM generation has loa
   assert.match(source, /AbortController/);
 });
 
-test("PIER Manager active listing picker closes dropdown after selecting a listing", () => {
+test("PIER Manager active listing picker separates search from a scrollable list and collapses after selection", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
-  assert.match(source, /const \[listingResultsOpen, setListingResultsOpen\] = useState\(false\)/);
-  assert.match(source, /function selectActiveListing[\s\S]*setListingResultsOpen\(false\)/);
-  assert.match(source, /function updateListingSearch[\s\S]*setListingResultsOpen\(Boolean\(value\.trim\(\)\)\)/);
-  assert.match(source, /\{listingResultsOpen && !selectedListing \? \(/);
-  assert.match(source, /No listings match your search\./);
+  assert.match(source, /const \[listingPickerOpen, setListingPickerOpen\] = useState\(true\)/);
+  assert.match(source, /data-testid=\"listing-picker-panel\"/);
+  assert.match(source, /data-testid=\"listing-filter-input\"/);
+  assert.match(source, /data-testid=\"active-listing-scrollbox\"[\s\S]*max-h-64 overflow-y-auto overscroll-contain/);
+  assert.match(source, /function selectActiveListing[\s\S]*setListingPickerOpen\(false\)/);
+  assert.match(source, /Change Selection/);
+  assert.match(source, /setListingPickerOpen\(true\)/);
+  assert.doesNotMatch(source, /<datalist/);
+  assert.doesNotMatch(source, /slice\(0, 8\)/);
 });
 
 test("PIER Manager AI draft requests have browser timeout cleanup and visible errors", () => {

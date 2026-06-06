@@ -597,8 +597,9 @@ test("broker listing console uses premium broker hub styling and functional sear
   assert.match(source, /The PIER Big Brain is Working/);
   assert.match(source, /Broker Note/);
 
-  assert.match(source, /data-testid="listing-address-search"/);
-  assert.match(source, /Start entering address or property name/);
+  assert.match(source, /data-testid="listing-picker-panel"/);
+  assert.match(source, /data-testid="listing-filter-input"/);
+  assert.match(source, /Type to filter, or scroll the full property list below/);
   assert.match(source, /const \[listingSearchText, setListingSearchText\] = useState\(""\)/);
   assert.doesNotMatch(source, /setListingSearchText\(\(current\) => current \|\|/);
   assert.match(source, /function searchableListingText\(listing: PropertyPortalActiveListing\) \{\n\s+return \[listing\.address, listing\.title/);

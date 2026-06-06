@@ -209,7 +209,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [listingSearchText, setListingSearchText] = useState("");
-  const [listingResultsOpen, setListingResultsOpen] = useState(false);
+  const [listingPickerOpen, setListingPickerOpen] = useState(true);
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
@@ -269,7 +269,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIntakeStatus(initialIntakeStatus);
     setSelectedPropertyId("");
     setListingSearchText("");
-    setListingResultsOpen(false);
+    setListingPickerOpen(true);
     setModificationInstructions("");
     setModificationAssets([]);
     setModificationStatus(initialModificationStatus);
@@ -298,18 +298,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
   const filteredAddressListings = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
-    const matches = query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
-    return matches.slice(0, 8);
-  }, [activeListings, listingSearchText]);
-  const scrollableListingMatches = useMemo(() => {
-    const query = listingSearchText.trim().toLowerCase();
     return query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
   }, [activeListings, listingSearchText]);
   const intakeRequiredSummary = useMemo(() => [...requiredFields, isSale ? "Sale Price or Unpriced / Inquire" : "At least one complete suite row"].join(" · "), [isSale]);
 
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
-    setListingResultsOpen(false);
+    setListingPickerOpen(false);
     setOmGenerating(false);
     setOmError("");
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
@@ -318,15 +313,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   function updateListingSearch(value: string) {
     setListingSearchText(value);
-    setListingResultsOpen(Boolean(value.trim()));
-    const normalized = value.trim().toLowerCase();
-    const exactMatch = activeListings.find((listing) => getListingSearchLabel(listing).toLowerCase() === normalized || listing.address?.toLowerCase() === normalized || listing.title?.toLowerCase() === normalized || listing.slug?.toLowerCase() === normalized);
-    if (exactMatch) {
-      setSelectedPropertyId(getListingSelectionValue(exactMatch));
-      setListingResultsOpen(false);
-      return;
-    }
+  }
+
+  function reopenListingPicker() {
     setSelectedPropertyId("");
+    setListingSearchText("");
+    setListingPickerOpen(true);
+    setOmGenerating(false);
+    setOmError("");
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -721,61 +715,69 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             <p className="mt-2 text-sm leading-6 text-zinc-600">The PIER Commercial Big Brain is wired directly to the ListingStream backend and applies only the broker delta.</p>
           </div>
           <div className="space-y-4">
-            <label className="space-y-2 block">
-              {requiredLabel("Find listing by address or name", false)}
-              <input
-                data-testid="listing-address-search"
-                value={listingSearchText}
-                onChange={(event) => updateListingSearch(event.target.value)}
-                list="active-listing-address-options"
-                className={inputClass}
-                placeholder="Start entering address or property name"
-                autoComplete="off"
-              />
-              <datalist id="active-listing-address-options">
-                {filteredAddressListings.map((listing) => (
-                  <option key={listing.id} value={getListingSearchLabel(listing)} />
-                ))}
-              </datalist>
-            </label>
             <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1} required>
               <option value="">Select active ListingStream listing</option>
               {activeListings.map((listing) => (
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
               ))}
             </select>
-            {listingResultsOpen && !selectedListing ? (
-              <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
-                {activeListings.length === 0 ? (
-                  <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
-                ) : scrollableListingMatches.length === 0 ? (
-                  <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
-                ) : (
-                  scrollableListingMatches.map((listing) => {
-                    const value = getListingSelectionValue(listing);
-                    const isSelected = selectedPropertyId === value;
-                    return (
-                      <button
-                        key={listing.id}
-                        type="button"
-                        role="option"
-                        aria-selected={isSelected}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => selectActiveListing(value)}
-                        className={`w-full border-b border-zinc-100 px-4 py-3 text-left text-sm transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40 ${isSelected ? "bg-[#CB521E]/10 font-semibold text-[#CB521E]" : "text-zinc-700"}`}
-                      >
-                        <span>{getListingSearchLabel(listing)}</span>
-                        <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
-                      </button>
-                    );
-                  })
-                )}
+            {listingPickerOpen ? (
+              <div data-testid="listing-picker-panel" className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                <label className="space-y-2 block">
+                  {requiredLabel("Filter active listings", false)}
+                  <input
+                    data-testid="listing-filter-input"
+                    value={listingSearchText}
+                    onChange={(event) => updateListingSearch(event.target.value)}
+                    className={inputClass}
+                    placeholder="Type to filter, or scroll the full property list below"
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="mt-3 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                  <span>Active ListingStream properties</span>
+                  <span>{filteredAddressListings.length} shown</span>
+                </div>
+                <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="mt-2 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner">
+                  {activeListings.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
+                  ) : filteredAddressListings.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
+                  ) : (
+                    filteredAddressListings.map((listing) => {
+                      const value = getListingSelectionValue(listing);
+                      return (
+                        <button
+                          key={listing.id}
+                          data-testid="active-listing-option"
+                          type="button"
+                          role="option"
+                          aria-selected={false}
+                          onClick={() => selectActiveListing(value)}
+                          className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"
+                        >
+                          <span>{getListingSearchLabel(listing)}</span>
+                          <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             ) : null}
-            {selectedListing ? (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-                <p>Selected: {selectedListing.address || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
-                <label className="mt-3 flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+            {selectedListing && !listingPickerOpen ? (
+              <div data-testid="selected-listing-summary" className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p><span className="font-semibold text-zinc-900">Selected:</span> {selectedListing.address || selectedListing.title || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
+                  <button type="button" onClick={reopenListingPicker} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">
+                    Change Selection
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {selectedListing && !listingPickerOpen ? (
+              <div data-testid="selected-listing-actions" className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
                   <input type="checkbox" checked={includeRetailAerial} onChange={(event) => setIncludeRetailAerial(event.target.checked)} disabled={omGenerating} className="mt-1 h-4 w-4 accent-[#CB521E]" />
                   <span><strong className="text-zinc-900">Include advanced retail aerial map</strong><br />On-demand only: queries nearby businesses and composites logo badges onto an aerial map before the Location/Demographics pages.</span>
                 </label>
