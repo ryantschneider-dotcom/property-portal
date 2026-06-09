@@ -45,11 +45,10 @@ test("approval pipeline bypasses legacy staged new-listing media endpoint and sa
   const payload = (calls[0].body as string) ? JSON.parse(String(calls[0].body)) : {};
   assert.equal(payload.approvedPayload.workflowStatus, "approved");
   assert.equal(payload.approvedPayload.meta.brokerReview.stagedAssetCount, 2);
-  assert.equal(payload.approvedPayload.meta.brokerReview.stagedImageCount, 1);
+  assert.equal(payload.approvedPayload.meta.brokerReview.stagedImageCount, 0);
   assert.equal(payload.approvedPayload.leadBroker, "Joel Boblasky");
   assert.equal(payload.approvedPayload.brokerProfile.email, "joel@piercommercial.com");
-  assert.match(payload.approvedPayload.media.heroImageUrl, /^data:image\/jpeg;base64,/);
-  assert.equal(payload.approvedPayload.media.photos.length, 1);
+  assert.equal(payload.approvedPayload.media?.heroImageUrl, undefined);
 });
 
 test("approval pipeline bypasses legacy modification media endpoint and saves delta through launch-package", async () => {

@@ -141,7 +141,7 @@ function isAbsoluteHttpUrl(value: unknown) {
 }
 
 function isRenderableImageUrl(value: unknown) {
-  return typeof value === "string" && (/^https?:\/\/[^\s]+$/i.test(value.trim()) || /^data:image\//i.test(value.trim()));
+  return isAbsoluteHttpUrl(value);
 }
 
 type BrokerProfilePayload = { name: string; title: string; company: string; email: string; phone: string; headshotUrl: string };
@@ -315,13 +315,14 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
-async function fileToDraftImageUrl(file: File) {
-  if (!file.type.startsWith("image/")) return null;
-  if (file.size > 900_000) return null;
-  const buffer = await file.arrayBuffer();
-  return `data:${file.type || "image/jpeg"};base64,${arrayBufferToBase64(buffer)}`;
+async function fileToDraftImageUrl(_file: File): Promise<string | null> {
+  // Do not inline staged binary uploads as data URLs in ListingStream records.
+  // Firestore caps each document at 1 MiB; even compressed intake images can
+  // expand to multi-megabyte base64 strings and crash draft saves. Only durable
+  // public URLs already present in the draft payload are allowed through the
+  // media mapper until a real ListingStream storage upload endpoint is wired.
+  return null;
 }
-
 async function buildStagedDraftMedia(assets: File[] | undefined) {
   const imageUrls = (await Promise.all((assets ?? []).map(fileToDraftImageUrl))).filter((url): url is string => Boolean(url));
   if (!imageUrls.length) return null;
