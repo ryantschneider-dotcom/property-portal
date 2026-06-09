@@ -128,6 +128,30 @@ test("PIER Manager AI draft requests have browser timeout cleanup and visible er
   assert.match(source, /AI draft generation timed out in the browser/);
 });
 
+test("PIER Manager OM financial controls are manual and only visible for sale non-land listings", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /const \[includeRentRoll, setIncludeRentRoll\] = useState\(false\)/);
+  assert.match(source, /const \[includeProforma, setIncludeProforma\] = useState\(false\)/);
+  assert.match(source, /const showFinancialToggles = Boolean\(selectedListing && isForSaleListing\(selectedListing\) && !isLandListing\(selectedListing\)\)/);
+  assert.match(source, /showFinancialToggles \? \(/);
+  assert.match(source, /Include Rent Roll/);
+  assert.match(source, /Include Proforma/);
+  assert.match(source, /setIncludeRentRoll\(false\)/);
+  assert.match(source, /setIncludeProforma\(false\)/);
+});
+
+test("PIER Manager OM generation forwards manual financial page flags to the proxy route", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /if \(showFinancialToggles && includeRentRoll\) params\.set\("includeRentRoll", "1"\)/);
+  assert.match(source, /if \(showFinancialToggles && includeProforma\) params\.set\("includeProforma", "1"\)/);
+
+  const routeSource = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/pdf/route.ts", import.meta.url), "utf8");
+  assert.match(routeSource, /const includeRentRoll = request\.nextUrl\.searchParams\.get\("includeRentRoll"\) === "1"/);
+  assert.match(routeSource, /const includeProforma = request\.nextUrl\.searchParams\.get\("includeProforma"\) === "1"/);
+  assert.match(routeSource, /includeRentRoll,/);
+  assert.match(routeSource, /includeProforma,/);
+});
+
 test("Mission Control OM proxy route uses max Vercel duration and graceful timeout handling", () => {
   const source = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/pdf/route.ts", import.meta.url), "utf8");
   assert.match(source, /export const maxDuration = 300/);

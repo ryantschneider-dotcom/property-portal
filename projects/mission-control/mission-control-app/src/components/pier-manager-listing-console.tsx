@@ -169,7 +169,15 @@ function getListingSearchLabel(listing: PropertyPortalActiveListing) {
 }
 
 function searchableListingText(listing: PropertyPortalActiveListing) {
-  return [listing.address, listing.title, listing.slug, listing.id, listing.transactionLabel].filter(Boolean).join(" ").toLowerCase();
+  return [listing.address, listing.title, listing.slug, listing.id, listing.transactionLabel, listing.propertyType, listing.propertyTypeLabel, listing.category, listing.type, listing.listingType].filter(Boolean).join(" ").toLowerCase();
+}
+
+function isForSaleListing(listing: PropertyPortalActiveListing) {
+  return /\bfor\s*sale\b|\bsale\b/i.test([listing.transactionLabel, listing.listingType].filter(Boolean).join(" "));
+}
+
+function isLandListing(listing: PropertyPortalActiveListing) {
+  return /\bland\b|\blot\b|\bpad\b|\boutparcel\b/i.test([listing.propertyType, listing.propertyTypeLabel, listing.category, listing.type, listing.title].filter(Boolean).join(" "));
 }
 
 const initialIntakeState: IntakeFormState = {
@@ -225,6 +233,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [omGenerating, setOmGenerating] = useState(false);
   const [omError, setOmError] = useState("");
   const [includeRetailAerial, setIncludeRetailAerial] = useState(false);
+  const [includeRentRoll, setIncludeRentRoll] = useState(false);
+  const [includeProforma, setIncludeProforma] = useState(false);
   const reviewPanelRef = useRef<HTMLElement | null>(null);
   const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
   const isMasterAdmin = userRole === "master";
@@ -279,6 +289,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setReviewStatus("No draft ready yet.");
     setOmGenerating(false);
     setOmError("");
+    setIncludeRetailAerial(false);
+    setIncludeRentRoll(false);
+    setIncludeProforma(false);
     setFormResetKey((current) => current + 1);
   }
 
@@ -296,17 +309,27 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
+  const showFinancialToggles = Boolean(selectedListing && isForSaleListing(selectedListing) && !isLandListing(selectedListing));
   const filteredAddressListings = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
     return query ? activeListings.filter((listing) => searchableListingText(listing).includes(query)) : activeListings;
   }, [activeListings, listingSearchText]);
   const intakeRequiredSummary = useMemo(() => [...requiredFields, isSale ? "Sale Price or Unpriced / Inquire" : "At least one complete suite row"].join(" · "), [isSale]);
 
+  useEffect(() => {
+    if (!showFinancialToggles) {
+      setIncludeRentRoll(false);
+      setIncludeProforma(false);
+    }
+  }, [showFinancialToggles]);
+
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
     setListingPickerOpen(false);
     setOmGenerating(false);
     setOmError("");
+    setIncludeRentRoll(false);
+    setIncludeProforma(false);
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
     if (listing) setListingSearchText(getListingSearchLabel(listing));
   }
@@ -321,6 +344,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setListingPickerOpen(true);
     setOmGenerating(false);
     setOmError("");
+    setIncludeRentRoll(false);
+    setIncludeProforma(false);
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -424,6 +449,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       const params = new URLSearchParams();
       if (format === "html") params.set("format", "html");
       if (includeRetailAerial) params.set("includeAerial", "1");
+      if (showFinancialToggles && includeRentRoll) params.set("includeRentRoll", "1");
+      if (showFinancialToggles && includeProforma) params.set("includeProforma", "1");
       const query = params.toString();
       const url = `/api/listingstream/offering-memorandums/${slug}/pdf${query ? `?${query}` : ""}`;
       const response = await fetch(url, { cache: "no-store", signal: controller.signal });
@@ -781,6 +808,22 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                   <input type="checkbox" checked={includeRetailAerial} onChange={(event) => setIncludeRetailAerial(event.target.checked)} disabled={omGenerating} className="mt-1 h-4 w-4 accent-[#CB521E]" />
                   <span><strong className="text-zinc-900">Include advanced retail aerial map</strong><br />On-demand only: queries nearby businesses and composites logo badges onto an aerial map before the Location/Demographics pages.</span>
                 </label>
+                {showFinancialToggles ? (
+                  <div data-testid="om-financial-controls" className="mt-3 rounded-xl border border-[#CB521E]/20 bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Phase 5 Financials</p>
+                    <p className="mt-1 text-sm text-zinc-600">Manual control only: choose whether the OM generator should build rent roll and proforma pages for this sale listing.</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="flex items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                        <span><strong className="block text-zinc-900">Include Rent Roll</strong><span className="text-xs text-zinc-500">Add a dedicated rent roll page if source data is available.</span></span>
+                        <input type="checkbox" role="switch" checked={includeRentRoll} onChange={(event) => setIncludeRentRoll(event.target.checked)} disabled={omGenerating} className="h-5 w-5 accent-[#CB521E]" />
+                      </label>
+                      <label className="flex items-center justify-between gap-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+                        <span><strong className="block text-zinc-900">Include Proforma</strong><span className="text-xs text-zinc-500">Add a dedicated proforma page if source data is available.</span></span>
+                        <input type="checkbox" role="switch" checked={includeProforma} onChange={(event) => setIncludeProforma(event.target.checked)} disabled={omGenerating} className="h-5 w-5 accent-[#CB521E]" />
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button type="button" onClick={() => generateOfferingMemorandum("pdf")} disabled={omGenerating} aria-busy={omGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
                     {omGenerating ? "Generating OM…" : "Generate OM"}

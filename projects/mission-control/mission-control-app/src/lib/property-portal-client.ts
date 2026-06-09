@@ -21,6 +21,11 @@ export type PropertyPortalActiveListing = {
   title: string;
   address: string;
   transactionLabel?: string;
+  propertyType?: string;
+  propertyTypeLabel?: string;
+  category?: string;
+  type?: string;
+  listingType?: string;
   ownerEmail?: string;
   reviewState?: string;
   missingFieldCount?: number;

@@ -24,6 +24,8 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { slug } = await params;
   const format = request.nextUrl.searchParams.get("format") === "html" ? "html" : "pdf";
   const includeAerial = request.nextUrl.searchParams.get("includeAerial") === "1" || request.nextUrl.searchParams.get("includeAerial") === "true";
+  const includeRentRoll = request.nextUrl.searchParams.get("includeRentRoll") === "1";
+  const includeProforma = request.nextUrl.searchParams.get("includeProforma") === "1";
   let response: Response;
   try {
     response = await withPropertyPortalTimeout(fetch(buildPropertyPortalUrl(`/api/admin/offering-memorandums/${encodeURIComponent(slug)}/pdf`), {
@@ -36,6 +38,8 @@ export async function GET(request: NextRequest, { params }: Params) {
       body: JSON.stringify({
         format,
         includeAerial,
+        includeRentRoll,
+        includeProforma,
         mapMode: includeAerial ? "compose" : "placeholder",
         broker: getBrokerProfileForSession(session),
       }),
