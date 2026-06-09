@@ -10,15 +10,16 @@ import {
 } from "../src/lib/property-portal-client";
 import { buildBrokerReviewState, createNewListingReviewDraft } from "../src/lib/property-portal-ai";
 
-test("approval pipeline forwards staged new-listing media before save and publish", async () => {
+test("approval pipeline bypasses legacy staged new-listing media endpoint and saves through launch-package", async () => {
   const calls: Array<{ url: string; body: BodyInit | null | undefined }> = [];
   const draft = buildBrokerReviewState({
     kind: "new-listing",
     sourceInput: {
-      address: "2812 Williams Street, Savannah, GA",
-      basicSpecs: "12,000 SF flex",
+      address: "2812 Williams Street",
+      basicSpecs: "12,000 SF flex building",
       priceContext: "$22/SF",
       rawNotes: "New TPO roof.",
+      leadBroker: "Joel Boblasky",
     },
     writerResult: {
       title: "Approved New Listing",
@@ -35,19 +36,23 @@ test("approval pipeline forwards staged new-listing media before save and publis
     assets: [new File(["photo"], "exterior.jpg", { type: "image/jpeg" }), new File(["flyer"], "flyer.pdf", { type: "application/pdf" })],
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), body: init?.body });
-      if (String(url).endsWith("/api/broker/intake")) return Response.json({ ok: true, slug: "approved-new-listing" });
       return Response.json({ success: true, slug: "approved-new-listing" });
     },
   });
 
-  assert.equal(calls[0].url, "https://portal.example.com/api/broker/intake");
-  const intakeForm = calls[0].body as FormData;
-  assert.equal(intakeForm.getAll("assets").length, 2);
-  assert.equal(calls[1].url, "https://portal.example.com/api/admin/properties/launch-package");
-  assert.equal(((calls[1].body as string) ? JSON.parse(String(calls[1].body)) : {}).approvedPayload.workflowStatus, "approved");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://portal.example.com/api/admin/properties/launch-package");
+  const payload = (calls[0].body as string) ? JSON.parse(String(calls[0].body)) : {};
+  assert.equal(payload.approvedPayload.workflowStatus, "approved");
+  assert.equal(payload.approvedPayload.meta.brokerReview.stagedAssetCount, 2);
+  assert.equal(payload.approvedPayload.meta.brokerReview.stagedImageCount, 1);
+  assert.equal(payload.approvedPayload.leadBroker, "Joel Boblasky");
+  assert.equal(payload.approvedPayload.brokerProfile.email, "joel@piercommercial.com");
+  assert.match(payload.approvedPayload.media.heroImageUrl, /^data:image\/jpeg;base64,/);
+  assert.equal(payload.approvedPayload.media.photos.length, 1);
 });
 
-test("approval pipeline forwards modification media and broker delta before save and publish", async () => {
+test("approval pipeline bypasses legacy modification media endpoint and saves delta through launch-package", async () => {
   const calls: Array<{ url: string; body: BodyInit | null | undefined }> = [];
   const draft = buildBrokerReviewState({
     kind: "modification",
@@ -71,12 +76,11 @@ test("approval pipeline forwards modification media and broker delta before save
     },
   });
 
-  assert.equal(calls[0].url, "https://portal.example.com/api/broker/revisions");
-  const revisionForm = calls[0].body as FormData;
-  assert.equal(revisionForm.get("propertyId"), "2812-williams-street");
-  assert.match(String(revisionForm.get("instructions")), /Attach new roof warranty/);
-  assert.equal(revisionForm.getAll("assets").length, 1);
-  assert.equal(calls.at(-1)?.url, "https://portal.example.com/api/admin/properties/launch-package");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://portal.example.com/api/admin/properties/launch-package");
+  const payload = (calls[0].body as string) ? JSON.parse(String(calls[0].body)) : {};
+  assert.equal(payload.approvedPayload.slug, "2812-williams-street");
+  assert.equal(payload.approvedPayload.meta.brokerReview.stagedAssetCount, 1);
 });
 
 test("cloud writer timeout returns a clear broker-facing error", async () => {

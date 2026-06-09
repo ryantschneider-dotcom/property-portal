@@ -140,6 +140,39 @@ function isAbsoluteHttpUrl(value: unknown) {
   return typeof value === "string" && /^https?:\/\/[^\s]+$/i.test(value.trim());
 }
 
+function isRenderableImageUrl(value: unknown) {
+  return typeof value === "string" && (/^https?:\/\/[^\s]+$/i.test(value.trim()) || /^data:image\//i.test(value.trim()));
+}
+
+type BrokerProfilePayload = { name: string; title: string; company: string; email: string; phone: string; headshotUrl: string };
+
+const BROKER_DIRECTORY: Record<string, BrokerProfilePayload> = {
+  "ryan schneider": { name: "Ryan Schneider", title: "President", company: "PIER Commercial Real Estate", email: "ryan@piercommercial.com", phone: "(912) 239-6298", headshotUrl: "/brokers/4.jpg" },
+  "ryan t schneider": { name: "Ryan Schneider", title: "President", company: "PIER Commercial Real Estate", email: "ryan@piercommercial.com", phone: "(912) 239-6298", headshotUrl: "/brokers/4.jpg" },
+  "joel boblasky": { name: "Joel Boblasky", title: "Associate Broker", company: "PIER Commercial Real Estate", email: "joel@piercommercial.com", phone: "(912) 239-6299", headshotUrl: "/brokers/Joel-Formal-Photo-e1770779536472.jpg" },
+  "anthony wagner": { name: "Anthony Wagner", title: "Associate Broker", company: "PIER Commercial Real Estate", email: "anthony@piercommercial.com", phone: "(912) 239-6297", headshotUrl: "/brokers/6-e1770779064297.jpg" },
+};
+
+function normalizeBrokerKey(value: unknown) {
+  return typeof value === "string" ? value.toLowerCase().replace(/[^a-z]+/g, " ").trim() : "";
+}
+
+function resolveBrokerProfile(...candidates: unknown[]): BrokerProfilePayload | (Record<string, unknown> & BrokerProfilePayload) | null {
+  for (const candidate of candidates) {
+    if (isRecord(candidate)) {
+      const nested: BrokerProfilePayload | (Record<string, unknown> & BrokerProfilePayload) | null = resolveBrokerProfile(candidate.name, candidate.email);
+      if (nested) return { ...candidate, ...nested } as Record<string, unknown> & BrokerProfilePayload;
+    }
+    const key = normalizeBrokerKey(candidate);
+    if (key && BROKER_DIRECTORY[key]) return BROKER_DIRECTORY[key];
+    if (typeof candidate === "string" && candidate.includes("@")) {
+      const match = Object.values(BROKER_DIRECTORY).find((broker) => broker.email.toLowerCase() === candidate.toLowerCase().trim());
+      if (match) return match;
+    }
+  }
+  return null;
+}
+
 function collectMediaUrls(value: unknown): string[] {
   if (typeof value === "string") return /\.(avif|gif|jpe?g|png|webp)(\?|#|$)/i.test(value.trim()) ? [value.trim()] : [];
   if (Array.isArray(value)) return value.flatMap(collectMediaUrls);
@@ -153,7 +186,7 @@ function collectMediaUrls(value: unknown): string[] {
 function isValidMediaPayload(media: unknown) {
   if (!isRecord(media)) return false;
   const urls = collectMediaUrls(media);
-  return urls.length > 0 && urls.every(isAbsoluteHttpUrl);
+  return urls.length > 0 && urls.every(isRenderableImageUrl);
 }
 
 function buildSlugFromTitle(title: string) {
@@ -199,11 +232,23 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
   const existingMedia = existing.media;
   const mergedMedia = merged.media;
   const updateMediaIsValid = isValidMediaPayload(updates.media);
+  const brokerProfile = resolveBrokerProfile(
+    updates.brokerProfile,
+    updates.leadBroker,
+    rawUpdates.broker,
+    input.draft.sourceInput?.leadBroker,
+    input.draft.sourceInput?.broker,
+    existing.brokerProfile,
+    existing.leadBroker,
+  );
 
   return {
     ...merged,
     slug: input.slug || clean(merged.slug as string | undefined) || clean(existing.slug as string | undefined) || undefined,
     title: finalTitle,
+    leadBroker: brokerProfile?.name || clean(merged.leadBroker as string | undefined) || clean(existing.leadBroker as string | undefined) || undefined,
+    ownerEmail: brokerProfile?.email || clean(merged.ownerEmail as string | undefined) || clean(existing.ownerEmail as string | undefined) || undefined,
+    brokerProfile: brokerProfile ? deepMergeRecords(isRecord(merged.brokerProfile) ? merged.brokerProfile : {}, brokerProfile) : merged.brokerProfile,
     status: getApprovedPayloadStatus(updates, input.mode),
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,
@@ -260,6 +305,35 @@ export function normalizePropertyPortalDraftPreviewUrl(rawPreviewUrl: string, ex
   }
   const normalizedPath = rawPreviewUrl.startsWith("/properties/") ? rawPreviewUrl.replace(/^\/properties\//, "/preview/") : rawPreviewUrl;
   return buildPropertyPortalUrl(normalizedPath, fallbackBase);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  if (typeof Buffer !== "undefined") return Buffer.from(buffer).toString("base64");
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < bytes.byteLength; index += 1) binary += String.fromCharCode(bytes[index]);
+  return btoa(binary);
+}
+
+async function fileToDraftImageUrl(file: File) {
+  if (!file.type.startsWith("image/")) return null;
+  if (file.size > 900_000) return null;
+  const buffer = await file.arrayBuffer();
+  return `data:${file.type || "image/jpeg"};base64,${arrayBufferToBase64(buffer)}`;
+}
+
+async function buildStagedDraftMedia(assets: File[] | undefined) {
+  const imageUrls = (await Promise.all((assets ?? []).map(fileToDraftImageUrl))).filter((url): url is string => Boolean(url));
+  if (!imageUrls.length) return null;
+  return {
+    heroImageUrl: imageUrls[0],
+    images: imageUrls.map((url, index) => ({
+      id: `pier-manager-staged-${index + 1}`,
+      title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
+      source: "pier-manager-staged-draft",
+      urls: { original: url, full: url, large: url, thumb: url },
+    })),
+  };
 }
 
 export function getMinimalIntakeMissingFields(input: Partial<MinimalListingIntakeInput>) {
@@ -379,8 +453,14 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
     };
   }
   let mediaResult: PortalSubmissionResult | null = null;
+  const stagedAssetCount = input.assets?.length ?? 0;
+  const legacyMediaUploadAssets = process.env.LISTINGSTREAM_ENABLE_LEGACY_MEDIA_UPLOAD === "1" ? (input.assets ?? []) : [];
 
-  if (input.assets?.length) {
+  // ListingStream production does not expose the legacy /api/broker/intake or
+  // /api/broker/revisions media-upload endpoints. Save/publish must therefore
+  // go straight through the launch-package endpoint; otherwise draft preview
+  // fails with a downstream 404 before ListingStream can save the draft.
+  if (legacyMediaUploadAssets.length) {
     if (input.draft.kind === "new-listing") {
       const intakePayload = buildMinimalListingIntakePayload({
         address: clean(source.address as string | undefined) || input.draft.title,
@@ -392,7 +472,7 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
       const intakeResponse = await safePropertyPortalFetch(
         fetchImpl,
         buildPropertyPortalUrl("/api/broker/intake", input.baseUrl),
-        { method: "POST", headers: getPropertyPortalInternalHeaders(), body: buildPortalFormData({ payload: { ...intakePayload, aiApprovedDraft: input.draft }, assets: input.assets }) },
+        { method: "POST", headers: getPropertyPortalInternalHeaders(), body: buildPortalFormData({ payload: { ...intakePayload, aiApprovedDraft: input.draft }, assets: legacyMediaUploadAssets }) },
         "new listing media upload",
       );
       mediaResult = await parsePortalResponse(intakeResponse);
@@ -401,7 +481,7 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
       revisionFormData.set("propertyId", slug || clean(source.propertyId as string | undefined));
       revisionFormData.set("instructions", clean(source.instructions as string | undefined) || "Broker-approved AI delta with supporting media.");
       revisionFormData.set("draft", JSON.stringify(input.draft));
-      for (const asset of input.assets) revisionFormData.append("assets", asset);
+      for (const asset of legacyMediaUploadAssets) revisionFormData.append("assets", asset);
       const revisionResponse = await safePropertyPortalFetch(
         fetchImpl,
         buildPropertyPortalUrl("/api/broker/revisions", input.baseUrl),
@@ -415,8 +495,15 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
   const mediaSlug = clean(mediaResult?.slug);
   const saveSlug = mediaSlug || slug;
   const savePayload = buildPropertyPortalApprovedPayload({ draft: input.draft, mode: input.mode, slug: saveSlug });
+  const stagedMedia = await buildStagedDraftMedia(input.assets);
+  if (stagedMedia) {
+    savePayload.media = deepMergeRecords(
+      isRecord(savePayload.media) ? savePayload.media : {},
+      { heroImageUrl: stagedMedia.heroImageUrl, heroPhoto: stagedMedia.heroImageUrl, photos: stagedMedia.images.map((image) => image.urls.original), images: stagedMedia.images },
+    );
+  }
   if (isRecord(savePayload.meta)) {
-    savePayload.meta = deepMergeRecords(savePayload.meta, { brokerReview: { mediaUploadResult: mediaResult } });
+    savePayload.meta = deepMergeRecords(savePayload.meta, { brokerReview: { mediaUploadResult: mediaResult, stagedAssetCount, stagedImageCount: stagedMedia?.images.length ?? 0 } });
   }
 
   const approvedSlug = saveSlug || clean(savePayload.slug as string | undefined) || buildSlugFromTitle(clean(savePayload.title as string | undefined));
