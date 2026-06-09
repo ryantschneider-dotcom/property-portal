@@ -146,11 +146,18 @@ function isRenderableImageUrl(value: unknown) {
 
 type BrokerProfilePayload = { name: string; title: string; company: string; email: string; phone: string; headshotUrl: string };
 
+const RYAN_BROKER_PROFILE: BrokerProfilePayload = { name: "Ryan Schneider", title: "President", company: "PIER Commercial Real Estate", email: "ryan@piercommercial.com", phone: "(912) 239-6298", headshotUrl: "/brokers/4.jpg" };
+const JOEL_BROKER_PROFILE: BrokerProfilePayload = { name: "Joel Boblasky", title: "Associate Broker", company: "PIER Commercial Real Estate", email: "joel@piercommercial.com", phone: "(912) 239-6299", headshotUrl: "/brokers/Joel-Formal-Photo-e1770779536472.jpg" };
+const ANTHONY_BROKER_PROFILE: BrokerProfilePayload = { name: "Anthony Wagner", title: "Associate Broker", company: "PIER Commercial Real Estate", email: "anthony@piercommercial.com", phone: "(912) 239-6297", headshotUrl: "/brokers/6-e1770779064297.jpg" };
+
 const BROKER_DIRECTORY: Record<string, BrokerProfilePayload> = {
-  "ryan schneider": { name: "Ryan Schneider", title: "President", company: "PIER Commercial Real Estate", email: "ryan@piercommercial.com", phone: "(912) 239-6298", headshotUrl: "/brokers/4.jpg" },
-  "ryan t schneider": { name: "Ryan Schneider", title: "President", company: "PIER Commercial Real Estate", email: "ryan@piercommercial.com", phone: "(912) 239-6298", headshotUrl: "/brokers/4.jpg" },
-  "joel boblasky": { name: "Joel Boblasky", title: "Associate Broker", company: "PIER Commercial Real Estate", email: "joel@piercommercial.com", phone: "(912) 239-6299", headshotUrl: "/brokers/Joel-Formal-Photo-e1770779536472.jpg" },
-  "anthony wagner": { name: "Anthony Wagner", title: "Associate Broker", company: "PIER Commercial Real Estate", email: "anthony@piercommercial.com", phone: "(912) 239-6297", headshotUrl: "/brokers/6-e1770779064297.jpg" },
+  "ryan": RYAN_BROKER_PROFILE,
+  "ryan schneider": RYAN_BROKER_PROFILE,
+  "ryan t schneider": RYAN_BROKER_PROFILE,
+  "joel": JOEL_BROKER_PROFILE,
+  "joel boblasky": JOEL_BROKER_PROFILE,
+  "anthony": ANTHONY_BROKER_PROFILE,
+  "anthony wagner": ANTHONY_BROKER_PROFILE,
 };
 
 function normalizeBrokerKey(value: unknown) {
@@ -171,6 +178,65 @@ function resolveBrokerProfile(...candidates: unknown[]): BrokerProfilePayload | 
     }
   }
   return null;
+}
+
+function parsePositiveNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value !== "string") return null;
+  const text = value.trim().toLowerCase();
+  if (!text || /unpriced|inquire|call/.test(text)) return null;
+  const match = text.match(/\$?\s*([\d,.]+(?:\.\d+)?)(\s*[mk])?/i);
+  if (!match) return null;
+  const parsed = Number(match[1].replace(/,/g, ""));
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const suffix = match[2]?.trim().toLowerCase();
+  if (suffix === "m") return parsed * 1_000_000;
+  if (suffix === "k") return parsed * 1_000;
+  return parsed;
+}
+
+function sourceString(source: Record<string, unknown>, key: string) {
+  return clean(source[key] as string | undefined);
+}
+
+function buildPricingFromSourceInput(source: Record<string, unknown>) {
+  const pricing: Record<string, unknown> = {};
+  const visibility: Record<string, unknown> = {};
+  const transactionType = sourceString(source, "transactionType").toLowerCase();
+  const salePriceText = sourceString(source, "salePrice") || sourceString(source, "priceContext") || sourceString(source, "askingPrice");
+  const salePrice = parsePositiveNumber(salePriceText);
+  const saleUnpriced = source.saleUnpriced === true || source.unpriced === true || /unpriced|inquire|call/i.test(salePriceText);
+
+  if (transactionType === "sale" || salePrice || source.salePrice !== undefined) {
+    visibility.saleActive = true;
+    visibility.leaseActive = false;
+    if (salePrice) {
+      pricing.salePriceDollars = salePrice;
+      pricing.hideSalePrice = false;
+      pricing.hiddenPriceLabel = null;
+    } else if (saleUnpriced) {
+      pricing.hideSalePrice = true;
+      pricing.hiddenPriceLabel = "Call for Price";
+    }
+  }
+
+  const suites = Array.isArray(source.suites) ? source.suites.filter(isRecord) : [];
+  if (transactionType === "lease" || suites.length) {
+    visibility.leaseActive = true;
+    visibility.saleActive = false;
+    const pricedSuite = suites.find((suite) => parsePositiveNumber(suite.baseRent) || parsePositiveNumber(suite.ratePerSf) || parsePositiveNumber(suite.askingRatePerSf));
+    const leaseRate = parsePositiveNumber(pricedSuite?.baseRent) ?? parsePositiveNumber(pricedSuite?.ratePerSf) ?? parsePositiveNumber(pricedSuite?.askingRatePerSf) ?? parsePositiveNumber(sourceString(source, "priceContext"));
+    if (leaseRate) {
+      pricing.askingPriceRatePerSf = leaseRate;
+      pricing.leaseRatePerSf = leaseRate;
+      pricing.rateType = sourceString(pricedSuite ?? {}, "rentType") || "NNN";
+      pricing.leaseRateUnit = /month|monthly/i.test(sourceString(pricedSuite ?? {}, "rentType") || sourceString(source, "priceContext")) ? "monthly" : "annual";
+    } else if (suites.some((suite) => suite.unpriced === true || /unpriced|inquire|call/i.test(sourceString(suite, "baseRent")))) {
+      pricing.hiddenPriceLabel = "Call for Rate";
+    }
+  }
+
+  return { pricing, visibility };
 }
 
 function collectMediaUrls(value: unknown): string[] {
@@ -241,6 +307,17 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     existing.brokerProfile,
     existing.leadBroker,
   );
+  const sourcePricing = buildPricingFromSourceInput(input.draft.sourceInput ?? {});
+  const finalPricing = deepMergeRecords(
+    isRecord(merged.pricing) ? merged.pricing : {},
+    sourcePricing.pricing,
+    isRecord(updates.pricing) ? updates.pricing : {},
+  );
+  const finalVisibility = deepMergeRecords(
+    isRecord(merged.visibility) ? merged.visibility : {},
+    sourcePricing.visibility,
+    isRecord(updates.visibility) ? updates.visibility : {},
+  );
 
   return {
     ...merged,
@@ -249,6 +326,9 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     leadBroker: brokerProfile?.name || clean(merged.leadBroker as string | undefined) || clean(existing.leadBroker as string | undefined) || undefined,
     ownerEmail: brokerProfile?.email || clean(merged.ownerEmail as string | undefined) || clean(existing.ownerEmail as string | undefined) || undefined,
     brokerProfile: brokerProfile ? deepMergeRecords(isRecord(merged.brokerProfile) ? merged.brokerProfile : {}, brokerProfile) : merged.brokerProfile,
+    pricing: finalPricing,
+    visibility: finalVisibility,
+    transactionTypes: finalVisibility.saleActive === true ? ["sale"] : finalVisibility.leaseActive === true ? ["lease"] : merged.transactionTypes,
     status: getApprovedPayloadStatus(updates, input.mode),
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,

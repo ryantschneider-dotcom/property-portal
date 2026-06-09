@@ -18,8 +18,10 @@ test("approval pipeline bypasses legacy staged new-listing media endpoint and sa
       address: "2812 Williams Street",
       basicSpecs: "12,000 SF flex building",
       priceContext: "$22/SF",
+      salePrice: "$2,250,000",
+      transactionType: "Sale",
       rawNotes: "New TPO roof.",
-      leadBroker: "Joel Boblasky",
+      leadBroker: "Joel",
     },
     writerResult: {
       title: "Approved New Listing",
@@ -48,6 +50,10 @@ test("approval pipeline bypasses legacy staged new-listing media endpoint and sa
   assert.equal(payload.approvedPayload.meta.brokerReview.stagedImageCount, 0);
   assert.equal(payload.approvedPayload.leadBroker, "Joel Boblasky");
   assert.equal(payload.approvedPayload.brokerProfile.email, "joel@piercommercial.com");
+  assert.equal(payload.approvedPayload.brokerProfile.title, "Associate Broker");
+  assert.equal(payload.approvedPayload.pricing.salePriceDollars, 2250000);
+  assert.equal(payload.approvedPayload.visibility.saleActive, true);
+  assert.deepEqual(payload.approvedPayload.transactionTypes, ["sale"]);
   assert.equal(payload.approvedPayload.media?.heroImageUrl, undefined);
 });
 
@@ -99,7 +105,7 @@ test("cloud writer timeout returns a clear broker-facing error", async () => {
 
 test("property-portal unreachable errors are normalized without leaking internals", () => {
   const error = createPropertyPortalProxyError(new TypeError("fetch failed"), "active listings");
-  assert.equal(error.message, "Property-portal backend is temporarily unreachable while handling active listings. Please try again shortly.");
+  assert.equal(error.message, "ListingStream backend is temporarily unreachable while handling active listings. Please try again shortly.");
 });
 
 test("pier-manager is protected by mission-control auth proxy", async () => {
@@ -118,6 +124,6 @@ test("pier-manager UI has production loading states and success toast notificati
   assert.match(source, /AI is analyzing property data/);
   assert.match(source, /Drafting premium marketing copy/);
   assert.match(source, /toastMessage/);
-  assert.match(source, /successfully approved and published to the property-portal/i);
+  assert.match(source, /Success! Modifications have been published/i);
   assert.match(source, /Approve & Publish/);
 });
