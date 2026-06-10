@@ -36,6 +36,13 @@ test("approval pipeline bypasses legacy staged new-listing media endpoint and sa
     baseUrl: "https://portal.example.com",
     draft,
     assets: [new File(["photo"], "exterior.jpg", { type: "image/jpeg" }), new File(["flyer"], "flyer.pdf", { type: "application/pdf" })],
+    uploadStagedImage: async (file, options) => ({
+      url: `https://storage.googleapis.com/listingstream-e0a2f.firebasestorage.app/listingstream/draft-media/${options.slug || "draft"}/${file.name}`,
+      path: `listingstream/draft-media/${options.slug || "draft"}/${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), body: init?.body });
       return Response.json({ success: true, slug: "approved-new-listing" });
@@ -47,14 +54,19 @@ test("approval pipeline bypasses legacy staged new-listing media endpoint and sa
   const payload = (calls[0].body as string) ? JSON.parse(String(calls[0].body)) : {};
   assert.equal(payload.approvedPayload.workflowStatus, "approved");
   assert.equal(payload.approvedPayload.meta.brokerReview.stagedAssetCount, 2);
-  assert.equal(payload.approvedPayload.meta.brokerReview.stagedImageCount, 0);
+  assert.equal(payload.approvedPayload.meta.brokerReview.stagedImageCount, 1);
   assert.equal(payload.approvedPayload.leadBroker, "Joel Boblasky");
   assert.equal(payload.approvedPayload.brokerProfile.email, "joel@piercommercial.com");
   assert.equal(payload.approvedPayload.brokerProfile.title, "Associate Broker");
   assert.equal(payload.approvedPayload.pricing.salePriceDollars, 2250000);
   assert.equal(payload.approvedPayload.visibility.saleActive, true);
   assert.deepEqual(payload.approvedPayload.transactionTypes, ["sale"]);
-  assert.equal(payload.approvedPayload.media?.heroImageUrl, undefined);
+  assert.match(payload.approvedPayload.media.heroImageUrl, /^https:\/\/storage\.googleapis\.com\/listingstream-e0a2f\.firebasestorage\.app\/listingstream\/draft-media\/approved-new-listing\/exterior\.jpg$/);
+  assert.equal(payload.approvedPayload.media.heroPhoto, payload.approvedPayload.media.heroImageUrl);
+  assert.equal(payload.approvedPayload.media.photos[0].url, payload.approvedPayload.media.heroImageUrl);
+  assert.equal(payload.approvedPayload.photos[0].url, payload.approvedPayload.media.heroImageUrl);
+  assert.equal(payload.approvedPayload.media.images[0].urls.original, payload.approvedPayload.media.heroImageUrl);
+  assert.equal(payload.approvedPayload.media.images.length, 1);
 });
 
 test("approval pipeline bypasses legacy modification media endpoint and saves delta through launch-package", async () => {

@@ -501,18 +501,14 @@ test("draft preview helper saves ListingStream draft and explicitly bypasses Asc
         const headers = new Headers(init?.headers);
         const body = init?.body instanceof FormData ? init.body : init?.body ? JSON.parse(String(init.body)) : null;
         calls.push({ url: String(url), headers, body });
-        if (String(url).includes("/broker/intake")) {
-          return Response.json({ success: true, slug: "safe-test-preview", uploadedAssetCount: 1 });
-        }
         return Response.json({ success: true, save: { success: true, slug: "safe-test-preview" }, result: { publicCollection: "public_listings", publishStatus: "draft", previewUrl: "/properties/safe-test-preview", ascendixBypassed: true }, sync: null, ascendixBypassed: true });
       },
     });
 
-    assert.equal(calls[0].url, "https://portal.example.com/api/broker/intake");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://portal.example.com/api/admin/properties/launch-package");
     assert.equal(calls[0].headers.get("x-pier-manager-internal"), "test-internal-token");
-    assert.equal(calls[1].url, "https://portal.example.com/api/admin/properties/launch-package");
-    assert.equal(calls[1].headers.get("x-pier-manager-internal"), "test-internal-token");
-    const launchBody = calls[1].body as Record<string, unknown>;
+    const launchBody = calls[0].body as Record<string, unknown>;
     assert.equal(launchBody.action, "save-draft");
     assert.equal((launchBody.approvedPayload as Record<string, unknown>).status, "draft");
     assert.equal((launchBody.approvedPayload as Record<string, unknown>).workflowStatus, "draft_preview");
@@ -661,6 +657,16 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /defaultReviewChecklist/);
   assert.match(source, /Editable public-record fields before publish/);
   assert.match(source, /These fields always remain available for manual broker entry/);
+});
+
+test("broker review UI compresses draft preview media before posting to Vercel approval route", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /MAX_DRAFT_PREVIEW_UPLOAD_BYTES/);
+  assert.match(source, /compressImageForDraftPreview/);
+  assert.match(source, /createImageBitmap/);
+  assert.match(source, /prepareDraftPreviewAssets\(stagedAssets, mode\)/);
+  assert.match(source, /under Vercel upload limits/);
+  assert.match(source, /Skipped oversized extras/);
 });
 
 test("broker role hides raw JSON while master admin keeps payload and delta previews", async () => {

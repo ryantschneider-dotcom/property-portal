@@ -74,6 +74,14 @@ export type PropertyPortalApprovalResult = {
 
 export type PropertyPortalPublishMode = "draft-preview" | "publish-live";
 export type PropertyPortalPropertyLifecycleAction = "archive" | "restore" | "delete";
+export type StagedListingImageUpload = {
+  url: string;
+  path?: string;
+  contentType?: string;
+  size?: number;
+  originalName?: string;
+};
+export type StagedListingImageUploader = (file: File, options: { slug?: string; index: number; draft: PropertyPortalReviewDraftForApproval }) => Promise<StagedListingImageUpload | null>;
 
 const DEFAULT_LISTINGSTREAM_PORTAL_BASE_URL = "https://listingstream-portal.vercel.app";
 const DEFAULT_PROPERTY_PORTAL_TIMEOUT_MS = 30_000;
@@ -400,24 +408,38 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
-async function fileToDraftImageUrl(_file: File): Promise<string | null> {
-  // Do not inline staged binary uploads as data URLs in ListingStream records.
-  // Firestore caps each document at 1 MiB; even compressed intake images can
-  // expand to multi-megabyte base64 strings and crash draft saves. Only durable
-  // public URLs already present in the draft payload are allowed through the
-  // media mapper until a real ListingStream storage upload endpoint is wired.
-  return null;
+async function fileToDraftImageUpload(file: File, options: { slug?: string; index: number; draft: PropertyPortalReviewDraftForApproval; uploadStagedImage?: StagedListingImageUploader }): Promise<StagedListingImageUpload | null> {
+  if (!file.type.startsWith("image/")) return null;
+  if (!options.uploadStagedImage) return null;
+  return options.uploadStagedImage(file, { slug: options.slug, index: options.index, draft: options.draft });
 }
-async function buildStagedDraftMedia(assets: File[] | undefined) {
-  const imageUrls = (await Promise.all((assets ?? []).map(fileToDraftImageUrl))).filter((url): url is string => Boolean(url));
-  if (!imageUrls.length) return null;
+
+async function buildStagedDraftMedia(input: { assets: File[] | undefined; slug?: string; draft: PropertyPortalReviewDraftForApproval; uploadStagedImage?: StagedListingImageUploader }) {
+  const uploads = (await Promise.all((input.assets ?? []).map((file, index) => fileToDraftImageUpload(file, { slug: input.slug, index: index + 1, draft: input.draft, uploadStagedImage: input.uploadStagedImage })))).filter((upload): upload is StagedListingImageUpload => Boolean(upload?.url));
+  if (!uploads.length) return null;
+  const imageUrls = uploads.map((upload) => upload.url);
+  const photos = uploads.map((upload, index) => ({
+    id: `pier-manager-staged-${index + 1}`,
+    title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
+    source: "pier-manager-firebase-storage",
+    url: upload.url,
+    href: upload.url,
+    downloadUrl: upload.url,
+    storagePath: upload.path,
+    contentType: upload.contentType,
+    size: upload.size,
+    originalName: upload.originalName,
+  }));
   return {
     heroImageUrl: imageUrls[0],
-    images: imageUrls.map((url, index) => ({
+    heroPhoto: imageUrls[0],
+    photos,
+    images: uploads.map((upload, index) => ({
       id: `pier-manager-staged-${index + 1}`,
       title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
-      source: "pier-manager-staged-draft",
-      urls: { original: url, full: url, large: url, thumb: url },
+      source: "pier-manager-firebase-storage",
+      storagePath: upload.path,
+      urls: { original: upload.url, full: upload.url, large: upload.url, thumb: upload.url },
     })),
   };
 }
@@ -517,7 +539,7 @@ export async function submitPropertyPortalListingModification(input: PropertyPor
   return parsePortalResponse(response);
 }
 
-export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequestOptions & { draft: PropertyPortalReviewDraftForApproval; assets?: File[]; mode?: PropertyPortalPublishMode }): Promise<PropertyPortalApprovalResult> {
+export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequestOptions & { draft: PropertyPortalReviewDraftForApproval; assets?: File[]; mode?: PropertyPortalPublishMode; uploadStagedImage?: StagedListingImageUploader }): Promise<PropertyPortalApprovalResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const source = input.draft.sourceInput ?? {};
   const slug = clean(source.slug as string | undefined) || clean(source.propertyIdOrSlug as string | undefined) || clean(input.draft.structuredUpdates.slug as string | undefined);
@@ -580,19 +602,20 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
 
   const mediaSlug = clean(mediaResult?.slug);
   const saveSlug = mediaSlug || slug;
-  const savePayload = buildPropertyPortalApprovedPayload({ draft: input.draft, mode: input.mode, slug: saveSlug });
-  const stagedMedia = await buildStagedDraftMedia(input.assets);
+  const savePayload: Record<string, unknown> = buildPropertyPortalApprovedPayload({ draft: input.draft, mode: input.mode, slug: saveSlug });
+  const approvedSlug = saveSlug || clean(savePayload.slug as string | undefined) || buildSlugFromTitle(clean(savePayload.title as string | undefined));
+  const stagedMedia = await buildStagedDraftMedia({ assets: input.assets, slug: approvedSlug, draft: input.draft, uploadStagedImage: input.uploadStagedImage });
   if (stagedMedia) {
     savePayload.media = deepMergeRecords(
       isRecord(savePayload.media) ? savePayload.media : {},
-      { heroImageUrl: stagedMedia.heroImageUrl, heroPhoto: stagedMedia.heroImageUrl, photos: stagedMedia.images.map((image) => image.urls.original), images: stagedMedia.images },
+      stagedMedia,
     );
+    savePayload.photos = stagedMedia.photos;
   }
   if (isRecord(savePayload.meta)) {
     savePayload.meta = deepMergeRecords(savePayload.meta, { brokerReview: { mediaUploadResult: mediaResult, stagedAssetCount, stagedImageCount: stagedMedia?.images.length ?? 0 } });
   }
 
-  const approvedSlug = saveSlug || clean(savePayload.slug as string | undefined) || buildSlugFromTitle(clean(savePayload.title as string | undefined));
   const launchResponse = await safePropertyPortalFetch(fetchImpl, buildPropertyPortalUrl("/api/admin/properties/launch-package", input.baseUrl), {
     method: "POST",
     headers: {

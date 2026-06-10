@@ -35,9 +35,17 @@ export default async function OfferingSummariesPage() {
                     <h3 className="text-xl font-semibold text-zinc-950">{draft.title}</h3>
                     <p className="mt-1 text-sm text-zinc-600">{draft.subtitle}</p>
                   </div>
-                  <Link href={`/projects/${listing.id}`} className="rounded-xl border border-[#CB521E]/20 bg-[#CB521E]/10 px-4 py-2 text-sm text-[#CB521E] transition hover:bg-[#CB521E]/15">
-                    Edit source record
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/api/offering-summaries/${listing.id}/pdf?format=html`} className="rounded-xl border border-[#CB521E]/20 bg-white px-4 py-2 text-sm text-[#CB521E] transition hover:bg-[#CB521E]/10">
+                      Preview PDF HTML
+                    </Link>
+                    <Link href={`/api/offering-summaries/${listing.id}/pdf`} className="rounded-xl border border-[#CB521E]/20 bg-[#CB521E]/10 px-4 py-2 text-sm text-[#CB521E] transition hover:bg-[#CB521E]/15">
+                      Generate PDF
+                    </Link>
+                    <Link href={`/projects/${listing.id}`} className="rounded-xl border border-[#CB521E]/20 bg-[#CB521E]/10 px-4 py-2 text-sm text-[#CB521E] transition hover:bg-[#CB521E]/15">
+                      Edit source record
+                    </Link>
+                  </div>
                 </div>
 
                 <section className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4">

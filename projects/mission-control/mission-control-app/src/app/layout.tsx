@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { getMissionControlPassword } from "@/lib/auth";
+import { getAuthConfig } from "@/lib/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,7 +23,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  getMissionControlPassword();
+  getAuthConfig();
 
   return (
     <html

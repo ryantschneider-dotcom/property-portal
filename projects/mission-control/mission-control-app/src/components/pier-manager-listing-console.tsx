@@ -16,11 +16,58 @@ const counties = ["Chatham", "Bryan", "Effingham", "Liberty", "Jasper", "Beaufor
 const propertyTypes = ["Retail", "Industrial", "Office", "Flex", "Land", "Multifamily", "Mixed-Use", "Hospitality", "Special Purpose"];
 const brokers = ["Ryan T. Schneider", "Anthony", "Joel", "Other PIER Broker"];
 const rentTypes = ["NNN", "Modified Gross", "Full Service", "Gross", "Monthly", "Call for details"];
+const MAX_DRAFT_PREVIEW_UPLOAD_BYTES = 3_750_000;
+const MAX_DRAFT_PREVIEW_IMAGE_DIMENSION = 1600;
+const DRAFT_PREVIEW_IMAGE_QUALITY = 0.78;
 
 type IntakeFormState = Omit<BrokerHubIntakeInput, "heroPhotoCount" | "suites">;
+type MailchimpAudienceOption = { id: string; name: string; memberCount: number | null };
 
 function fileListToArray(files: FileList | null) {
   return files ? Array.from(files) : [];
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function compressImageForDraftPreview(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.size <= 900_000) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_DRAFT_PREVIEW_IMAGE_DIMENSION / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return file;
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", DRAFT_PREVIEW_IMAGE_QUALITY));
+  if (!blob || blob.size >= file.size) return file;
+  const safeName = file.name.replace(/\.[^.]+$/, "") || "listing-photo";
+  return new File([blob], `${safeName}-preview.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+}
+
+async function prepareDraftPreviewAssets(files: File[], mode: "draft-preview" | "publish-live") {
+  const prepared: File[] = [];
+  const skipped: string[] = [];
+  let totalBytes = 0;
+  for (const file of files) {
+    const candidate = mode === "draft-preview" ? await compressImageForDraftPreview(file).catch(() => file) : file;
+    if (mode === "draft-preview" && totalBytes + candidate.size > MAX_DRAFT_PREVIEW_UPLOAD_BYTES) {
+      skipped.push(`${file.name} (${formatBytes(file.size)})`);
+      continue;
+    }
+    prepared.push(candidate);
+    totalBytes += candidate.size;
+  }
+  if (mode !== "draft-preview" && totalBytes > MAX_DRAFT_PREVIEW_UPLOAD_BYTES) {
+    throw new Error(`The staged media totals ${formatBytes(totalBytes)}, which is too large for the browser-to-Vercel approval request. Use Draft Preview with compressed images first, or remove/reduce oversized files before publishing live.`);
+  }
+  return { files: prepared, skipped, totalBytes };
 }
 
 function createSuite(): BrokerHubSuiteInput {
@@ -172,6 +219,21 @@ function searchableListingText(listing: PropertyPortalActiveListing) {
   return [listing.address, listing.title, listing.slug, listing.id, listing.transactionLabel, listing.propertyType, listing.propertyTypeLabel, listing.category, listing.type, listing.listingType].filter(Boolean).join(" ").toLowerCase();
 }
 
+function defaultMailchimpSubject(listing: PropertyPortalActiveListing | undefined) {
+  if (!listing) return "";
+  const title = listing.title || listing.address || listing.slug || listing.id;
+  const cityStateMatch = (listing.address || "").match(/\b([A-Za-z .'-]+),?\s+(GA|SC)\b/i);
+  const location = cityStateMatch ? `${cityStateMatch[1].trim()}, ${cityStateMatch[2].toUpperCase()}` : "";
+  return [title, listing.transactionLabel, location].filter(Boolean).join(" | ");
+}
+
+function formatAudienceCount(memberCount: number | null) {
+  return typeof memberCount === "number" ? `${memberCount.toLocaleString()} contacts` : "Mailchimp audience";
+}
+
+const defaultMailchimpFromName = "PIER Commercial Real Estate";
+const defaultMailchimpFromEmail = "ryan@piercommercial.com";
+
 function isForSaleListing(listing: PropertyPortalActiveListing) {
   return /\bfor\s*sale\b|\bsale\b/i.test([listing.transactionLabel, listing.listingType].filter(Boolean).join(" "));
 }
@@ -235,6 +297,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [includeRetailAerial, setIncludeRetailAerial] = useState(false);
   const [includeRentRoll, setIncludeRentRoll] = useState(false);
   const [includeProforma, setIncludeProforma] = useState(false);
+  const [mailchimpAudiences, setMailchimpAudiences] = useState<MailchimpAudienceOption[]>([]);
+  const [mailchimpAudienceId, setMailchimpAudienceId] = useState("");
+  const [mailchimpSubjectLine, setMailchimpSubjectLine] = useState("");
+  const [mailchimpFromName, setMailchimpFromName] = useState(defaultMailchimpFromName);
+  const [mailchimpFromEmail, setMailchimpFromEmail] = useState(defaultMailchimpFromEmail);
+  const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create a draft Mailchimp campaign. Nothing sends automatically.");
+  const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
+  const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
   const reviewPanelRef = useRef<HTMLElement | null>(null);
   const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
   const isMasterAdmin = userRole === "master";
@@ -251,6 +321,25 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       })
       .catch((error) => {
         if (!cancelled) setActiveListingsStatus(error instanceof Error ? error.message : "Could not load active listings.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/listingstream/mailchimp/lists", { cache: "no-store" })
+      .then(parseJsonResponse)
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data.items) ? (data.items as MailchimpAudienceOption[]) : [];
+        setMailchimpAudiences(items);
+        setMailchimpAudienceId((current) => current || items[0]?.id || "");
+        setMailchimpStatus(items.length ? `${items.length} Mailchimp audience/list option(s) loaded. Choose one and create a draft campaign when ready.` : String(data.error || "No Mailchimp audiences returned yet."));
+      })
+      .catch((error) => {
+        if (!cancelled) setMailchimpStatus(error instanceof Error ? error.message : "Could not load Mailchimp audiences.");
       });
     return () => {
       cancelled = true;
@@ -292,6 +381,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIncludeRetailAerial(false);
     setIncludeRentRoll(false);
     setIncludeProforma(false);
+    setMailchimpAudienceId("");
+    setMailchimpSubjectLine("");
+    setMailchimpFromName(defaultMailchimpFromName);
+    setMailchimpFromEmail(defaultMailchimpFromEmail);
+    setMailchimpStatus("Load audiences, choose a list, then create a draft Mailchimp campaign. Nothing sends automatically.");
+    setMailchimpGenerating(false);
+    setMailchimpPreviewHtml("");
     setFormResetKey((current) => current + 1);
   }
 
@@ -323,6 +419,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     }
   }, [showFinancialToggles]);
 
+  useEffect(() => {
+    if (selectedListing && !mailchimpSubjectLine.trim()) {
+      setMailchimpSubjectLine(defaultMailchimpSubject(selectedListing));
+    }
+  }, [selectedListing, mailchimpSubjectLine]);
+
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
     setListingPickerOpen(false);
@@ -330,8 +432,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setOmError("");
     setIncludeRentRoll(false);
     setIncludeProforma(false);
+    setMailchimpPreviewHtml("");
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
-    if (listing) setListingSearchText(getListingSearchLabel(listing));
+    if (listing) {
+      setListingSearchText(getListingSearchLabel(listing));
+      setMailchimpSubjectLine(defaultMailchimpSubject(listing));
+    }
   }
 
   function updateListingSearch(value: string) {
@@ -346,6 +452,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setOmError("");
     setIncludeRentRoll(false);
     setIncludeProforma(false);
+    setMailchimpPreviewHtml("");
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -491,6 +598,47 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     }
   }
 
+  async function createMailchimpEmailDraft() {
+    if (!selectedListing) return;
+    setMailchimpGenerating(true);
+    setMailchimpPreviewHtml("");
+    setMailchimpStatus("Creating Mailchimp Email Draft from the selected ListingStream listing. Nothing will be sent.");
+    try {
+      const response = await fetch("/api/listingstream/mailchimp/campaign-draft", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyIdOrSlug: getListingSelectionValue(selectedListing),
+          listId: mailchimpAudienceId,
+          subjectLine: mailchimpSubjectLine,
+          fromName: mailchimpFromName,
+          replyTo: mailchimpFromEmail,
+        }),
+      });
+      const result = await parseJsonResponse(response) as { campaignId?: string; archiveUrl?: string | null; html?: string; subjectLine?: string };
+      if (result.html) setMailchimpPreviewHtml(result.html);
+      setMailchimpStatus(`Mailchimp draft campaign created${result.campaignId ? `: ${result.campaignId}` : ""}. Review it in Mailchimp before sending. ${result.archiveUrl ? `Archive preview: ${result.archiveUrl}` : ""}`);
+    } catch (error) {
+      setMailchimpStatus(error instanceof Error ? error.message : "Could not create Mailchimp draft campaign.");
+    } finally {
+      setMailchimpGenerating(false);
+    }
+  }
+
+  function previewMailchimpHtml() {
+    if (!mailchimpPreviewHtml) return;
+    const blob = new Blob([mailchimpPreviewHtml], { type: "text/html;charset=utf-8" });
+    const previewUrl = URL.createObjectURL(blob);
+    const win = window.open(previewUrl, "_blank", "noopener,noreferrer");
+    if (!win) {
+      URL.revokeObjectURL(previewUrl);
+      setMailchimpStatus("Popup blocker prevented the Mailchimp HTML preview from opening. Please allow popups and try again.");
+      return;
+    }
+    window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+  }
+
   async function reviseDraft() {
     if (!reviewDraft || !revisionFeedback.trim()) return;
     setReviewBusy(true);
@@ -533,7 +681,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       formData.set("draft", JSON.stringify(reviewDraft));
       formData.set("mode", mode);
       const stagedAssets = reviewDraft.kind === "new-listing" ? [heroPhoto, ...intakeAssets].filter((asset): asset is File => Boolean(asset)) : modificationAssets;
-      for (const asset of stagedAssets) formData.append("assets", asset);
+      setReviewStatus(mode === "draft-preview" ? "Preparing compressed preview media so the ListingStream save request stays under Vercel upload limits..." : "Preparing staged media for ListingStream approval...");
+      const preparedAssets = await prepareDraftPreviewAssets(stagedAssets, mode);
+      for (const asset of preparedAssets.files) formData.append("assets", asset);
+      if (preparedAssets.skipped.length) {
+        setToastMessage(`Draft preview will use ${preparedAssets.files.length} compressed file(s). Skipped oversized extras for now: ${preparedAssets.skipped.join(", ")}.`);
+      }
       const response = await fetch("/api/listingstream/approve-draft", {
         method: "POST",
         body: formData,
@@ -833,6 +986,41 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                   </button>
                 </div>
                 {omError ? <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{omError}</p> : null}
+                <div data-testid="mailchimp-email-draft" className="mt-4 rounded-2xl border border-[#CB521E]/20 bg-white p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Mailchimp Email Draft</p>
+                  <h4 className="mt-1 text-base font-semibold text-zinc-950">Generate a property email from this selected listing</h4>
+                  <p className="mt-1 text-sm leading-6 text-zinc-600">Draft-first only: choose the Mailchimp list/audience, subject line, from name, and from email. Mission Control creates a Mailchimp campaign draft but never sends it.</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <label className="space-y-2 md:col-span-2">
+                      {requiredLabel("Mailchimp List / Audience")}
+                      <select value={mailchimpAudienceId} onChange={(event) => setMailchimpAudienceId(event.target.value)} className={inputClass} required>
+                        <option value="">Select list</option>
+                        {mailchimpAudiences.map((audience) => <option key={audience.id} value={audience.id}>{audience.name} — {formatAudienceCount(audience.memberCount)}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-2 md:col-span-2">
+                      {requiredLabel("Subject Line")}
+                      <input value={mailchimpSubjectLine} onChange={(event) => setMailchimpSubjectLine(event.target.value)} className={inputClass} placeholder="Property address | For Sale/Lease | Market" />
+                    </label>
+                    <label className="space-y-2">
+                      {requiredLabel("From Name")}
+                      <input value={mailchimpFromName} onChange={(event) => setMailchimpFromName(event.target.value)} className={inputClass} />
+                    </label>
+                    <label className="space-y-2">
+                      {requiredLabel("From Email")}
+                      <input type="email" value={mailchimpFromEmail} onChange={(event) => setMailchimpFromEmail(event.target.value)} className={inputClass} />
+                    </label>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button type="button" onClick={createMailchimpEmailDraft} disabled={mailchimpGenerating || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+                      {mailchimpGenerating ? "Creating Draft…" : "Create Mailchimp Draft"}
+                    </button>
+                    {mailchimpPreviewHtml ? (
+                      <button type="button" onClick={previewMailchimpHtml} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">Preview Email HTML</button>
+                    ) : null}
+                  </div>
+                  <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>
+                </div>
               </div>
             ) : null}
             {selectedListing?.publishStatus === "draft" ? (

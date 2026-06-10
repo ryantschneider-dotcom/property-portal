@@ -1,8 +1,10 @@
+import { cookies } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
 import { ReactNode } from "react";
 import { ActivityStream } from "@/components/activity-stream";
 import { SignOutButton } from "@/components/sign-out-button";
+import { AUTH_COOKIE, getAuthSession } from "@/lib/auth";
 
 type NavItem = {
   href: string;
@@ -55,7 +57,12 @@ const postureItems = [
   "No client-facing access",
 ];
 
-export function MissionShell({
+async function getCurrentAuthSession() {
+  const cookieStore = await cookies();
+  return getAuthSession(cookieStore.get(AUTH_COOKIE)?.value);
+}
+
+export async function MissionShell({
   title,
   subtitle,
   currentPath,
@@ -68,6 +75,9 @@ export function MissionShell({
   actions?: PageAction[];
   children: ReactNode;
 }) {
+  const session = await getCurrentAuthSession();
+  const isBroker = session?.role === "broker";
+  const visibleActions = isBroker ? [] : actions;
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -77,8 +87,10 @@ export function MissionShell({
 
   return (
     <div className="min-h-screen bg-[#f6f4f1] text-zinc-950">
-      <div className="grid min-h-screen lg:grid-cols-[258px_1fr] 2xl:grid-cols-[258px_minmax(0,1fr)_300px]">
-        <aside className="border-r border-white/10 bg-zinc-950 text-white lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
+      <div className={`grid min-h-screen ${isBroker ? "grid-cols-1" : "lg:grid-cols-[258px_1fr] 2xl:grid-cols-[258px_minmax(0,1fr)_300px]"}`}>
+        {!isBroker && (
+          <>
+          <aside className="border-r border-white/10 bg-zinc-950 text-white lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
           <div className="p-4">
             <Link href="/" className="block rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-sm backdrop-blur transition hover:bg-white/[0.06]">
               <div className="rounded-2xl bg-[#1a1a1a] p-3 ring-1 ring-white/10">
@@ -147,7 +159,9 @@ export function MissionShell({
               </ul>
             </div>
           </div>
-        </aside>
+          </aside>
+          </>
+        )}
 
         <main className="flex min-w-0 flex-col">
           <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/85 px-5 py-4 shadow-sm backdrop-blur-xl lg:px-7">
@@ -162,10 +176,12 @@ export function MissionShell({
 
               <div className="flex flex-col gap-3 xl:items-end">
                 <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                  <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 lg:block">
-                    Search listings, tasks, files…
-                  </div>
-                  {actions.map((action) => (
+                  {!isBroker && (
+                    <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 lg:block">
+                      Search listings, tasks, files…
+                    </div>
+                  )}
+                  {visibleActions.map((action) => (
                     <Link
                       key={`${action.href}-${action.label}`}
                       href={action.href}
@@ -181,7 +197,7 @@ export function MissionShell({
                     {today}
                   </span>
                   <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-emerald-700">
-                    private system online
+                    {isBroker ? "Broker Listing Console" : "private system online"}
                   </span>
                   <span className="rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1">
                     local-first records
@@ -194,6 +210,7 @@ export function MissionShell({
           <div className="flex-1 overflow-auto p-5 lg:p-7 xl:p-8">{children}</div>
         </main>
 
+        {!isBroker && (
         <aside className="hidden border-l border-zinc-200/80 bg-white/80 p-4 backdrop-blur 2xl:block">
           <div className="sticky top-4 space-y-4">
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -229,6 +246,7 @@ export function MissionShell({
             </div>
           </div>
         </aside>
+        )}
       </div>
     </div>
   );

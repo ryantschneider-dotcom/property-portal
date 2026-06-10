@@ -1,15 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState("");
+  const [brokerId, setBrokerId] = useState("ryan");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin() {
+  async function handleLogin(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     setLoading(true);
     setError("");
 
@@ -19,7 +21,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, brokerId }),
       });
 
       if (!response.ok) {
@@ -28,7 +30,8 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/");
+      const result = (await response.json()) as { redirectTo?: string };
+      router.push(result.redirectTo ?? "/");
       router.refresh();
     } catch {
       setError("Login failed");
@@ -48,7 +51,7 @@ export default function LoginPage() {
           Private single-user access for Ryan’s internal Mission Control.
         </p>
 
-        <div className="mt-6 space-y-4">
+        <form className="mt-6 space-y-4" onSubmit={handleLogin}>
           <input
             type="password"
             value={password}
@@ -57,15 +60,29 @@ export default function LoginPage() {
             className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-500"
           />
 
+          <label className="block text-xs uppercase tracking-[0.2em] text-neutral-400">
+            Active broker for PDFs
+            <select
+              value={brokerId}
+              onChange={(event) => setBrokerId(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm normal-case tracking-normal text-white outline-none"
+            >
+              <option value="ryan">Ryan T. Schneider, CCIM</option>
+              <option value="anthony">Anthony Wagner</option>
+              <option value="joel">Joel Boblasky</option>
+            </select>
+          </label>
+
           {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 
           <button
-            onClick={handleLogin}
-            className="w-full rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-medium text-neutral-950 transition hover:bg-cyan-400"
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-medium text-neutral-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? "Signing in…" : "Enter Mission Control"}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ export type BrokerEditInterpreterResult = {
   flags: string[];
   confidence: "high" | "medium" | "low";
   updatePayload: Record<string, unknown>;
+  lifecycleAction?: "archive" | "delete";
 };
 
 function asRecord(value: unknown): UnknownRecord {
@@ -124,6 +125,12 @@ function extractSuiteNumber(instructions: string) {
 
 function shouldMarkUnpriced(instructions: string) {
   return /(?:mark\s+)?(?:sale\s+price\s+)?(?:as\s+)?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions);
+}
+
+function getLifecycleAction(instructions: string): "archive" | "delete" | null {
+  if (/\b(?:hard\s+delete|permanently\s+delete|delete\s+permanently)\b/i.test(instructions)) return "delete";
+  if (/\b(?:archive|remove\s+(?:this\s+)?(?:listing|property)|remove\s+(?:it|from\s+(?:the\s+)?(?:site|portal|active\s+listings|public\s+listings))|take\s+(?:this\s+)?(?:listing|property)?\s*(?:down|offline)|pull\s+(?:this\s+)?(?:listing|property)?\s*(?:from\s+(?:the\s+)?(?:live\s+)?(?:site|portal|active\s+listings|public\s+listings))?|delist\s+(?:this\s+)?(?:listing|property)?|withdraw\s+(?:this\s+)?(?:listing|property)?)\b/i.test(instructions)) return "archive";
+  return null;
 }
 
 function getRequestedListingStatus(instructions: string): "leased" | "sold" | "under_contract" | null {
@@ -252,6 +259,15 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   const nextAdmin: Record<string, unknown> = {};
   const transactionLabel = asString(visibility.transactionLabel).toLowerCase();
   const isLease = transactionLabel.includes("lease");
+  const lifecycleAction = getLifecycleAction(instructions);
+
+  if (lifecycleAction === "archive") {
+    updatePayload.lifecycle = { action: "archive", requestedByPlainEnglish: true };
+    summary.push("Prepared a lifecycle update to archive/remove this listing from active public workflows.");
+  } else if (lifecycleAction === "delete") {
+    updatePayload.lifecycle = { action: "delete", requestedByPlainEnglish: true };
+    summary.push("Prepared a lifecycle update to permanently delete this listing.");
+  }
 
   const requestedListingStatus = getRequestedListingStatus(instructions);
   if (requestedListingStatus) {
@@ -385,5 +401,5 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
 
   const confidence: BrokerEditInterpreterResult["confidence"] = summary.length >= 3 && flags.length === 0 ? "high" : summary.length >= 1 ? "medium" : "low";
 
-  return { summary, flags, confidence, updatePayload };
+  return { summary, flags, confidence: lifecycleAction ? "high" : confidence, updatePayload, ...(lifecycleAction ? { lifecycleAction } : {}) };
 }
