@@ -270,6 +270,10 @@ function isValidMediaPayload(media: unknown) {
   return urls.length > 0 && urls.every(isRenderableImageUrl);
 }
 
+function isExternalAssetUrl(value: unknown) {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim());
+}
+
 function buildSlugFromTitle(title: string) {
   return clean(title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -286,6 +290,13 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
   const updates = { ...rawUpdates };
   if (input.draft.kind === "modification" && hasMeaningfulValue(updates.media) && !isValidMediaPayload(updates.media)) {
     delete updates.media;
+  }
+  if (input.draft.kind === "modification" && isRecord(updates.admin) && Array.isArray((updates.admin as Record<string, unknown>).suites)) {
+    // Suite-specific revisions must never let AI/user descriptive media text replace
+    // the parent listing hero/photos. Durable suite uploads are mapped below into
+    // admin.suites[].suitePhotos/suiteFloorPlans exclusively.
+    delete updates.photos;
+    if (isRecord(updates.media) && !isValidMediaPayload(updates.media)) delete updates.media;
   }
   const base = input.draft.kind === "modification" ? existing : {};
   const merged = deepMergeRecords(base, updates);
@@ -444,11 +455,11 @@ function attachUploadsToSuiteMedia(draft: PropertyPortalReviewDraftForApproval, 
     return {
       ...suite,
       suitePhotos: [
-        ...(Array.isArray(suite.suitePhotos) ? suite.suitePhotos : []),
+        ...(Array.isArray(suite.suitePhotos) ? suite.suitePhotos.filter(isExternalAssetUrl) : []),
         ...photoUploads,
       ],
       suiteFloorPlans: [
-        ...(Array.isArray(suite.suiteFloorPlans) ? suite.suiteFloorPlans : []),
+        ...(Array.isArray(suite.suiteFloorPlans) ? suite.suiteFloorPlans.filter(isExternalAssetUrl) : []),
         ...floorPlanUploads,
       ],
     };

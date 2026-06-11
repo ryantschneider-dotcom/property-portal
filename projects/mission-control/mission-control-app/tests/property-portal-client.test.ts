@@ -415,6 +415,53 @@ test("modification approval attaches dropped suite files to nested suite media i
   assert.equal(approvedPayload.photos, undefined);
 });
 
+test("suite-specific floor plan uploads use durable Firebase URLs only and never overwrite main photos", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, any> }> = [];
+  const firebaseUrl = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/suite-a-plan.pdf?alt=media&token=abc123";
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "draft-preview",
+    assets: [new File(["plan"], "suite-a-floor-plan.pdf", { type: "application/pdf" })],
+    uploadStagedImage: async (file, options) => ({
+      url: firebaseUrl,
+      path: `property-intake/parrott/${options.index}-${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
+    draft: {
+      kind: "modification",
+      title: "Parrott Plaza",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "parrott-plaza", instructions: "Add Suite A floor plan. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month plus utilities." },
+      currentListing: {
+        slug: "parrott-plaza",
+        media: { heroImageUrl: "https://cdn.example.com/main-hero.jpg", photos: [{ url: "https://cdn.example.com/main-photo.jpg" }] },
+        photos: [{ url: "https://cdn.example.com/main-photo.jpg" }],
+        admin: { suites: [] },
+      },
+      structuredUpdates: {
+        media: { heroImageUrl: "Suite A floor plan" },
+        photos: [{ url: "Suite A floor plan" }],
+        admin: { suites: [{ suiteNumber: "A", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly", suitePhotos: [], suiteFloorPlans: ["Suite A floor plan"] }] },
+      },
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/parrott-plaza" } });
+    },
+  });
+
+  const approvedPayload = calls.find((call) => call.url.endsWith("/api/admin/properties/launch-package"))?.body.approvedPayload as Record<string, any>;
+  assert.equal(approvedPayload.media?.heroImageUrl, "https://cdn.example.com/main-hero.jpg");
+  assert.deepEqual(approvedPayload.photos, [{ url: "https://cdn.example.com/main-photo.jpg" }]);
+  assert.deepEqual(approvedPayload.admin.suites[0].suiteFloorPlans, [firebaseUrl]);
+  assert.doesNotMatch(JSON.stringify(approvedPayload.admin.suites[0].suiteFloorPlans), /Suite A floor plan/);
+});
+
 test("mission-control revision proxy forwards property-portal internal token helper", async () => {
   const routeSource = await readFile("src/app/api/listingstream/revisions/route.ts", "utf8");
   assert.match(routeSource, /getPropertyPortalInternalHeaders/);

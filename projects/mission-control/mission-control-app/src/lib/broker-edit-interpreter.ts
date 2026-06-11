@@ -29,7 +29,7 @@ function asString(value: unknown) {
 function parseNumericToken(value: string | undefined) {
   const text = String(value ?? "").trim();
   if (!text) return null;
-  const normalized = text.replace(/[$,]/g, "").toLowerCase();
+  const normalized = text.replace(/[$,]/g, "").replace(/\.$/, "").toLowerCase();
   const match = normalized.match(/^(-?\d+(?:\.\d+)?)([mk])?$/i);
   if (!match) return null;
   const base = Number(match[1]);
@@ -88,7 +88,7 @@ function extractCurrency(instructions: string) {
 }
 
 function extractLeaseRate(instructions: string) {
-  const match = instructions.match(/(?:asking\s+rate|lease\s+rate|base\s+rent|rent)\s*(?:to|at|=|of)?\s*\$?\s*([\d,.]+(?:\.\d+)?)\s*(?:\/|per\s*)(?:sf|sq\.?\s*ft\.?)/i);
+  const match = instructions.match(/(?:asking\s+rate|lease\s+rate|rent\s+rate|base\s+rent|rent)\s*(?:to|at|=|of|is|:)?\s*\$?\s*([\d,.]+(?:\.\d+)?)\s*(?:(?:\/|per\s*)(?:sf|sq\.?\s*ft\.?)|(?:\/|per\s*)?mo(?:nth)?|per\s+month)?/i);
   return parseNumericToken(match?.[1]);
 }
 
@@ -139,16 +139,23 @@ function escapeRegExp(value: string) {
 function extractSuiteSize(instructions: string, suiteNumber: string) {
   const escapedSuite = escapeRegExp(suiteNumber);
   const afterSuite = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,120}?([\\d,.]+(?:\\.\\d+)?\\s*[mk]?)\\s*(?:sf|sq\\.?\\s*ft\\.?|square\\s*feet)`, "i"));
-  return parseIntegerToken(afterSuite?.[1]);
+  const suiteSize = parseIntegerToken(afterSuite?.[1]);
+  if (suiteSize != null) return suiteSize;
+  const labeled = instructions.match(/(?:available\s*(?:sq\.?\s*ft\.?|square\s*footage|sf)|available\s+space)\s*(?:to|at|=|is|:)?\s*([\d,.]+(?:\.\d+)?\s*[mk]?)/i);
+  return parseIntegerToken(labeled?.[1]);
 }
 
 function extractSuiteRate(instructions: string, suiteNumber: string) {
   const escapedSuite = escapeRegExp(suiteNumber);
   const afterSuite = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,160}?\\$\\s*([\\d,.]+(?:\\.\\d+)?)\\s*(?:/|per\\s*)?(?:sf|sq\\.?\\s*ft\\.?)?`, "i"));
-  return parseNumericToken(afterSuite?.[1]);
+  const suiteRate = parseNumericToken(afterSuite?.[1]);
+  if (suiteRate != null) return suiteRate;
+  const labeled = instructions.match(/(?:rent\s+rate|lease\s+rate|asking\s+rate|base\s+rent|rent)\s*(?:to|at|=|of|is|:)?\s*\$?\s*([\d,.]+(?:\.\d+)?)/i);
+  return parseNumericToken(labeled?.[1]);
 }
 
 function extractRentType(instructions: string) {
+  if (/\b(?:per\s+month|\/\s*mo(?:nth)?|monthly)\b/i.test(instructions)) return "Monthly";
   const match = instructions.match(/\b(NNN|modified\s+gross|full\s+service|gross)\b/i);
   if (!match) return null;
   const value = match[1].replace(/\s+/g, " ").trim();
@@ -435,7 +442,7 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   }
 
   const suiteNumber = extractSuiteNumber(instructions.replace(/suite\s+[A-Za-z0-9-]+\s+(?:is\s+)?leased/gi, ""));
-  if (suiteNumber && suites.length) {
+  if (suiteNumber && (suites.length || shouldAddSuite(instructions))) {
     const baseSuites = Array.isArray(nextAdmin.suites) ? (nextAdmin.suites as SuiteRecord[]) : suites;
     const suiteUpdate = updateSuiteRecord(baseSuites, suiteNumber, instructions);
     if (suiteUpdate.changed) {

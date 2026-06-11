@@ -258,6 +258,39 @@ test("plain-English add-suite instructions create nested suite rows instead of o
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).suiteNumbers, "B, A");
 });
 
+test("plain-English suite updates extract explicit Available Sq. Ft. and Rent Rate values", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Add Suite C. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month plus utilities.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "parrott-plaza",
+      title: "Parrott Plaza",
+      visibility: { transactionLabel: "For Lease" },
+      admin: { suites: [] },
+    }),
+    writer: async (prompt) => {
+      assert.match(prompt, /Available Sq\. Ft\./i);
+      assert.match(prompt, /Rent Rate/i);
+      return {
+        title: "Parrott Plaza",
+        descriptionHtml: "<p>Suite C added.</p>",
+        highlights: ["Suite C available"],
+        structuredUpdates: {},
+        mediaNotes: [],
+      };
+    },
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  assert.equal(suites[0].suiteNumber, "C");
+  assert.equal(suites[0].availableSqFt, "1900");
+  assert.equal(suites[0].baseRent, "1900");
+  assert.equal(suites[0].rentType, "Monthly");
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).availableSqFt, 1900);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).askingPriceRatePerSf, 1900);
+});
+
 test("plain-English status changes produce ListingStream status fields before AI copy refinement", async () => {
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "12-west-state-street",
@@ -512,7 +545,7 @@ test("approve helper publishes status-change payload through ListingStream launc
 test("draft preview helper saves ListingStream draft and explicitly bypasses Ascendix", async () => {
   const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
   const previousToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN;
-  process.env.PROPERTY_PORTAL_INTERNAL_TOKEN = "test-internal-token";
+  process.env.PROPERTY_PORTAL_INTERNAL_TOKEN = "dummy";
   const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> | FormData | null }> = [];
 
   try {
@@ -541,7 +574,7 @@ test("draft preview helper saves ListingStream draft and explicitly bypasses Asc
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "https://portal.example.com/api/admin/properties/launch-package");
-    assert.equal(calls[0].headers.get("x-pier-manager-internal"), "test-internal-token");
+    assert.equal(calls[0].headers.get("x-pier-manager-internal"), "dummy");
     const launchBody = calls[0].body as Record<string, unknown>;
     assert.equal(launchBody.action, "save-draft");
     assert.equal((launchBody.approvedPayload as Record<string, unknown>).status, "draft");
