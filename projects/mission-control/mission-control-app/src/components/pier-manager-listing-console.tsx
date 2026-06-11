@@ -6,6 +6,7 @@ import { buildBrokerHubIntakePayload, type BrokerHubIntakeInput, type BrokerHubS
 import type { AuthRole } from "@/lib/auth";
 import { normalizeIncomingBrokerReviewDraft } from "@/lib/broker-review-draft-normalizer";
 import { normalizePropertyPortalDraftPreviewUrl, type PropertyPortalActiveListing } from "@/lib/property-portal-client";
+import { getListingRevisionValidationError } from "@/lib/pier-manager-form-decoupling";
 import type { BrokerReviewDraft } from "@/lib/property-portal-ai";
 
 const inputClass = "w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-[#CB521E]/50 focus:ring-2 focus:ring-[#CB521E]/10";
@@ -258,7 +259,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
   const [modificationSubmitting, setModificationSubmitting] = useState(false);
   const [mailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([{ id: "pier-default", name: "PIER Commercial audience", memberCount: null }]);
-  const [mailchimpAudienceId, setMailchimpAudienceId] = useState("pier-default");
+  const [mailchimpAudienceId, setMailchimpAudienceId] = useState("");
   const [mailchimpSubjectLine, setMailchimpSubjectLine] = useState("");
   const [mailchimpFromName, setMailchimpFromName] = useState("PIER Commercial Real Estate");
   const [mailchimpFromEmail, setMailchimpFromEmail] = useState("ryan@piercommercial.com");
@@ -454,6 +455,15 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   async function submitModification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const validationError = getListingRevisionValidationError({
+      selectedPropertyId,
+      instructions: modificationInstructions,
+      mailchimpAudienceId,
+    });
+    if (validationError) {
+      setModificationStatus(validationError);
+      return;
+    }
     setModificationSubmitting(true);
     setPublishSuccessMessage("");
     setToastMessage("");
@@ -548,6 +558,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     } finally {
       setMailchimpGenerating(false);
     }
+  }
+
+  async function submitMailchimpEmailBlast(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await createMailchimpEmailDraft();
   }
 
   function previewMailchimpHtml() {
@@ -807,14 +822,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{intakeStatus}</p>
         </form>
 
-        <form onSubmit={submitModification} data-testid="listing-revision-tool" key={`modification-${formResetKey}`} className={`${cardClass} h-fit`}>
+        <form id="listing-revision-form" onSubmit={submitModification} data-testid="listing-revision-tool" key={`modification-${formResetKey}`} className={`${cardClass} h-fit`} noValidate>
           <div className="mb-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Existing Listing Modification</p>
             <h3 className="mt-2 text-xl font-semibold text-zinc-950">Active ListingStream property → plain-English edit</h3>
             <p className="mt-2 text-sm leading-6 text-zinc-600">The PIER Commercial Big Brain is wired directly to the ListingStream backend and applies only the broker delta.</p>
           </div>
           <div className="space-y-4">
-            <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1} required>
+            <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1}>
               <option value="">Select active ListingStream listing</option>
               {activeListings.map((listing) => (
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
@@ -918,8 +933,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 </div>
               </div>
             ) : null}
-            <textarea value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={textareaClass} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF."'} required />
-            <input type="file" multiple onChange={(event) => setModificationAssets(fileListToArray(event.target.files))} className={inputClass} />
+            <textarea form="listing-revision-form" value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={textareaClass} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF."'} />
+            <input form="listing-revision-form" type="file" multiple onChange={(event) => setModificationAssets(fileListToArray(event.target.files))} className={inputClass} />
             <button disabled={modificationSubmitting || !selectedPropertyId} aria-busy={modificationSubmitting} className="rounded-xl bg-zinc-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-70">
               {modificationSubmitting ? "Generating Draft... Please Wait" : "Generate Revised Listing Draft"}
             </button>
@@ -929,7 +944,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         </form>
 
         {selectedListing && !listingPickerOpen ? (
-          <section data-testid="mailchimp-email-blast" className={`${cardClass} h-fit`}>
+          <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit`}>
             <div data-testid="revision-email-blast-divider" className="mb-5 rounded-2xl border border-[#CB521E]/25 bg-[#CB521E]/5 px-4 py-3 text-sm font-semibold text-[#7a2f12]">
               Separate tool: Email Blast drafts use Mailchimp audience validation and cannot block listing revisions.
             </div>
@@ -962,7 +977,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
               </label>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={createMailchimpEmailDraft} disabled={mailchimpGenerating || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+              <button type="submit" disabled={mailchimpGenerating || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
                 {mailchimpGenerating ? "Creating Draft…" : "Create Draft Blast"}
               </button>
               {mailchimpPreviewHtml ? (
@@ -970,7 +985,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
               ) : null}
             </div>
             <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>
-          </section>
+          </form>
         ) : null}
       </div>
 

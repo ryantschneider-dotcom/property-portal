@@ -14,6 +14,7 @@ import {
   submitPropertyPortalListingModification,
   type MinimalListingIntakeInput,
 } from "../src/lib/property-portal-client";
+import { getListingRevisionValidationError } from "../src/lib/pier-manager-form-decoupling";
 
 test("minimal listing intake requires only address, basic specs, price context, and raw notes", () => {
   const complete: MinimalListingIntakeInput = {
@@ -468,10 +469,23 @@ test("pier-manager keeps revision and Email Blast tools in separate form/card bo
   assert.match(source, /data-testid="listing-revision-tool"/);
   assert.match(source, /data-testid="revision-email-blast-divider"/);
   assert.match(source, /data-testid="mailchimp-email-blast"/);
-  assert.match(source, /<form onSubmit=\{submitModification\}[\s\S]*data-testid="listing-revision-tool"[\s\S]*<\/form>/);
-  const modificationForm = source.match(/<form onSubmit=\{submitModification\}[\s\S]*?<\/form>/)?.[0] || "";
+  assert.match(source, /<form[^>]*id="listing-revision-form"[^>]*onSubmit=\{submitModification\}[^>]*data-testid="listing-revision-tool"[\s\S]*<\/form>/);
+  assert.match(source, /<form[^>]*id="email-blast-form"[^>]*onSubmit=\{submitMailchimpEmailBlast\}[^>]*data-testid="mailchimp-email-blast"[\s\S]*<\/form>/);
+  const modificationForm = source.match(/<form[^>]*id="listing-revision-form"[\s\S]*?<\/form>/)?.[0] || "";
   assert.doesNotMatch(modificationForm, /mailchimpAudienceId|Audience Selector|data-testid="mailchimp-email-blast"/);
   assert.doesNotMatch(modificationForm, /<select[^>]*required/);
+  assert.match(modificationForm, /noValidate/);
+  const emailForm = source.match(/<form[^>]*id="email-blast-form"[\s\S]*?<\/form>/)?.[0] || "";
+  assert.match(emailForm, /mailchimpAudienceId|Audience Selector/);
+  assert.doesNotMatch(emailForm, /submitModification|modificationInstructions|selectedPropertyId/);
+});
+
+test("listing revision validation ignores empty Mailchimp audience state", () => {
+  assert.equal(getListingRevisionValidationError({
+    selectedPropertyId: "parrott-plaza",
+    instructions: "Add Suite A at 1,200 SF for $22/SF NNN.",
+    mailchimpAudienceId: "",
+  }), null);
 });
 
 test("pier-manager exposes Generate OM links through ListingStream proxy", () => {
