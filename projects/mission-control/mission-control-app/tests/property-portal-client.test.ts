@@ -368,6 +368,52 @@ test("archive approval bypasses launch-package and calls property lifecycle endp
   assert.equal(result.launch.action, "archive");
 });
 
+test("modification approval attaches dropped suite files to nested suite media instead of parent hero media", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, any> }> = [];
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "draft-preview",
+    assets: [
+      new File(["photo"], "suite-a-photo.jpg", { type: "image/jpeg" }),
+      new File(["plan"], "suite-a-floor-plan.pdf", { type: "application/pdf" }),
+    ],
+    uploadStagedImage: async (file, options) => ({
+      url: `https://cdn.example.com/${file.name}`,
+      path: `listingstream/draft-media/parrott/${options.index}-${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
+    draft: {
+      kind: "modification",
+      title: "Parrott Plaza",
+      descriptionHtml: "<p>Suite A added.</p>",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "parrott-plaza", instructions: "Add Suite A with 2,400 SF and uploaded suite photos/floor plan." },
+      currentListing: {
+        slug: "parrott-plaza",
+        media: { heroImageUrl: "https://cdn.example.com/main-hero.jpg" },
+        admin: { suites: [] },
+      },
+      structuredUpdates: {
+        admin: { suites: [{ suiteNumber: "A", availableSqFt: "2400", baseRent: "22", rentType: "NNN", suitePhotos: [], suiteFloorPlans: [] }] },
+      },
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/parrott-plaza" } });
+    },
+  });
+
+  const approvedPayload = calls.find((call) => call.url.endsWith("/api/admin/properties/launch-package"))?.body.approvedPayload as Record<string, any>;
+  assert.equal(approvedPayload.media?.heroImageUrl, "https://cdn.example.com/main-hero.jpg");
+  assert.deepEqual(approvedPayload.admin.suites[0].suitePhotos, ["https://cdn.example.com/suite-a-photo.jpg"]);
+  assert.deepEqual(approvedPayload.admin.suites[0].suiteFloorPlans, ["https://cdn.example.com/suite-a-floor-plan.pdf"]);
+  assert.equal(approvedPayload.photos, undefined);
+});
+
 test("mission-control revision proxy forwards property-portal internal token helper", async () => {
   const routeSource = await readFile("src/app/api/listingstream/revisions/route.ts", "utf8");
   assert.match(routeSource, /getPropertyPortalInternalHeaders/);
@@ -416,6 +462,17 @@ test("pier-manager successful final submission scrolls top, shows dismissible su
 });
 
 
+
+test("pier-manager keeps revision and Email Blast tools in separate form/card boundaries", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /data-testid="listing-revision-tool"/);
+  assert.match(source, /data-testid="revision-email-blast-divider"/);
+  assert.match(source, /data-testid="mailchimp-email-blast"/);
+  assert.match(source, /<form onSubmit=\{submitModification\}[\s\S]*data-testid="listing-revision-tool"[\s\S]*<\/form>/);
+  const modificationForm = source.match(/<form onSubmit=\{submitModification\}[\s\S]*?<\/form>/)?.[0] || "";
+  assert.doesNotMatch(modificationForm, /mailchimpAudienceId|Audience Selector|data-testid="mailchimp-email-blast"/);
+  assert.doesNotMatch(modificationForm, /<select[^>]*required/);
+});
 
 test("pier-manager exposes Generate OM links through ListingStream proxy", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");

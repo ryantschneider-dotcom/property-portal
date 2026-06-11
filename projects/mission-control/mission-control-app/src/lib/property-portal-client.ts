@@ -72,6 +72,16 @@ export type PropertyPortalApprovalResult = {
   previewUrl?: string | null;
 };
 
+export type StagedListingImageUpload = {
+  url: string;
+  path?: string;
+  contentType?: string;
+  size?: number;
+  originalName?: string;
+};
+
+export type StagedListingImageUploader = (file: File, options: { slug?: string; index: number; draft: PropertyPortalReviewDraftForApproval }) => Promise<StagedListingImageUpload | null>;
+
 export type PropertyPortalPublishMode = "draft-preview" | "publish-live";
 export type PropertyPortalPropertyLifecycleAction = "archive" | "restore" | "delete";
 
@@ -400,25 +410,86 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
-async function fileToDraftImageUrl(_file: File): Promise<string | null> {
-  // Do not inline staged binary uploads as data URLs in ListingStream records.
-  // Firestore caps each document at 1 MiB; even compressed intake images can
-  // expand to multi-megabyte base64 strings and crash draft saves. Only durable
-  // public URLs already present in the draft payload are allowed through the
-  // media mapper until a real ListingStream storage upload endpoint is wired.
-  return null;
+async function fileToDraftImageUpload(file: File, options: { slug?: string; index: number; draft: PropertyPortalReviewDraftForApproval; uploadStagedImage?: StagedListingImageUploader }): Promise<StagedListingImageUpload | null> {
+  // Remote main intentionally disables inline/base64 staged uploads because
+  // Firestore documents cap at 1 MiB. Keep suite-aware mapping behind an
+  // explicit durable upload adapter so dropped files never overwrite parent
+  // hero media or get inlined into ListingStream records.
+  if (!options.uploadStagedImage) return null;
+  return options.uploadStagedImage(file, { slug: options.slug, index: options.index, draft: options.draft });
 }
-async function buildStagedDraftMedia(assets: File[] | undefined) {
-  const imageUrls = (await Promise.all((assets ?? []).map(fileToDraftImageUrl))).filter((url): url is string => Boolean(url));
-  if (!imageUrls.length) return null;
+
+function isPdfUpload(upload: StagedListingImageUpload) {
+  return /pdf/i.test(upload.contentType || "") || /\.pdf$/i.test(upload.originalName || "") || /\.pdf(?:\?|$)/i.test(upload.url);
+}
+
+function getSuiteTargetFromDraft(draft: PropertyPortalReviewDraftForApproval) {
+  if (draft.kind !== "modification") return "";
+  const instructions = clean(draft.sourceInput?.instructions as string | undefined);
+  return instructions.match(/suite\s+([A-Za-z0-9-]+)/i)?.[1]?.trim() || "";
+}
+
+function attachUploadsToSuiteMedia(draft: PropertyPortalReviewDraftForApproval, uploads: StagedListingImageUpload[]) {
+  const suiteTarget = getSuiteTargetFromDraft(draft);
+  const updates = isRecord(draft.structuredUpdates) ? draft.structuredUpdates : {};
+  const admin = isRecord(updates.admin) ? updates.admin : {};
+  const suites = Array.isArray(admin.suites) ? admin.suites : [];
+  if (!suiteTarget || !suites.length) return null;
+  const nextSuites = suites.map((suite) => {
+    if (!isRecord(suite)) return suite;
+    const suiteNumber = clean(suite.suiteNumber as string | undefined);
+    if (suiteNumber.toLowerCase() !== suiteTarget.toLowerCase()) return suite;
+    const photoUploads = uploads.filter((upload) => !isPdfUpload(upload)).map((upload) => upload.url);
+    const floorPlanUploads = uploads.filter(isPdfUpload).map((upload) => upload.url);
+    return {
+      ...suite,
+      suitePhotos: [
+        ...(Array.isArray(suite.suitePhotos) ? suite.suitePhotos : []),
+        ...photoUploads,
+      ],
+      suiteFloorPlans: [
+        ...(Array.isArray(suite.suiteFloorPlans) ? suite.suiteFloorPlans : []),
+        ...floorPlanUploads,
+      ],
+    };
+  });
+  return { admin: { ...admin, suites: nextSuites }, images: [] as StagedListingImageUpload[] };
+}
+
+async function buildStagedDraftMedia(input: { assets: File[] | undefined; slug?: string; draft: PropertyPortalReviewDraftForApproval; uploadStagedImage?: StagedListingImageUploader }) {
+  const uploads = (await Promise.all((input.assets ?? []).map((file, index) => fileToDraftImageUpload(file, { slug: input.slug, index: index + 1, draft: input.draft, uploadStagedImage: input.uploadStagedImage })))).filter((upload): upload is StagedListingImageUpload => Boolean(upload?.url));
+  if (!uploads.length) return null;
+  const suiteMedia = attachUploadsToSuiteMedia(input.draft, uploads);
+  if (suiteMedia) return suiteMedia;
+  const imageUploads = uploads.filter((upload) => !isPdfUpload(upload));
+  if (!imageUploads.length) return null;
+  const imageUrls = imageUploads.map((upload) => upload.url);
+  const photos = imageUploads.map((upload, index) => ({
+    id: `pier-manager-staged-${index + 1}`,
+    title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
+    source: "pier-manager-durable-upload",
+    url: upload.url,
+    href: upload.url,
+    downloadUrl: upload.url,
+    storagePath: upload.path,
+    contentType: upload.contentType,
+    size: upload.size,
+    originalName: upload.originalName,
+  }));
   return {
-    heroImageUrl: imageUrls[0],
-    images: imageUrls.map((url, index) => ({
-      id: `pier-manager-staged-${index + 1}`,
-      title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
-      source: "pier-manager-staged-draft",
-      urls: { original: url, full: url, large: url, thumb: url },
-    })),
+    media: {
+      heroImageUrl: imageUrls[0],
+      heroPhoto: imageUrls[0],
+      photos,
+      images: imageUploads.map((upload, index) => ({
+        id: `pier-manager-staged-${index + 1}`,
+        title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
+        source: "pier-manager-durable-upload",
+        storagePath: upload.path,
+        urls: { original: upload.url, full: upload.url, large: upload.url, thumb: upload.url },
+      })),
+    },
+    images: imageUploads,
   };
 }
 
@@ -517,7 +588,7 @@ export async function submitPropertyPortalListingModification(input: PropertyPor
   return parsePortalResponse(response);
 }
 
-export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequestOptions & { draft: PropertyPortalReviewDraftForApproval; assets?: File[]; mode?: PropertyPortalPublishMode }): Promise<PropertyPortalApprovalResult> {
+export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequestOptions & { draft: PropertyPortalReviewDraftForApproval; assets?: File[]; mode?: PropertyPortalPublishMode; uploadStagedImage?: StagedListingImageUploader }): Promise<PropertyPortalApprovalResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const source = input.draft.sourceInput ?? {};
   const slug = clean(source.slug as string | undefined) || clean(source.propertyIdOrSlug as string | undefined) || clean(input.draft.structuredUpdates.slug as string | undefined);
@@ -580,13 +651,23 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
 
   const mediaSlug = clean(mediaResult?.slug);
   const saveSlug = mediaSlug || slug;
-  const savePayload = buildPropertyPortalApprovedPayload({ draft: input.draft, mode: input.mode, slug: saveSlug });
-  const stagedMedia = await buildStagedDraftMedia(input.assets);
+  const savePayload = buildPropertyPortalApprovedPayload({ draft: input.draft, mode: input.mode, slug: saveSlug }) as Record<string, unknown>;
+  const stagedMedia = await buildStagedDraftMedia({ assets: input.assets, slug: saveSlug, draft: input.draft, uploadStagedImage: input.uploadStagedImage });
   if (stagedMedia) {
-    savePayload.media = deepMergeRecords(
-      isRecord(savePayload.media) ? savePayload.media : {},
-      { heroImageUrl: stagedMedia.heroImageUrl, heroPhoto: stagedMedia.heroImageUrl, photos: stagedMedia.images.map((image) => image.urls.original), images: stagedMedia.images },
-    );
+    const stagedMediaRecord = stagedMedia as Record<string, unknown>;
+    if (isRecord(stagedMediaRecord.media)) {
+      savePayload.media = deepMergeRecords(
+        isRecord(savePayload.media) ? savePayload.media : {},
+        stagedMediaRecord.media,
+      );
+      savePayload.photos = (stagedMediaRecord.media as Record<string, unknown>).photos;
+    }
+    if (isRecord(stagedMediaRecord.admin)) {
+      savePayload.admin = deepMergeRecords(
+        isRecord(savePayload.admin) ? savePayload.admin : {},
+        stagedMediaRecord.admin,
+      );
+    }
   }
   if (isRecord(savePayload.meta)) {
     savePayload.meta = deepMergeRecords(savePayload.meta, { brokerReview: { mediaUploadResult: mediaResult, stagedAssetCount, stagedImageCount: stagedMedia?.images.length ?? 0 } });

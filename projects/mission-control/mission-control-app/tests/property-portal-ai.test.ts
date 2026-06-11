@@ -223,6 +223,40 @@ test("modification interpreter mutates structured fields before AI copy refineme
   assert.deepEqual(draft.review.deltaPreview?.after.pricing, { availableSqFt: 5000, askingPriceRatePerSf: 22, suiteNumbers: "200", listingPriceVisibility: "per_sf" });
 });
 
+test("plain-English add-suite instructions create nested suite rows instead of overwriting parent listing data", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Add Suite A with 2,400 SF at $22/SF NNN.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "parrott-plaza",
+      title: "Parrott Plaza",
+      visibility: { transactionLabel: "For Lease" },
+      pricing: { availableSqFt: 10000, askingPriceRatePerSf: 24 },
+      media: { heroImageUrl: "https://example.com/main-hero.jpg", photos: [{ url: "https://example.com/main-hero.jpg" }] },
+      admin: { suites: [{ suiteNumber: "B", availableSqFt: "1600", baseRent: "20", rentType: "Gross", suitePhotos: ["https://example.com/b.jpg"], suiteFloorPlans: [] }] },
+    }),
+    writer: async (prompt) => {
+      assert.match(prompt, /Added Suite A/i);
+      return {
+        title: "Parrott Plaza",
+        descriptionHtml: "<p>Suite A added.</p>",
+        highlights: ["Suite A available"],
+        structuredUpdates: {},
+        mediaNotes: [],
+      };
+    },
+  });
+
+  const admin = draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> };
+  assert.deepEqual(admin.suites, [
+    { suiteNumber: "B", availableSqFt: "1600", baseRent: "20", rentType: "Gross", unpriced: false, suitePhotos: ["https://example.com/b.jpg"], suiteFloorPlans: [] },
+    { suiteNumber: "A", availableSqFt: "2400", baseRent: "22", rentType: "NNN", unpriced: false, suitePhotos: [], suiteFloorPlans: [] },
+  ]);
+  assert.equal((draft.structuredUpdates.media as unknown), undefined);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).availableSqFt, 4000);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).suiteNumbers, "B, A");
+});
 
 test("plain-English status changes produce ListingStream status fields before AI copy refinement", async () => {
   const draft = await createModificationReviewDraft({
@@ -501,18 +535,14 @@ test("draft preview helper saves ListingStream draft and explicitly bypasses Asc
         const headers = new Headers(init?.headers);
         const body = init?.body instanceof FormData ? init.body : init?.body ? JSON.parse(String(init.body)) : null;
         calls.push({ url: String(url), headers, body });
-        if (String(url).includes("/broker/intake")) {
-          return Response.json({ success: true, slug: "safe-test-preview", uploadedAssetCount: 1 });
-        }
         return Response.json({ success: true, save: { success: true, slug: "safe-test-preview" }, result: { publicCollection: "public_listings", publishStatus: "draft", previewUrl: "/properties/safe-test-preview", ascendixBypassed: true }, sync: null, ascendixBypassed: true });
       },
     });
 
-    assert.equal(calls[0].url, "https://portal.example.com/api/broker/intake");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://portal.example.com/api/admin/properties/launch-package");
     assert.equal(calls[0].headers.get("x-pier-manager-internal"), "test-internal-token");
-    assert.equal(calls[1].url, "https://portal.example.com/api/admin/properties/launch-package");
-    assert.equal(calls[1].headers.get("x-pier-manager-internal"), "test-internal-token");
-    const launchBody = calls[1].body as Record<string, unknown>;
+    const launchBody = calls[0].body as Record<string, unknown>;
     assert.equal(launchBody.action, "save-draft");
     assert.equal((launchBody.approvedPayload as Record<string, unknown>).status, "draft");
     assert.equal((launchBody.approvedPayload as Record<string, unknown>).workflowStatus, "draft_preview");
@@ -661,6 +691,16 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /defaultReviewChecklist/);
   assert.match(source, /Editable public-record fields before publish/);
   assert.match(source, /These fields always remain available for manual broker entry/);
+});
+
+test("broker review UI compresses draft preview media before posting to Vercel approval route", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /MAX_DRAFT_PREVIEW_UPLOAD_BYTES/);
+  assert.match(source, /compressImageForDraftPreview/);
+  assert.match(source, /createImageBitmap/);
+  assert.match(source, /prepareDraftPreviewAssets\(stagedAssets, mode\)/);
+  assert.match(source, /under Vercel upload limits/);
+  assert.match(source, /Skipped oversized extras/);
 });
 
 test("broker role hides raw JSON while master admin keeps payload and delta previews", async () => {

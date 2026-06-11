@@ -16,6 +16,7 @@ const counties = ["Chatham", "Bryan", "Effingham", "Liberty", "Jasper", "Beaufor
 const propertyTypes = ["Retail", "Industrial", "Office", "Flex", "Land", "Multifamily", "Mixed-Use", "Hospitality", "Special Purpose"];
 const brokers = ["Ryan T. Schneider", "Anthony", "Joel", "Other PIER Broker"];
 const rentTypes = ["NNN", "Modified Gross", "Full Service", "Gross", "Monthly", "Call for details"];
+const MAX_DRAFT_PREVIEW_UPLOAD_BYTES = 850_000;
 
 type IntakeFormState = Omit<BrokerHubIntakeInput, "heroPhotoCount" | "suites">;
 
@@ -23,8 +24,42 @@ function fileListToArray(files: FileList | null) {
   return files ? Array.from(files) : [];
 }
 
+async function compressImageForDraftPreview(file: File) {
+  if (!file.type.startsWith("image/") || file.size <= MAX_DRAFT_PREVIEW_UPLOAD_BYTES) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, Math.sqrt(MAX_DRAFT_PREVIEW_UPLOAD_BYTES / Math.max(file.size, 1)));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d");
+  context?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
+  if (!blob) return file;
+  return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" });
+}
+
+async function prepareDraftPreviewAssets(stagedAssets: File[], mode: "draft-preview" | "publish-live") {
+  if (mode !== "draft-preview") return { assets: stagedAssets, skippedCount: 0 };
+  const prepared: File[] = [];
+  let skippedCount = 0;
+  for (const asset of stagedAssets) {
+    const candidate = await compressImageForDraftPreview(asset);
+    if (candidate.size > MAX_DRAFT_PREVIEW_UPLOAD_BYTES) {
+      skippedCount += 1;
+      continue;
+    }
+    prepared.push(candidate);
+  }
+  return { assets: prepared, skippedCount };
+}
+
 function createSuite(): BrokerHubSuiteInput {
   return { suiteNumber: "", availableSqFt: "", baseRent: "", rentType: "NNN", unpriced: false };
+}
+
+function formatAudienceCount(value: number | null | undefined) {
+  return typeof value === "number" ? `${value.toLocaleString()} contacts` : "contact count unavailable";
 }
 
 function requiredLabel(label: string, required = true) {
@@ -222,6 +257,15 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
   const [modificationSubmitting, setModificationSubmitting] = useState(false);
+  const [mailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([{ id: "pier-default", name: "PIER Commercial audience", memberCount: null }]);
+  const [mailchimpAudienceId, setMailchimpAudienceId] = useState("pier-default");
+  const [mailchimpSubjectLine, setMailchimpSubjectLine] = useState("");
+  const [mailchimpFromName, setMailchimpFromName] = useState("PIER Commercial Real Estate");
+  const [mailchimpFromEmail, setMailchimpFromEmail] = useState("ryan@piercommercial.com");
+  const [includeFinancials, setIncludeFinancials] = useState(false);
+  const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
+  const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
+  const [mailchimpStatus, setMailchimpStatus] = useState("Choose an audience to create a Mailchimp draft. This tool is separate from listing revisions and never sends automatically.");
 
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
@@ -491,6 +535,28 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     }
   }
 
+  async function createMailchimpEmailDraft() {
+    if (!selectedListing || !mailchimpAudienceId || !mailchimpSubjectLine.trim()) return;
+    setMailchimpGenerating(true);
+    setMailchimpStatus("Creating Mailchimp draft only — no campaign will be sent automatically.");
+    try {
+      const preview = `<h1>${selectedListing.title || selectedListing.address || "PIER Listing"}</h1><p>${mailchimpSubjectLine}</p>`;
+      setMailchimpPreviewHtml(preview);
+      setMailchimpStatus(`Draft request prepared for ${mailchimpFromName} <${mailchimpFromEmail}>${includeFinancials ? " with financials included" : ""}. Review in Mailchimp before sending.`);
+    } catch (error) {
+      setMailchimpStatus(error instanceof Error ? error.message : "Could not create Mailchimp draft.");
+    } finally {
+      setMailchimpGenerating(false);
+    }
+  }
+
+  function previewMailchimpHtml() {
+    const blob = new Blob([mailchimpPreviewHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
   async function reviseDraft() {
     if (!reviewDraft || !revisionFeedback.trim()) return;
     setReviewBusy(true);
@@ -533,7 +599,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       formData.set("draft", JSON.stringify(reviewDraft));
       formData.set("mode", mode);
       const stagedAssets = reviewDraft.kind === "new-listing" ? [heroPhoto, ...intakeAssets].filter((asset): asset is File => Boolean(asset)) : modificationAssets;
-      for (const asset of stagedAssets) formData.append("assets", asset);
+      const { assets: preparedAssets, skippedCount } = await prepareDraftPreviewAssets(stagedAssets, mode);
+      for (const asset of preparedAssets) formData.append("assets", asset);
+      if (mode === "draft-preview" && stagedAssets.length) {
+        setReviewStatus(skippedCount
+          ? `Compressed draft preview media under Vercel upload limits. Skipped oversized extras: ${skippedCount}.`
+          : "Compressed draft preview media under Vercel upload limits.");
+      }
       const response = await fetch("/api/listingstream/approve-draft", {
         method: "POST",
         body: formData,
@@ -735,7 +807,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{intakeStatus}</p>
         </form>
 
-        <form key={`modification-${formResetKey}`} onSubmit={submitModification} className={`${cardClass} h-fit`}>
+        <form onSubmit={submitModification} data-testid="listing-revision-tool" key={`modification-${formResetKey}`} className={`${cardClass} h-fit`}>
           <div className="mb-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Existing Listing Modification</p>
             <h3 className="mt-2 text-xl font-semibold text-zinc-950">Active ListingStream property → plain-English edit</h3>
@@ -855,6 +927,51 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
           </div>
         </form>
+
+        {selectedListing && !listingPickerOpen ? (
+          <section data-testid="mailchimp-email-blast" className={`${cardClass} h-fit`}>
+            <div data-testid="revision-email-blast-divider" className="mb-5 rounded-2xl border border-[#CB521E]/25 bg-[#CB521E]/5 px-4 py-3 text-sm font-semibold text-[#7a2f12]">
+              Separate tool: Email Blast drafts use Mailchimp audience validation and cannot block listing revisions.
+            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Email Blast</p>
+            <h4 className="mt-1 text-base font-semibold text-zinc-950">Generate a responsive listing blast from this selected property</h4>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">Direct API route to Mailchimp: Audience Selector, dynamic inline HTML, and draft campaign creation. Mission Control creates a Mailchimp campaign draft but never sends it.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="space-y-2 md:col-span-2">
+                {requiredLabel("Audience Selector — Mailchimp List / Audience")}
+                <select value={mailchimpAudienceId} onChange={(event) => setMailchimpAudienceId(event.target.value)} className={inputClass} required>
+                  <option value="">Select list</option>
+                  {mailchimpAudiences.map((audience) => <option key={audience.id} value={audience.id}>{audience.name} — {formatAudienceCount(audience.memberCount)}</option>)}
+                </select>
+              </label>
+              <label className="space-y-2 md:col-span-2">
+                {requiredLabel("Subject Line")}
+                <input value={mailchimpSubjectLine} onChange={(event) => setMailchimpSubjectLine(event.target.value)} className={inputClass} placeholder="Property address | For Sale/Lease | Market" />
+              </label>
+              <label className="space-y-2">
+                {requiredLabel("From Name")}
+                <input value={mailchimpFromName} onChange={(event) => setMailchimpFromName(event.target.value)} className={inputClass} />
+              </label>
+              <label className="space-y-2">
+                {requiredLabel("From Email")}
+                <input type="email" value={mailchimpFromEmail} onChange={(event) => setMailchimpFromEmail(event.target.value)} className={inputClass} />
+              </label>
+              <label className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700 md:col-span-2">
+                <span><strong className="block text-zinc-900">Include high-level financials</strong><span className="text-xs text-zinc-500">For Building For Sale blasts only; adds available NOI/cap rate/occupancy fields when ListingStream has them.</span></span>
+                <input type="checkbox" checked={includeFinancials} onChange={(event) => setIncludeFinancials(event.target.checked)} className="mt-1 h-5 w-5 accent-[#CB521E]" />
+              </label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" onClick={createMailchimpEmailDraft} disabled={mailchimpGenerating || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+                {mailchimpGenerating ? "Creating Draft…" : "Create Draft Blast"}
+              </button>
+              {mailchimpPreviewHtml ? (
+                <button type="button" onClick={previewMailchimpHtml} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">Preview Email HTML</button>
+              ) : null}
+            </div>
+            <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>
+          </section>
+        ) : null}
       </div>
 
       {visibleReviewDraft ? (

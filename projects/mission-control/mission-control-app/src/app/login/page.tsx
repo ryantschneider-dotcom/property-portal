@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -9,7 +9,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin() {
+  async function handleLogin(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     setLoading(true);
     setError("");
 
@@ -48,7 +49,7 @@ export default function LoginPage() {
           Private single-user access for Ryan’s internal Mission Control.
         </p>
 
-        <div className="mt-6 space-y-4">
+        <form onSubmit={handleLogin} className="mt-6 space-y-4">
           <input
             type="password"
             value={password}
@@ -60,12 +61,13 @@ export default function LoginPage() {
           {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 
           <button
-            onClick={handleLogin}
+            type="submit"
+            disabled={loading}
             className="w-full rounded-2xl bg-cyan-500 px-4 py-3 text-sm font-medium text-neutral-950 transition hover:bg-cyan-400"
           >
             {loading ? "Signing in…" : "Enter Mission Control"}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );

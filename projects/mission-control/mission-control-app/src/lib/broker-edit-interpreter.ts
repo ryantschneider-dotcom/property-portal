@@ -6,6 +6,8 @@ type SuiteRecord = {
   baseRent: string;
   rentType: string;
   unpriced?: boolean;
+  suitePhotos?: unknown[];
+  suiteFloorPlans?: unknown[];
 };
 
 export type BrokerEditInterpreterResult = {
@@ -13,6 +15,7 @@ export type BrokerEditInterpreterResult = {
   flags: string[];
   confidence: "high" | "medium" | "low";
   updatePayload: Record<string, unknown>;
+  lifecycleAction?: "archive" | "delete";
 };
 
 function asRecord(value: unknown): UnknownRecord {
@@ -47,13 +50,16 @@ function normalizeSuiteRows(value: unknown): SuiteRecord[] {
   return value
     .map((row) => {
       const suite = asRecord(row);
-      return {
+      const normalized: SuiteRecord = {
         suiteNumber: asString(suite.suiteNumber),
         availableSqFt: asString(suite.availableSqFt),
         baseRent: asString(suite.baseRent),
         rentType: asString(suite.rentType),
         unpriced: suite.unpriced === true,
-      } satisfies SuiteRecord;
+      };
+      if (Array.isArray(suite.suitePhotos)) normalized.suitePhotos = suite.suitePhotos;
+      if (Array.isArray(suite.suiteFloorPlans)) normalized.suiteFloorPlans = suite.suiteFloorPlans;
+      return normalized;
     })
     .filter((suite) => suite.suiteNumber || suite.availableSqFt || suite.baseRent || suite.rentType);
 }
@@ -122,8 +128,42 @@ function extractSuiteNumber(instructions: string) {
   return match?.[1]?.trim() || null;
 }
 
+function shouldAddSuite(instructions: string) {
+  return /\b(?:add|create|include|insert|new)\s+suite\s+[A-Za-z0-9-]+/i.test(instructions);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractSuiteSize(instructions: string, suiteNumber: string) {
+  const escapedSuite = escapeRegExp(suiteNumber);
+  const afterSuite = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,120}?([\\d,.]+(?:\\.\\d+)?\\s*[mk]?)\\s*(?:sf|sq\\.?\\s*ft\\.?|square\\s*feet)`, "i"));
+  return parseIntegerToken(afterSuite?.[1]);
+}
+
+function extractSuiteRate(instructions: string, suiteNumber: string) {
+  const escapedSuite = escapeRegExp(suiteNumber);
+  const afterSuite = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,160}?\\$\\s*([\\d,.]+(?:\\.\\d+)?)\\s*(?:/|per\\s*)?(?:sf|sq\\.?\\s*ft\\.?)?`, "i"));
+  return parseNumericToken(afterSuite?.[1]);
+}
+
+function extractRentType(instructions: string) {
+  const match = instructions.match(/\b(NNN|modified\s+gross|full\s+service|gross)\b/i);
+  if (!match) return null;
+  const value = match[1].replace(/\s+/g, " ").trim();
+  return value.toLowerCase() === "nnn" ? "NNN" : value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function shouldMarkUnpriced(instructions: string) {
   return /(?:mark\s+)?(?:sale\s+price\s+)?(?:as\s+)?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions);
+}
+
+function getRequestedLifecycleAction(instructions: string): "archive" | "delete" | null {
+  const text = instructions.toLowerCase();
+  if (/\b(?:archive|delist|take\s+(?:it|this|the\s+listing)?\s*down|remove\s+(?:it|this|the\s+listing)?|pull\s+(?:it|this|the\s+listing)?|deactivate)\b/.test(text)) return "archive";
+  if (/\b(?:delete|permanently\s+delete)\b/.test(text)) return "delete";
+  return null;
 }
 
 function getRequestedListingStatus(instructions: string): "leased" | "sold" | "under_contract" | null {
@@ -198,6 +238,21 @@ function suiteMatches(suite: SuiteRecord, suiteNumber: string) {
 function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructions: string) {
   const suiteIndex = suites.findIndex((suite) => suiteMatches(suite, suiteNumber));
   if (suiteIndex === -1) {
+    if (shouldAddSuite(instructions)) {
+      const size = extractSuiteSize(instructions, suiteNumber);
+      const rate = extractSuiteRate(instructions, suiteNumber);
+      const rentType = extractRentType(instructions) || "NNN";
+      const suite: SuiteRecord = {
+        suiteNumber,
+        availableSqFt: size == null ? "" : String(size),
+        baseRent: rate == null ? "" : String(rate),
+        rentType,
+        unpriced: rate == null && shouldMarkUnpriced(instructions),
+        suitePhotos: [],
+        suiteFloorPlans: [],
+      };
+      return { suites: [...suites, suite], changed: true, messages: [`Added Suite ${suiteNumber} to the active suite stack.`] };
+    }
     return { suites, changed: false, messages: [`Instruction referenced Suite ${suiteNumber}, but no exact suite match was found.`] };
   }
 
@@ -223,6 +278,13 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     messages.push(`Updated Suite ${suiteNumber} base rent to ${rate}.`);
   }
 
+  const rentType = extractRentType(instructions);
+  if (rentType) {
+    current.rentType = rentType;
+    changed = true;
+    messages.push(`Updated Suite ${suiteNumber} rent type to ${rentType}.`);
+  }
+
   if (/suite\s+[A-Za-z0-9-]+.*?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions)) {
     current.baseRent = "";
     current.unpriced = true;
@@ -246,12 +308,20 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   const summary: string[] = [];
   const flags: string[] = [];
   const updatePayload: Record<string, unknown> = {};
+  let lifecycleAction: BrokerEditInterpreterResult["lifecycleAction"];
   const nextPricing: Record<string, unknown> = {};
   const nextProperty: Record<string, unknown> = {};
   const nextContent: Record<string, unknown> = {};
   const nextAdmin: Record<string, unknown> = {};
   const transactionLabel = asString(visibility.transactionLabel).toLowerCase();
   const isLease = transactionLabel.includes("lease");
+
+  const requestedLifecycleAction = getRequestedLifecycleAction(instructions);
+  if (requestedLifecycleAction) {
+    lifecycleAction = requestedLifecycleAction;
+    updatePayload.lifecycle = { action: requestedLifecycleAction, requestedByPlainEnglish: true };
+    summary.push(`${requestedLifecycleAction === "archive" ? "Archive" : "Delete"} listing requested from broker instructions.`);
+  }
 
   const requestedListingStatus = getRequestedListingStatus(instructions);
   if (requestedListingStatus) {
@@ -383,7 +453,7 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   if (Object.keys(nextContent).length) updatePayload.content = { ...content, ...nextContent };
   if (Object.keys(nextAdmin).length) updatePayload.admin = { ...admin, ...nextAdmin };
 
-  const confidence: BrokerEditInterpreterResult["confidence"] = summary.length >= 3 && flags.length === 0 ? "high" : summary.length >= 1 ? "medium" : "low";
+  const confidence: BrokerEditInterpreterResult["confidence"] = lifecycleAction && flags.length === 0 ? "high" : summary.length >= 3 && flags.length === 0 ? "high" : summary.length >= 1 ? "medium" : "low";
 
-  return { summary, flags, confidence, updatePayload };
+  return { summary, flags, confidence, updatePayload, ...(lifecycleAction ? { lifecycleAction } : {}) };
 }
