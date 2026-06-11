@@ -706,7 +706,7 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /Review Draft/);
   assert.match(source, /Save as Draft & Preview/);
   assert.match(source, /draftPreviewUrl/);
-  assert.match(source, /Open Draft Preview/);
+  assert.match(source, /View Draft Preview/);
   assert.match(source, /Open the clickable Draft Preview link below/);
   assert.match(source, /Approve & Publish Live/);
   assert.match(source, /Delete Draft/);
@@ -736,14 +736,15 @@ test("broker review UI compresses draft preview media before posting to Vercel a
   assert.match(source, /Skipped oversized extras/);
 });
 
-test("broker role hides raw JSON while master admin keeps payload and delta previews", async () => {
+test("broker role hides raw JSON while master admin keeps payload preview and all users see clean delta summaries", async () => {
   const pageSource = await readFile("src/app/pier-manager/page.tsx", "utf8");
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(pageSource, /getAuthSession/);
   assert.match(pageSource, /userRole=\{session\?\.role \?\? "broker"\}/);
   assert.match(source, /export function PierManagerListingConsole\(\{ userRole \}: \{ userRole: AuthRole \}\)/);
   assert.match(source, /const isMasterAdmin = userRole === "master"/);
-  assert.match(source, /data-testid="delta-raw-json"/);
+  assert.match(source, /data-testid="delta-summary-list"/);
+  assert.doesNotMatch(source, /data-testid="delta-raw-json"/);
   assert.match(source, /data-testid="payload-preview"/);
 });
 

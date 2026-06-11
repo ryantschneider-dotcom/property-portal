@@ -7,6 +7,7 @@ import type { AuthRole } from "@/lib/auth";
 import { normalizeIncomingBrokerReviewDraft } from "@/lib/broker-review-draft-normalizer";
 import { normalizePropertyPortalDraftPreviewUrl, type PropertyPortalActiveListing } from "@/lib/property-portal-client";
 import { getListingRevisionValidationError } from "@/lib/pier-manager-form-decoupling";
+import { summarizeDeltaChanges } from "@/lib/pier-manager-delta-summary";
 import type { BrokerReviewDraft } from "@/lib/property-portal-ai";
 
 const inputClass = "w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-[#CB521E]/50 focus:ring-2 focus:ring-[#CB521E]/10";
@@ -682,6 +683,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     })
     : null;
   const reviewChecklist = visibleReviewDraft ? getDraftReviewChecklist(visibleReviewDraft) : defaultReviewChecklist();
+  const deltaSummaryRows = visibleReviewDraft?.kind === "modification" ? summarizeDeltaChanges(visibleReviewDraft.review.deltaPreview) : [];
 
   return (
     <div className="space-y-6">
@@ -701,7 +703,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           </div>
           {draftPreviewUrl ? (
             <div className="mt-3">
-              <a href={draftPreviewUrl} target="_blank" rel="noreferrer" className="inline-flex rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#a94318]">Open Draft Preview</a>
+              <a data-testid="draft-preview-link" href={draftPreviewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 hover:bg-[#a94318]">View Draft Preview</a>
               <p className="mt-2 break-all text-xs">{draftPreviewUrl}</p>
             </div>
           ) : null}
@@ -1063,18 +1065,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
               {visibleReviewDraft.review.interpreter?.flags.length ? (
                 <ul className="mt-4 grid gap-2 md:grid-cols-2">{visibleReviewDraft.review.interpreter.flags.map((item) => <li key={item} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{item}</li>)}</ul>
               ) : null}
-              {isMasterAdmin ? (
-                <div data-testid="delta-raw-json" className="mt-4 grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <h5 className="text-sm font-semibold text-zinc-900">Before</h5>
-                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-700">{compactJson(visibleReviewDraft.review.deltaPreview.before)}</pre>
+              <div data-testid="delta-summary-list" className="mt-4 space-y-2">
+                {deltaSummaryRows.length ? deltaSummaryRows.map((row) => (
+                  <div key={`${row.label}-${row.before}-${row.after}`} className="grid gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm md:grid-cols-[1.1fr_0.9fr] md:items-center">
+                    <span className="font-semibold text-zinc-900">{row.label}</span>
+                    <span className="text-zinc-700"><span className="font-medium">{row.before}</span> <span className="px-1 text-[#CB521E]">➔</span> <span className="font-semibold text-zinc-950">{row.after}</span></span>
                   </div>
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                    <h5 className="text-sm font-semibold text-zinc-900">After</h5>
-                    <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-zinc-700">{compactJson(visibleReviewDraft.review.deltaPreview.after)}</pre>
-                  </div>
-                </div>
-              ) : null}
+                )) : <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">No field-level changes detected.</p>}
+              </div>
             </div>
           ) : null}
 
@@ -1098,7 +1096,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           {draftPreviewUrl ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
               <p className="font-semibold">Draft preview saved successfully.</p>
-              <a href={draftPreviewUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#a94318]">Open Draft Preview</a>
+              <a data-testid="draft-preview-link" href={draftPreviewUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 hover:bg-[#a94318]">View Draft Preview</a>
               <p className="mt-2 break-all text-xs">{draftPreviewUrl}</p>
             </div>
           ) : null}
