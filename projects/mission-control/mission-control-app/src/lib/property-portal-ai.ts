@@ -133,7 +133,7 @@ Task:
 - Valid status values are: "leased", "sold", and "under_contract". Matching display labels are: "Leased", "Sold", and "Under Contract"
 - Return only fields that should change in structuredUpdates; unchanged fields are merged by backend from the canonical listing
 - For multi-tenant suite instructions, aggressively extract the broker's exact Available Sq. Ft. and Rent Rate values into structuredUpdates.admin.suites[].availableSqFt and .baseRent. The "Call" fallback is strictly prohibited when the broker supplied a number, including labels like "Available Sq. Ft.: 1,900" or "Rent Rate: $1,900/month".
-- When changing suites, overwrite the entire admin.suites array with the corrected suite rows. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
+- When changing one suite, preserve every existing suite not explicitly mentioned by the broker. Return an admin.suites array that includes all unchanged suites plus the corrected changed suite rows. Only omit/delete suite rows when the broker explicitly says a suite is leased/removed/deleted/dropped, or says to remove/clear all suites. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
 - For suite-specific uploaded files, never put file descriptions or user-provided labels into URLs. The backend will attach actual Firebase Storage download URLs to suites[].suitePhotos or suites[].suiteFloorPlans; do not place suite floor plans/photos in parent media, photos, heroImageUrl, or listing.photos.
 - For suite rows, extract admin.suites[].spaceType only when the broker explicitly describes a real architectural/use type such as Office, Retail, Industrial, Warehouse, Storage, Flex, Medical Office, Restaurant, or Showroom. Never write "Available Space" as a suite spaceType; omit the field when unstated so ListingStream can inherit root propertyType.
 - Do not invent unsupported facts
@@ -251,6 +251,48 @@ function deepMergeRecords(...records: Record<string, unknown>[]) {
     }
   }
   return output;
+}
+
+function suiteKey(value: unknown) {
+  const record = normalizeRecord(value);
+  return asString(record.suiteNumber || record.suite || record.name).toLowerCase();
+}
+
+function instructionAllowsSuiteOmission(instructions: string) {
+  return /\b(?:remove|delete|drop|clear)\s+(?:all\s+)?suites?\b/i.test(instructions)
+    || /\bsuite\s+[A-Za-z0-9-]+\s+(?:is\s+)?(?:leased|removed|deleted|dropped)\b/i.test(instructions)
+    || /\b(?:remove|delete|drop)\s+suite\s+[A-Za-z0-9-]+\b/i.test(instructions);
+}
+
+function mergePartialSuiteUpdates(currentListing: Record<string, unknown>, updates: Record<string, unknown>, instructions: string) {
+  if (instructionAllowsSuiteOmission(instructions)) return updates;
+
+  const updateAdmin = normalizeRecord(updates.admin);
+  const updateSuites = updateAdmin.suites;
+  if (!Array.isArray(updateSuites) || updateSuites.length === 0) return updates;
+
+  const currentAdmin = normalizeRecord(currentListing.admin);
+  const currentSuites = Array.isArray(currentAdmin.suites) ? currentAdmin.suites : [];
+  if (!currentSuites.length) return updates;
+
+  const remainingAdditions: unknown[] = [];
+  const mergedSuites = currentSuites.map((currentSuite) => {
+    const currentKey = suiteKey(currentSuite);
+    const updateIndex = updateSuites.findIndex((suite) => currentKey && suiteKey(suite) === currentKey);
+    if (updateIndex === -1) return currentSuite;
+    const [suiteUpdate] = updateSuites.splice(updateIndex, 1);
+    return deepMergeRecords(normalizeRecord(currentSuite), normalizeRecord(suiteUpdate));
+  });
+
+  for (const suiteUpdate of updateSuites) {
+    if (suiteKey(suiteUpdate)) remainingAdditions.push(suiteUpdate);
+  }
+
+  return deepMergeRecords(updates, {
+    admin: {
+      suites: [...mergedSuites, ...remainingAdditions],
+    },
+  });
 }
 
 function pickDeltaPreviewFields(property: Record<string, unknown>) {
@@ -371,7 +413,8 @@ export async function createModificationReviewDraft(input: {
 
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
-  const structuredUpdates = deepMergeRecords(writerResult.structuredUpdates, interpreter.updatePayload);
+  const writerStructuredUpdates = mergePartialSuiteUpdates(currentListing, writerResult.structuredUpdates, input.instructions);
+  const structuredUpdates = deepMergeRecords(writerStructuredUpdates, interpreter.updatePayload);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
   const safeWriterResult = {
     ...writerResult,

@@ -333,7 +333,8 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     return { suites, changed: false, messages: [`Suite ${suiteNumber} was detected, but no safe structured mutation was parsed yet.`] };
   }
 
-  return { suites: [...nextSuites.filter((suite) => !suiteMatches(suite, suiteNumber)), current], changed: true, messages };
+  nextSuites[suiteIndex] = current;
+  return { suites: nextSuites, changed: true, messages };
 }
 
 export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>, instructions: string): BrokerEditInterpreterResult {

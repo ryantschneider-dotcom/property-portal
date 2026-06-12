@@ -293,6 +293,47 @@ test("plain-English suite updates extract explicit Available Sq. Ft. and Rent Ra
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).askingPriceRatePerSf, 1900);
 });
 
+test("partial suite use-type updates preserve unmentioned suites", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Change the use type on Suite M to storage.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "parrott-plaza",
+      visibility: { transactionLabel: "For Lease" },
+      pricing: { availableSqFt: 3000, suiteNumbers: "M, P" },
+      admin: {
+        suites: [
+          { suiteNumber: "M", availableSqFt: "1100", baseRent: "1100", rentType: "Monthly", spaceType: "Office/Retail" },
+          { suiteNumber: "P", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly", spaceType: "Office/Retail" },
+        ],
+      },
+    }),
+    writer: async () => ({
+      title: "Parrott Plaza",
+      descriptionHtml: "<p>Suite M use type updated.</p>",
+      highlights: ["Suite M storage use"],
+      structuredUpdates: {
+        admin: {
+          suites: [
+            { suiteNumber: "M", spaceType: "Storage" },
+          ],
+        },
+      },
+      mediaNotes: [],
+    }),
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  assert.deepEqual(suites.map((suite) => suite.suiteNumber), ["M", "P"]);
+  assert.deepEqual(suites, [
+    { suiteNumber: "M", availableSqFt: "1100", baseRent: "1100", rentType: "Monthly", spaceType: "Storage", unpriced: false },
+    { suiteNumber: "P", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly", spaceType: "Office/Retail", unpriced: false },
+  ]);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).suiteNumbers, "M, P");
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).availableSqFt, 3000);
+});
+
 test("plain-English suite instructions extract architectural space type into nested suite rows", async () => {
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "parrott-plaza",
@@ -450,7 +491,7 @@ test("modification delta prompt includes current listing payload and broker inst
   assert.match(prompt, /drop asking rate to \$22\/SF/i);
 });
 
-test("modification prompt strictly prohibits Call fallback and requires suite array replacement", () => {
+test("modification prompt prohibits Call fallback and requires suite preservation unless explicitly removed", () => {
   const prompt = buildModificationDeltaPrompt({
     currentListing: { title: "Parrott Plaza", admin: { suites: [{ suiteNumber: "M", baseRent: "Call" }] } },
     instructions: "Update Suite M. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month.",
@@ -463,7 +504,8 @@ test("modification prompt strictly prohibits Call fallback and requires suite ar
   });
 
   assert.match(prompt, /Call\" fallback is strictly prohibited/i);
-  assert.match(prompt, /overwrite the entire admin\.suites array/i);
+  assert.match(prompt, /preserve every existing suite not explicitly mentioned/i);
+  assert.match(prompt, /Only omit\/delete suite rows when the broker explicitly says/i);
   assert.match(prompt, /Rent Rate: \$1,900\/month/i);
 });
 
