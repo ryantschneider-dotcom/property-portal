@@ -119,6 +119,8 @@ test("new listing enrichment prompt requires CCIM-level premium brokerage copy",
   assert.match(prompt, /investment or tenant value propositions/i);
   assert.match(prompt, /Return strict JSON/i);
   assert.match(prompt, /premium fully formatted commercial real estate property description/i);
+  assert.match(prompt, /spaceType/i);
+  assert.match(prompt, /Office|Retail|Industrial|Warehouse|Storage/i);
 });
 
 test("new listing AI draft becomes broker review state and never publishes automatically", async () => {
@@ -289,6 +291,34 @@ test("plain-English suite updates extract explicit Available Sq. Ft. and Rent Ra
   assert.equal(suites[0].rentType, "Monthly");
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).availableSqFt, 1900);
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).askingPriceRatePerSf, 1900);
+});
+
+test("plain-English suite instructions extract architectural space type into nested suite rows", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Add Suite D as a warehouse storage suite with 4,000 SF at $12/SF NNN.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "parrott-plaza",
+      title: "Parrott Plaza",
+      visibility: { transactionLabel: "For Lease" },
+      admin: { suites: [] },
+    }),
+    writer: async (prompt) => {
+      assert.match(prompt, /spaceType/i);
+      return {
+        title: "Parrott Plaza",
+        descriptionHtml: "<p>Suite D added.</p>",
+        highlights: ["Suite D available"],
+        structuredUpdates: {},
+        mediaNotes: [],
+      };
+    },
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  assert.equal(suites[0].suiteNumber, "D");
+  assert.equal(suites[0].spaceType, "Warehouse");
 });
 
 test("plain-English status changes produce ListingStream status fields before AI copy refinement", async () => {

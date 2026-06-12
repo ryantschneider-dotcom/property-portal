@@ -98,7 +98,7 @@ Required JSON keys:
 - title: premium listing title
 - descriptionHtml: polished HTML paragraphs suitable for a commercial listing page
 - highlights: 4-6 concise bullets
-- structuredUpdates: property-portal compatible content/pricing/property updates inferred from the facts
+- structuredUpdates: property-portal compatible content/pricing/property updates inferred from the facts; when suites are present, include nested admin.suites[].spaceType only for true architectural/use types explicitly stated by the broker (Office, Retail, Industrial, Warehouse, Storage, Flex, Medical Office, Restaurant, Showroom), never the generic phrase "Available Space"
 - mediaNotes: notes about uploaded media placement or gaps
 
 Enrichment responsibilities:
@@ -135,6 +135,7 @@ Task:
 - For multi-tenant suite instructions, aggressively extract the broker's exact Available Sq. Ft. and Rent Rate values into structuredUpdates.admin.suites[].availableSqFt and .baseRent. The "Call" fallback is strictly prohibited when the broker supplied a number, including labels like "Available Sq. Ft.: 1,900" or "Rent Rate: $1,900/month".
 - When changing suites, overwrite the entire admin.suites array with the corrected suite rows. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
 - For suite-specific uploaded files, never put file descriptions or user-provided labels into URLs. The backend will attach actual Firebase Storage download URLs to suites[].suitePhotos or suites[].suiteFloorPlans; do not place suite floor plans/photos in parent media, photos, heroImageUrl, or listing.photos.
+- For suite rows, extract admin.suites[].spaceType only when the broker explicitly describes a real architectural/use type such as Office, Retail, Industrial, Warehouse, Storage, Flex, Medical Office, Restaurant, or Showroom. Never write "Available Space" as a suite spaceType; omit the field when unstated so ListingStream can inherit root propertyType.
 - Do not invent unsupported facts
 
 Required JSON keys:

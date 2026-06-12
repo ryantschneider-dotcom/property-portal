@@ -5,6 +5,7 @@ type SuiteRecord = {
   availableSqFt: string;
   baseRent: string;
   rentType: string;
+  spaceType?: string;
   unpriced?: boolean;
   suitePhotos?: unknown[];
   suiteFloorPlans?: unknown[];
@@ -57,6 +58,7 @@ function normalizeSuiteRows(value: unknown): SuiteRecord[] {
         rentType: asString(suite.rentType),
         unpriced: suite.unpriced === true,
       };
+      if (asString(suite.spaceType)) normalized.spaceType = asString(suite.spaceType);
       if (Array.isArray(suite.suitePhotos)) normalized.suitePhotos = suite.suitePhotos;
       if (Array.isArray(suite.suiteFloorPlans)) normalized.suiteFloorPlans = suite.suiteFloorPlans;
       return normalized;
@@ -164,6 +166,19 @@ function extractRentType(instructions: string) {
   return value.toLowerCase() === "nnn" ? "NNN" : value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function extractSuiteSpaceType(instructions: string, suiteNumber?: string) {
+  const typePattern = "medical\\s+office|office\\s*/\\s*retail|office-retail|office|retail|industrial|warehouse|storage|flex|showroom|restaurant";
+  const explicit = instructions.match(new RegExp(`(?:space\\s+type|suite\\s+type|use\\s+type|architectural\\s+type)\\s*(?:to|as|=|is|:)?\\s*(${typePattern})`, "i"));
+  const candidate = explicit?.[1] || (suiteNumber ? instructions.match(new RegExp(`suite\\s+${escapeRegExp(suiteNumber)}[\\s\\S]{0,180}?\\b(${typePattern})\\b`, "i"))?.[1] : instructions.match(new RegExp(`\\b(${typePattern})\\b\\s+(?:suite|space|unit)`, "i"))?.[1]);
+  if (!candidate) return null;
+  return candidate
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/-/g, "/")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function shouldMarkUnpriced(instructions: string) {
   return /(?:mark\s+)?(?:sale\s+price\s+)?(?:as\s+)?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions);
 }
@@ -254,7 +269,8 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     const size = extractSuiteSize(instructions, suiteNumber);
     const rate = extractSuiteRate(instructions, suiteNumber);
     const rentType = extractRentType(instructions) || "NNN";
-    const hasExplicitSuiteFacts = size != null || rate != null || Boolean(extractRentType(instructions));
+    const spaceType = extractSuiteSpaceType(instructions, suiteNumber);
+    const hasExplicitSuiteFacts = size != null || rate != null || Boolean(extractRentType(instructions)) || Boolean(spaceType);
     if (shouldAddSuite(instructions) || hasExplicitSuiteFacts) {
       const suite: SuiteRecord = {
         suiteNumber,
@@ -265,6 +281,7 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
         suitePhotos: [],
         suiteFloorPlans: [],
       };
+      if (spaceType) suite.spaceType = spaceType;
       const actionVerb = shouldAddSuite(instructions) ? "Added" : "Updated";
       return { suites: [...suites.filter((suite) => !suiteMatches(suite, suiteNumber)), suite], changed: true, messages: [`${actionVerb} Suite ${suiteNumber} to the active suite stack.`] };
     }
@@ -296,6 +313,13 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     current.rentType = rentType;
     changed = true;
     messages.push(`Updated Suite ${suiteNumber} rent type to ${rentType}.`);
+  }
+
+  const spaceType = extractSuiteSpaceType(instructions, suiteNumber);
+  if (spaceType) {
+    current.spaceType = spaceType;
+    changed = true;
+    messages.push(`Updated Suite ${suiteNumber} space type to ${spaceType}.`);
   }
 
   if (/suite\s+[A-Za-z0-9-]+.*?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions)) {
