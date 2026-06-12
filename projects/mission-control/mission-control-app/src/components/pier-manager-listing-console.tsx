@@ -118,10 +118,6 @@ function renderChecklistColumn(title: string, items: string[], tone: "good" | "w
   );
 }
 
-function compactJson(value: unknown) {
-  return JSON.stringify(value ?? {}, null, 2);
-}
-
 function normalizeStringList(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item ?? "").trim()).filter(Boolean) : [];
 }
@@ -283,7 +279,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [includeProforma, setIncludeProforma] = useState(false);
   const reviewPanelRef = useRef<HTMLElement | null>(null);
   const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
-  const isMasterAdmin = userRole === "master";
 
   useEffect(() => {
     let cancelled = false;
@@ -1076,12 +1071,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             </div>
           ) : null}
 
-          {isMasterAdmin ? (
-            <details data-testid="payload-preview" className="mt-5 rounded-3xl border border-zinc-200 bg-zinc-950 p-5 text-white" open>
-              <summary className="cursor-pointer text-sm font-semibold uppercase tracking-[0.18em] text-[#f6a87f]">Full data payload preview</summary>
-              <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap rounded-2xl bg-black/30 p-4 text-xs leading-5 text-zinc-200">{compactJson(visibleReviewDraft)}</pre>
-            </details>
-          ) : null}
 
           <div ref={finalPublishActionsRef} id="final-publish-actions" data-testid="final-publish-actions" className="mt-5 rounded-3xl border border-[#CB521E]/30 bg-white p-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Final approval after payload review</p>

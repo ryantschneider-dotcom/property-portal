@@ -286,6 +286,37 @@ test("modification approval payload preserves nested property facts when applyin
   });
 });
 
+test("modification approval payload overwrites suite array instead of carrying stale duplicates", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "parrott-plaza",
+    draft: {
+      kind: "modification",
+      title: "Parrott Plaza",
+      descriptionHtml: "",
+      highlights: [],
+      currentListing: {
+        title: "Parrott Plaza",
+        admin: { suites: [
+          { suiteNumber: "M", availableSqFt: "1800", baseRent: "Call" },
+          { suiteNumber: "N", availableSqFt: "2200", baseRent: "24" },
+        ] },
+      },
+      structuredUpdates: {
+        admin: { suites: [
+          { suiteNumber: "M", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly", unpriced: false },
+          { suiteNumber: "N", availableSqFt: "2200", baseRent: "24" },
+        ] },
+      },
+    },
+  });
+
+  assert.equal(payload.admin.suites.length, 2);
+  assert.equal(payload.admin.suites.filter((suite: any) => suite.suiteNumber === "M").length, 1);
+  assert.equal(payload.admin.suites.find((suite: any) => suite.suiteNumber === "M").baseRent, "1900");
+});
+
+
 test("active-listing proxy code normalizes legacy preview links to dedicated preview route", async () => {
   const source = await readFile("src/app/api/listingstream/active-listings/route.ts", "utf8");
   assert.match(source, /normalizePropertyPortalDraftPreviewUrl/);

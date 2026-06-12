@@ -132,7 +132,8 @@ Task:
 - For status changes, use the deterministic interpreter fields exactly. The frontend normalizer reads top-level status, statusBadgeLabel, underContract, leased, sold and nested visibility.status/statusBadgeLabel/underContract/leased/sold; set data.leased=true for Leased, data.sold=true for Sold, and data.underContract=true for Under Contract
 - Valid status values are: "leased", "sold", and "under_contract". Matching display labels are: "Leased", "Sold", and "Under Contract"
 - Return only fields that should change in structuredUpdates; unchanged fields are merged by backend from the canonical listing
-- For multi-tenant suite instructions, aggressively extract the broker's exact Available Sq. Ft. and Rent Rate values into structuredUpdates.admin.suites[].availableSqFt and .baseRent. Do not default to "Call" when the broker supplied a number, including labels like "Available Sq. Ft.: 1,900" or "Rent Rate: $1,900/month".
+- For multi-tenant suite instructions, aggressively extract the broker's exact Available Sq. Ft. and Rent Rate values into structuredUpdates.admin.suites[].availableSqFt and .baseRent. The "Call" fallback is strictly prohibited when the broker supplied a number, including labels like "Available Sq. Ft.: 1,900" or "Rent Rate: $1,900/month".
+- When changing suites, overwrite the entire admin.suites array with the corrected suite rows. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
 - For suite-specific uploaded files, never put file descriptions or user-provided labels into URLs. The backend will attach actual Firebase Storage download URLs to suites[].suitePhotos or suites[].suiteFloorPlans; do not place suite floor plans/photos in parent media, photos, heroImageUrl, or listing.photos.
 - Do not invent unsupported facts
 
@@ -369,7 +370,7 @@ export async function createModificationReviewDraft(input: {
 
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
-  const structuredUpdates = deepMergeRecords(interpreter.updatePayload, writerResult.structuredUpdates);
+  const structuredUpdates = deepMergeRecords(writerResult.structuredUpdates, interpreter.updatePayload);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
   const safeWriterResult = {
     ...writerResult,

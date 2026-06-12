@@ -403,6 +403,61 @@ test("modification delta prompt includes current listing payload and broker inst
   assert.match(prompt, /drop asking rate to \$22\/SF/i);
 });
 
+test("modification prompt strictly prohibits Call fallback and requires suite array replacement", () => {
+  const prompt = buildModificationDeltaPrompt({
+    currentListing: { title: "Parrott Plaza", admin: { suites: [{ suiteNumber: "M", baseRent: "Call" }] } },
+    instructions: "Update Suite M. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month.",
+    deterministicResult: {
+      summary: ["Updated Suite M."],
+      flags: [],
+      confidence: "high",
+      updatePayload: { admin: { suites: [{ suiteNumber: "M", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly" }] } },
+    },
+  });
+
+  assert.match(prompt, /Call\" fallback is strictly prohibited/i);
+  assert.match(prompt, /overwrite the entire admin\.suites array/i);
+  assert.match(prompt, /Rent Rate: \$1,900\/month/i);
+});
+
+test("deterministic suite parser overwrites duplicated AI suite arrays and preserves explicit pricing", async () => {
+  const currentListing = {
+    title: "Parrott Plaza",
+    admin: {
+      suites: [
+        { suiteNumber: "M", availableSqFt: "1800", baseRent: "Call", rentType: "NNN", suitePhotos: ["https://example.com/m.jpg"], suiteFloorPlans: [] },
+        { suiteNumber: "N", availableSqFt: "2200", baseRent: "24", rentType: "NNN", suitePhotos: [], suiteFloorPlans: [] },
+      ],
+    },
+  };
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Parrott Plaza",
+    descriptionHtml: "",
+    highlights: [],
+    structuredUpdates: { admin: { suites: [
+      { suiteNumber: "M", availableSqFt: "1800", baseRent: "Call" },
+      { suiteNumber: "M", availableSqFt: "1900", baseRent: "Call" },
+    ] } },
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Update Suite M. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json(currentListing),
+    writer,
+  });
+
+  const suites = (draft.structuredUpdates as any).admin.suites;
+  assert.equal(suites.filter((suite: any) => suite.suiteNumber === "M").length, 1);
+  assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").availableSqFt, "1900");
+  assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").baseRent, "1900");
+  assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").rentType, "Monthly");
+  assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").unpriced, false);
+});
+
+
 test("modification AI draft fetches current listing from property-portal before writing delta", async () => {
   const calls: string[] = [];
   const writer: PropertyPortalCloudWriter = async (prompt) => {
@@ -701,7 +756,7 @@ test("broker review UI exposes Mack checklist and before/after delta review", as
   assert.match(source, /Interpreter Confidence/);
 });
 
-test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise Draft, assessor fields, and payload preview", async () => {
+test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise Draft, assessor fields, and no raw payload preview", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /Review Draft/);
   assert.match(source, /Save as Draft & Preview/);
@@ -718,8 +773,8 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /Total Sq\. Ft\./);
   assert.match(source, /Lot Size/);
   assert.match(source, /Zoning/);
-  assert.match(source, /Full data payload preview/);
-  assert.match(source, /isMasterAdmin \? \(/);
+  assert.doesNotMatch(source, /Full data payload preview/);
+  assert.doesNotMatch(source, /data-testid="payload-preview"/);
   assert.match(source, /getDraftReviewChecklist/);
   assert.match(source, /defaultReviewChecklist/);
   assert.match(source, /Editable public-record fields before publish/);
@@ -736,16 +791,15 @@ test("broker review UI compresses draft preview media before posting to Vercel a
   assert.match(source, /Skipped oversized extras/);
 });
 
-test("broker role hides raw JSON while master admin keeps payload preview and all users see clean delta summaries", async () => {
+test("all roles hide raw JSON payload preview and see clean delta summaries", async () => {
   const pageSource = await readFile("src/app/pier-manager/page.tsx", "utf8");
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(pageSource, /getAuthSession/);
   assert.match(pageSource, /userRole=\{session\?\.role \?\? "broker"\}/);
   assert.match(source, /export function PierManagerListingConsole\(\{ userRole \}: \{ userRole: AuthRole \}\)/);
-  assert.match(source, /const isMasterAdmin = userRole === "master"/);
   assert.match(source, /data-testid="delta-summary-list"/);
   assert.doesNotMatch(source, /data-testid="delta-raw-json"/);
-  assert.match(source, /data-testid="payload-preview"/);
+  assert.doesNotMatch(source, /data-testid="payload-preview"/);
 });
 
 test("publish buttons expose clear success feedback and live publish clears review state", async () => {
@@ -770,7 +824,7 @@ test("broker review draft has explicit visible panels and does not force publish
   assert.match(source, /data-testid="assessor-data-fields"/);
   assert.match(source, /data-testid="review-checklist-panel"/);
   assert.match(source, /data-testid="broker-revise-loop"/);
-  assert.match(source, /data-testid="payload-preview"/);
+  assert.doesNotMatch(source, /data-testid="payload-preview"/);
   assert.match(source, /data-testid="final-publish-actions"/);
   assert.match(source, /Plain-text revise loop/);
   assert.match(source, /Final approval after payload review/);

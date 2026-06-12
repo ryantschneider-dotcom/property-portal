@@ -245,10 +245,11 @@ function suiteMatches(suite: SuiteRecord, suiteNumber: string) {
 function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructions: string) {
   const suiteIndex = suites.findIndex((suite) => suiteMatches(suite, suiteNumber));
   if (suiteIndex === -1) {
-    if (shouldAddSuite(instructions)) {
-      const size = extractSuiteSize(instructions, suiteNumber);
-      const rate = extractSuiteRate(instructions, suiteNumber);
-      const rentType = extractRentType(instructions) || "NNN";
+    const size = extractSuiteSize(instructions, suiteNumber);
+    const rate = extractSuiteRate(instructions, suiteNumber);
+    const rentType = extractRentType(instructions) || "NNN";
+    const hasExplicitSuiteFacts = size != null || rate != null || Boolean(extractRentType(instructions));
+    if (shouldAddSuite(instructions) || hasExplicitSuiteFacts) {
       const suite: SuiteRecord = {
         suiteNumber,
         availableSqFt: size == null ? "" : String(size),
@@ -258,7 +259,8 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
         suitePhotos: [],
         suiteFloorPlans: [],
       };
-      return { suites: [...suites, suite], changed: true, messages: [`Added Suite ${suiteNumber} to the active suite stack.`] };
+      const actionVerb = shouldAddSuite(instructions) ? "Added" : "Updated";
+      return { suites: [...suites.filter((suite) => !suiteMatches(suite, suiteNumber)), suite], changed: true, messages: [`${actionVerb} Suite ${suiteNumber} to the active suite stack.`] };
     }
     return { suites, changed: false, messages: [`Instruction referenced Suite ${suiteNumber}, but no exact suite match was found.`] };
   }
@@ -268,16 +270,14 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
   const messages: string[] = [];
   let changed = false;
 
-  const sizeMatch = instructions.match(/suite\s+[A-Za-z0-9-]+.*?(?:size|sf|square\s*feet)\s*(?:to|at|=|is)?\s*([\d,.]+(?:\.\d+)?\s*[mk]?)/i);
-  const size = parseIntegerToken(sizeMatch?.[1]);
+  const size = extractSuiteSize(instructions, suiteNumber);
   if (size != null) {
     current.availableSqFt = String(size);
     changed = true;
     messages.push(`Updated Suite ${suiteNumber} size to ${size.toLocaleString()} SF.`);
   }
 
-  const rateMatch = instructions.match(/suite\s+[A-Za-z0-9-]+.*?(?:rent|rate|base\s+rent)\s*(?:to|at|=|is)?\s*\$?\s*([\d,.]+(?:\.\d+)?)/i);
-  const rate = parseNumericToken(rateMatch?.[1]);
+  const rate = extractSuiteRate(instructions, suiteNumber);
   if (rate != null) {
     current.baseRent = String(rate);
     current.unpriced = false;
@@ -303,8 +303,7 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     return { suites, changed: false, messages: [`Suite ${suiteNumber} was detected, but no safe structured mutation was parsed yet.`] };
   }
 
-  nextSuites[suiteIndex] = current;
-  return { suites: nextSuites, changed: true, messages };
+  return { suites: [...nextSuites.filter((suite) => !suiteMatches(suite, suiteNumber)), current], changed: true, messages };
 }
 
 export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>, instructions: string): BrokerEditInterpreterResult {
