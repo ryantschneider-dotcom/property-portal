@@ -270,8 +270,24 @@ function isValidMediaPayload(media: unknown) {
   return urls.length > 0 && urls.every(isRenderableImageUrl);
 }
 
+function extractAssetUrl(value: unknown): string | null {
+  if (typeof value === "string") return clean(value);
+  if (!isRecord(value)) return null;
+  return clean(value.url as string | undefined) || clean(value.href as string | undefined) || clean(value.downloadUrl as string | undefined) || clean(value.downloadURL as string | undefined) || clean(value.publicUrl as string | undefined) || clean(value.publicURL as string | undefined) || clean(value.src as string | undefined) || null;
+}
+
 function isExternalAssetUrl(value: unknown) {
-  return typeof value === "string" && /^https?:\/\//i.test(value.trim());
+  const url = extractAssetUrl(value);
+  if (!url || !/^https?:\/\/[^\s]+$/i.test(url)) return false;
+  if (/^https?:\/\/firebase\.storage\.url\//i.test(url)) return false;
+  if (/^https?:\/\/storage\.cloud\.google\.com\//i.test(url)) return false;
+  if (/^gs:\/\//i.test(url)) return false;
+  return true;
+}
+
+function normalizeExternalAssetUrls(value: unknown) {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return items.map(extractAssetUrl).filter((url): url is string => Boolean(url && isExternalAssetUrl(url)));
 }
 
 function buildSlugFromTitle(title: string) {
@@ -434,6 +450,18 @@ function isPdfUpload(upload: StagedListingImageUpload) {
   return /pdf/i.test(upload.contentType || "") || /\.pdf$/i.test(upload.originalName || "") || /\.pdf(?:\?|$)/i.test(upload.url);
 }
 
+function instructionsRequestFloorPlan(draft: PropertyPortalReviewDraftForApproval) {
+  if (draft.kind !== "modification") return false;
+  const instructions = clean(draft.sourceInput?.instructions as string | undefined);
+  return /floor\s*plans?|site\s*plans?|plan\s*(?:image|photo|file)?/i.test(instructions);
+}
+
+function uploadLooksLikeFloorPlan(upload: StagedListingImageUpload, draft: PropertyPortalReviewDraftForApproval) {
+  if (isPdfUpload(upload)) return true;
+  const name = [upload.originalName, upload.path, upload.url].filter(Boolean).join(" ");
+  return /floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(name) && instructionsRequestFloorPlan(draft);
+}
+
 function getSuiteTargetFromDraft(draft: PropertyPortalReviewDraftForApproval) {
   if (draft.kind !== "modification") return "";
   const instructions = clean(draft.sourceInput?.instructions as string | undefined);
@@ -450,16 +478,16 @@ function attachUploadsToSuiteMedia(draft: PropertyPortalReviewDraftForApproval, 
     if (!isRecord(suite)) return suite;
     const suiteNumber = clean(suite.suiteNumber as string | undefined);
     if (suiteNumber.toLowerCase() !== suiteTarget.toLowerCase()) return suite;
-    const photoUploads = uploads.filter((upload) => !isPdfUpload(upload)).map((upload) => upload.url);
-    const floorPlanUploads = uploads.filter(isPdfUpload).map((upload) => upload.url);
+    const floorPlanUploads = uploads.filter((upload) => uploadLooksLikeFloorPlan(upload, draft)).map((upload) => upload.url).filter(isExternalAssetUrl);
+    const photoUploads = uploads.filter((upload) => !uploadLooksLikeFloorPlan(upload, draft)).map((upload) => upload.url).filter(isExternalAssetUrl);
     return {
       ...suite,
       suitePhotos: [
-        ...(Array.isArray(suite.suitePhotos) ? suite.suitePhotos.filter(isExternalAssetUrl) : []),
+        ...normalizeExternalAssetUrls(suite.suitePhotos),
         ...photoUploads,
       ],
       suiteFloorPlans: [
-        ...(Array.isArray(suite.suiteFloorPlans) ? suite.suiteFloorPlans.filter(isExternalAssetUrl) : []),
+        ...normalizeExternalAssetUrls(suite.suiteFloorPlans),
         ...floorPlanUploads,
       ],
     };
