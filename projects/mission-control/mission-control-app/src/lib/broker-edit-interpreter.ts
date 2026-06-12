@@ -124,6 +124,8 @@ function extractLeasedSuite(instructions: string) {
 }
 
 function extractSuiteNumber(instructions: string) {
+  const addMatch = instructions.match(/(?:add|create|include|insert|new)\s+suite\s+([A-Za-z0-9-]+)/i);
+  if (addMatch?.[1]) return addMatch[1].trim();
   const match = instructions.match(/suite\s+([A-Za-z0-9-]+)/i);
   return match?.[1]?.trim() || null;
 }
@@ -168,8 +170,12 @@ function shouldMarkUnpriced(instructions: string) {
 
 function getRequestedLifecycleAction(instructions: string): "archive" | "delete" | null {
   const text = instructions.toLowerCase();
-  if (/\b(?:archive|delist|take\s+(?:it|this|the\s+listing)?\s*down|remove\s+(?:it|this|the\s+listing)?|pull\s+(?:it|this|the\s+listing)?|deactivate)\b/.test(text)) return "archive";
-  if (/\b(?:delete|permanently\s+delete)\b/.test(text)) return "delete";
+  if (/\b(?:archive|delist|deactivate)\s+(?:it|this|this\s+listing|this\s+property|the\s+listing|the\s+property|listing|property)(?:\s+from\s+(?:the\s+)?(?:live\s+)?(?:site|website|public\s+listings|market))?\b/.test(text)) return "archive";
+  if (/\barchive\s+it\b/.test(text)) return "archive";
+  if (/\btake\s+(?:it|this|the\s+listing|the\s+property|listing|property)\s*down\b/.test(text)) return "archive";
+  if (/\bremove\s+(?:it|this|the\s+listing|the\s+property|listing|property)\s*(?:from\s+(?:the\s+)?(?:live\s+)?(?:site|website|public\s+listings|market))?\b/.test(text)) return "archive";
+  if (/\bpull\s+(?:it|this|this\s+listing|this\s+property|the\s+listing|the\s+property|listing|property)\s+from\s+(?:the\s+)?(?:live\s+)?(?:site|website|public\s+listings|market)\b/.test(text)) return "archive";
+  if (/\b(?:delete|permanently\s+delete)\s+(?:it|this|the\s+)?(?:listing|property)\b/.test(text)) return "delete";
   return null;
 }
 

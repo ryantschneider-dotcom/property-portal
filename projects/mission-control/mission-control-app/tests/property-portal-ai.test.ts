@@ -379,6 +379,23 @@ test("polite archive and removal instructions remain high-confidence lifecycle r
   }
 });
 
+test("suite removal or replacement instructions do not become archive lifecycle requests", async () => {
+  const { interpretBrokerEditRequest } = await import("../src/lib/broker-edit-interpreter");
+  const result = interpretBrokerEditRequest(
+    {
+      title: "Parrott Plaza",
+      visibility: { transactionLabel: "For Lease" },
+      admin: { suites: [{ suiteNumber: "P", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly" }] },
+    },
+    "Remove Suite P and add Suite Q. Available Sq. Ft.: 2,100. Rent Rate: $2,100/month.",
+  );
+
+  assert.equal(result.lifecycleAction, undefined);
+  assert.equal((result.updatePayload.lifecycle as unknown), undefined);
+  assert.equal(((result.updatePayload.admin as Record<string, unknown>).suites as Array<Record<string, unknown>>).some((suite) => suite.suiteNumber === "Q"), true);
+});
+
+
 test("pier-manager copy names ListingStream backend instead of deprecated property-portal payload", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /wired directly to the ListingStream backend/i);
