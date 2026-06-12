@@ -23,6 +23,23 @@ function valuesEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+function formatNumberWithCommas(value: string) {
+  const number = Number(value.replace(/[$,]/g, ""));
+  if (!Number.isFinite(number)) return value;
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(number);
+}
+
+function formatSuiteSnapshot(suite: JsonRecord, action: "Added" | "Removed") {
+  const parts: string[] = [];
+  const size = displayValue(suite.availableSqFt ?? suite.sizeSf);
+  const rent = displayValue(suite.baseRent ?? suite.rent ?? suite.rate);
+  const rentType = displayValue(suite.rentType);
+  if (size !== "—") parts.push(`${formatNumberWithCommas(size)} SF`);
+  if (rent !== "—") parts.push(/^call/i.test(rent) ? rent : `$${formatNumberWithCommas(rent)}`);
+  if (rentType !== "—") parts.push(rentType);
+  return `${action}: ${parts.length ? parts.join(" • ") : "suite row"}`;
+}
+
 const fieldLabels: Record<string, string> = {
   availableSqFt: "Available Sq. Ft.",
   sizeSf: "Available Sq. Ft.",
@@ -61,6 +78,14 @@ function summarizeSuiteChanges(before: JsonRecord, after: JsonRecord): DeltaSumm
   for (let index = 0; index < suiteCount; index += 1) {
     const beforeSuite = isRecord(beforeSuites[index]) ? beforeSuites[index] as JsonRecord : {};
     const afterSuite = isRecord(afterSuites[index]) ? afterSuites[index] as JsonRecord : {};
+    if (!Object.keys(beforeSuite).length && Object.keys(afterSuite).length) {
+      rows.push({ label: `Suite ${displayValue(afterSuite.suiteNumber)}`, before: "Not present", after: formatSuiteSnapshot(afterSuite, "Added") });
+      continue;
+    }
+    if (Object.keys(beforeSuite).length && !Object.keys(afterSuite).length) {
+      rows.push({ label: `Suite ${displayValue(beforeSuite.suiteNumber)}`, before: formatSuiteSnapshot(beforeSuite, "Removed"), after: "Removed" });
+      continue;
+    }
     const keys = new Set([...preferredFields, ...Object.keys(beforeSuite), ...Object.keys(afterSuite)]);
     for (const key of keys) {
       if (key === "suiteNumber" || key === "suitePhotos" || key === "suiteFloorPlans") continue;

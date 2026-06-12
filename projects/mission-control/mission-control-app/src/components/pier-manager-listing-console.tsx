@@ -86,6 +86,23 @@ function getAbortableErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function extractDraftPreviewUrl(result: {
+  previewUrl?: string;
+  result?: { previewUrl?: string; slug?: string };
+  save?: { previewUrl?: string; slug?: string };
+  launch?: { previewUrl?: string; slug?: string; result?: { previewUrl?: string; slug?: string }; save?: { previewUrl?: string; slug?: string } };
+}) {
+  const explicit = result.previewUrl
+    || result.result?.previewUrl
+    || result.launch?.previewUrl
+    || result.launch?.result?.previewUrl
+    || result.save?.previewUrl
+    || result.launch?.save?.previewUrl;
+  if (explicit) return explicit;
+  const slug = result.result?.slug || result.launch?.result?.slug || result.save?.slug || result.launch?.save?.slug || result.launch?.slug;
+  return slug ? `/preview/${slug}` : "";
+}
+
 async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -621,9 +638,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         method: "POST",
         body: formData,
       });
-      const result = await parseJsonResponse(response) as { previewUrl?: string; launch?: { previewUrl?: string; result?: { previewUrl?: string } } };
+      const result = await parseJsonResponse(response) as Parameters<typeof extractDraftPreviewUrl>[0];
       if (mode === "draft-preview") {
-        const previewUrl = result.previewUrl || result.launch?.previewUrl || result.launch?.result?.previewUrl;
+        const previewUrl = extractDraftPreviewUrl(result);
         const normalizedPreviewUrl = previewUrl ? normalizePropertyPortalDraftPreviewUrl(previewUrl) : "";
         setDraftPreviewUrl(normalizedPreviewUrl);
         const message = "Success! Draft preview saved. Ascendix was not touched and the draft remains hidden from the public website grid.";
