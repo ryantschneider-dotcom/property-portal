@@ -138,6 +138,10 @@ Task:
 - For suite rows, extract admin.suites[].spaceType only when the broker explicitly describes a real architectural/use type such as Office, Retail, Industrial, Warehouse, Storage, Flex, Medical Office, Restaurant, or Showroom. Never write "Available Space" as a suite spaceType; omit the field when unstated so ListingStream can inherit root propertyType.
 - For suite rows, actively extract lease type/expense structure into admin.suites[].rentType only when the broker states it (NNN, NN, Gross, Modified Gross, Full Service, Plus Utilities). If no lease type is stated for a suite, omit or preserve the existing rentType; do not invent NNN.
 - For suite rows, extract suite-specific notes/descriptions into admin.suites[].suiteNotes when the broker provides Suite Notes, suite-specific description, condition notes, or availability comments.
+- Strip conversational wrappers from every narrative field before writing structuredUpdates. If the broker says "Please add a description under Suite M that says...", do not include "under Suite M", "that says", "please add", or similar command language in the final copy; keep only the core factual narrative.
+- Apply this exact wrapper-stripping and copywriting rule to suiteNotes, propertyDescription, locationDescription, leaseDescription, saleDescription, highlights, bullets, and every other open-text narrative field.
+- Rewrite broker shorthand into polished, client-facing marketing copy using a professional, down-to-earth, and warm voice. It should read naturally, as if written by the broker directly. Avoid robotic, generic, or overly verbose AI-style language.
+- Example: broker input "Please add a description under Suite M that says 100% storage with overhead drive-in rollup door and pedestrian door" should become copy like "The space is 100% storage and features an overhead drive-in rollup door alongside a single pedestrian access door."
 - Do not invent unsupported facts
 
 Required JSON keys:
@@ -195,7 +199,7 @@ export async function defaultPropertyPortalCloudWriter(prompt: string): Promise<
       messages: [
         {
           role: "system",
-          content: "You produce strict JSON for premium commercial real estate listing drafts and broker-requested listing deltas.",
+          content: "You produce strict JSON for premium commercial real estate listing drafts and broker-requested listing deltas. Strip conversational wrappers from narrative instructions and polish open-text fields in a professional, down-to-earth, warm broker voice without robotic AI-style filler.",
         },
         { role: "user", content: prompt },
       ],

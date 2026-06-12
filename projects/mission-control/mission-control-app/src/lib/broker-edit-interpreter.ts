@@ -182,10 +182,23 @@ function extractSuiteSpaceType(instructions: string, suiteNumber?: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function cleanExtractedNote(value: string | undefined) {
-  return asString(value)
-    .replace(/^(?:suite\s+[A-Za-z0-9-]+\s*)?(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
+function cleanNarrativeCopy(value: string | undefined) {
+  let text = asString(value)
+    .replace(/^[\s"“”'`]+|[\s"“”'`]+$/g, "")
+    .replace(/^(?:please\s+)?(?:add|update|change|set|replace|write|put|include)\s+(?:a\s+|the\s+)?(?:new\s+)?/i, "")
+    .replace(/^(?:a\s+|the\s+)?(?:property\s+description|lease\s+description|sale\s+description|location\s+description|neighborhood\s+description|area\s+description|suite\s+notes?|notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
+    .replace(/^(?:under|for|to|on)\s+(?:suite\s+)?[A-Za-z0-9-]+\s+(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
+    .replace(/^(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
     .replace(/[.。]$/, "")
+    .trim();
+
+  text = text.replace(/^["“”'`]+|["“”'`]+$/g, "").trim();
+  return text;
+}
+
+function cleanExtractedNote(value: string | undefined) {
+  return cleanNarrativeCopy(value)
+    .replace(/^(?:suite\s+[A-Za-z0-9-]+\s*)?(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
     .trim();
 }
 
@@ -257,9 +270,9 @@ function splitBulletLines(value: string) {
 function extractFieldText(instructions: string, aliases: string[]) {
   for (const alias of aliases) {
     const quoted = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*["“]([^"”]+)["”]`, "i"));
-    if (quoted) return quoted;
+    if (quoted) return cleanNarrativeCopy(quoted);
     const plain = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*([^\\n]{8,400})`, "i"));
-    if (plain) return plain;
+    if (plain) return cleanNarrativeCopy(plain);
   }
   return null;
 }
