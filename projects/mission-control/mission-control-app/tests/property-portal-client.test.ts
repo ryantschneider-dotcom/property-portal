@@ -545,6 +545,14 @@ test("suite floor plan image uploads route to suiteFloorPlans and discard placeh
   assert.doesNotMatch(JSON.stringify(approvedPayload.admin.suites[0]), /firebase\.storage\.url|gs:\/\//);
 });
 
+
+test("approve route source keeps PDF uploads as safe URL fallback and does not rasterize in Vercel", async () => {
+  const routeSource = await readFile("src/app/api/listingstream/approve-draft/route.ts", "utf8");
+  assert.doesNotMatch(routeSource, /sharp\(input,\s*\{\s*density/i);
+  assert.match(routeSource, /preservePdfUploadWithoutRasterizing/);
+  assert.match(routeSource, /contentType:\s*file\.type\s*\|\|\s*"application\/pdf"/);
+});
+
 test("mission-control revision proxy forwards property-portal internal token helper", async () => {
   const routeSource = await readFile("src/app/api/listingstream/revisions/route.ts", "utf8");
   assert.match(routeSource, /getPropertyPortalInternalHeaders/);

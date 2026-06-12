@@ -2,7 +2,6 @@ import { promises as fs } from "fs";
 import path from "path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import sharp from "sharp";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
 import { approvePropertyPortalReviewDraft, changePropertyPortalDraftLifecycle, createPropertyPortalProxyError, type StagedListingImageUpload } from "@/lib/property-portal-client";
@@ -26,13 +25,15 @@ function isPdfFile(file: File) {
   return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name);
 }
 
-async function rasterizeFirstPdfPage(file: File) {
-  const input = Buffer.from(await file.arrayBuffer());
-  const png = await sharp(input, { density: 160, limitInputPixels: false }).png().toBuffer();
+async function preservePdfUploadWithoutRasterizing(file: File) {
+  // Vercel serverless functions do not reliably include native PDF rasterization
+  // dependencies (Ghostscript/Poppler/ImageMagick), and sharp PDF rendering can
+  // throw before the ListingStream publish call. Preserve the public PDF URL
+  // instead so approve/publish never crashes on a floor-plan PDF.
   return {
-    buffer: png,
-    storedSuffix: ".png",
-    contentType: "image/png",
+    buffer: Buffer.from(await file.arrayBuffer()),
+    storedSuffix: path.extname(file.name) || ".pdf",
+    contentType: file.type || "application/pdf",
     originalName: file.name,
   };
 }
@@ -47,10 +48,10 @@ function absoluteUploadUrl(request: Request, storedName: string) {
 async function createLocalStagedAssetUpload(request: Request, file: File, options: { slug?: string; index: number }): Promise<StagedListingImageUpload | null> {
   await fs.mkdir(uploadsDir, { recursive: true });
   const pdf = isPdfFile(file);
-  const rendered = pdf ? await rasterizeFirstPdfPage(file) : null;
-  const originalBuffer = rendered ? rendered.buffer : Buffer.from(await file.arrayBuffer());
-  const originalName = rendered ? rendered.originalName : file.name;
-  const extension = rendered?.storedSuffix || path.extname(file.name) || ".jpg";
+  const preservedPdf = pdf ? await preservePdfUploadWithoutRasterizing(file) : null;
+  const originalBuffer = preservedPdf ? preservedPdf.buffer : Buffer.from(await file.arrayBuffer());
+  const originalName = preservedPdf ? preservedPdf.originalName : file.name;
+  const extension = preservedPdf?.storedSuffix || path.extname(file.name) || ".jpg";
   const base = path.basename(file.name, path.extname(file.name)) || "suite-upload";
   const storedName = `public-suite-media-${Date.now()}-${options.index}-${safeStoredName(options.slug || "listing")}-${safeStoredName(base)}${extension}`;
   const filePath = path.join(uploadsDir, storedName);
@@ -58,7 +59,7 @@ async function createLocalStagedAssetUpload(request: Request, file: File, option
   return {
     url: absoluteUploadUrl(request, storedName),
     path: `/api/uploads/file/${storedName}`,
-    contentType: rendered?.contentType || file.type || "application/octet-stream",
+    contentType: preservedPdf?.contentType || file.type || "application/octet-stream",
     size: originalBuffer.byteLength,
     originalName,
   };

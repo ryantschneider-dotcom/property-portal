@@ -105,6 +105,31 @@ test("modification prompt requires wrapper stripping and broker-written marketin
   assert.match(prompt, /robotic, generic, or overly verbose/i);
 });
 
+
+test("suite floor plan file-only instructions produce high-confidence structured mutation", async () => {
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Parrott Plaza",
+    descriptionHtml: "<p>Suite P floor plan attached.</p>",
+    highlights: [],
+    structuredUpdates: {},
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: "Attach the uploaded PDF floor plan to Suite P.",
+    fetchImpl: async () => Response.json(currentListing),
+    writer,
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  const suiteP = suites.find((suite) => suite.suiteNumber === "P");
+  assert.equal(draft.review.interpreter.confidence, "high");
+  assert.deepEqual(suiteP?.suiteFloorPlans, []);
+  assert.match(draft.review.interpreter.summary.join(" "), /Suite P floor plan upload/i);
+  assert.equal(draft.review.interpreter.flags.length, 0);
+});
+
 test("suite PDF uploads are converted to image URLs but still routed to suiteFloorPlans", () => {
   const payload = buildPropertyPortalApprovedPayload({
     mode: "publish-live",

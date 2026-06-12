@@ -210,6 +210,15 @@ function extractSuiteNotes(instructions: string, suiteNumber: string) {
   return note || null;
 }
 
+
+function getSuiteMediaIntent(instructions: string): "floorPlan" | "photo" | null {
+  const mentionsFile = /\b(?:upload(?:ed)?|attach(?:ed)?|file|pdf|image|photo|plan)\b/i.test(instructions);
+  if (!mentionsFile) return null;
+  if (/\b(?:floor\s*plans?|site\s*plans?|plan\s*(?:pdf|file|image|photo)?|pdf\s*floor\s*plan)\b/i.test(instructions)) return "floorPlan";
+  if (/\b(?:suite\s*)?(?:photos?|images?|pictures?)\b/i.test(instructions)) return "photo";
+  return null;
+}
+
 function shouldMarkUnpriced(instructions: string) {
   return /(?:mark\s+)?(?:sale\s+price\s+)?(?:as\s+)?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions);
 }
@@ -367,6 +376,17 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     current.unpriced = true;
     changed = true;
     messages.push(`Marked Suite ${suiteNumber} as unpriced.`);
+  }
+
+  const mediaIntent = getSuiteMediaIntent(instructions);
+  if (mediaIntent === "floorPlan") {
+    current.suiteFloorPlans = Array.isArray(current.suiteFloorPlans) ? current.suiteFloorPlans : [];
+    changed = true;
+    messages.push(`Prepared Suite ${suiteNumber} floor plan upload mapping.`);
+  } else if (mediaIntent === "photo") {
+    current.suitePhotos = Array.isArray(current.suitePhotos) ? current.suitePhotos : [];
+    changed = true;
+    messages.push(`Prepared Suite ${suiteNumber} photo upload mapping.`);
   }
 
   if (!changed) {
@@ -530,7 +550,8 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   if (Object.keys(nextContent).length) updatePayload.content = { ...content, ...nextContent };
   if (Object.keys(nextAdmin).length) updatePayload.admin = { ...admin, ...nextAdmin };
 
-  const confidence: BrokerEditInterpreterResult["confidence"] = lifecycleAction && flags.length === 0 ? "high" : summary.length >= 3 && flags.length === 0 ? "high" : summary.length >= 1 ? "medium" : "low";
+  const hasSuiteMediaMapping = summary.some((item) => /Prepared Suite .* upload mapping/i.test(item));
+  const confidence: BrokerEditInterpreterResult["confidence"] = lifecycleAction && flags.length === 0 ? "high" : hasSuiteMediaMapping && flags.length === 0 ? "high" : summary.length >= 3 && flags.length === 0 ? "high" : summary.length >= 1 ? "medium" : "low";
 
   return { summary, flags, confidence, updatePayload, ...(lifecycleAction ? { lifecycleAction } : {}) };
 }
