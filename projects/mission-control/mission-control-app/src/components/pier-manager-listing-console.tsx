@@ -381,6 +381,27 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     }
   }, [showFinancialToggles]);
 
+
+  async function refreshActiveListingsAfterPublish(preferredPropertyId: string) {
+    const cacheBust = Date.now();
+    const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?fresh=${cacheBust}`, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+        Pragma: "no-cache",
+      },
+    }));
+    const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
+    setActiveListings(items);
+    const refreshedSelection = items.find((item) => item.id === preferredPropertyId || item.slug === preferredPropertyId);
+    if (refreshedSelection) {
+      const value = getListingSelectionValue(refreshedSelection);
+      setSelectedPropertyId(value);
+      setListingSearchText(getListingSearchLabel(refreshedSelection));
+    }
+    return items;
+  }
+
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
     setListingPickerOpen(false);
@@ -639,6 +660,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         body: formData,
       });
       const result = await parseJsonResponse(response) as Parameters<typeof extractDraftPreviewUrl>[0];
+      const publishedPropertyId = selectedPropertyId;
       if (mode === "draft-preview") {
         const previewUrl = extractDraftPreviewUrl(result);
         const normalizedPreviewUrl = previewUrl ? normalizePropertyPortalDraftPreviewUrl(previewUrl) : "";
@@ -649,13 +671,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         setReviewStatus(`${message} ${normalizedPreviewUrl ? `Draft URL: ${normalizedPreviewUrl}` : "No preview URL came back from ListingStream."}`);
       } else {
         const message = "Success! Modifications have been published and will be live on the website shortly.";
-        setReviewStatus(`${message} The live ListingStream publish path completed; WordPress was not involved.`);
+        setReviewStatus(`${message} Refreshing the live ListingStream baseline so the next edit starts from the newly published document…`);
+        await refreshActiveListingsAfterPublish(publishedPropertyId);
         completeSuccessfulSubmission();
       }
-      fetch("/api/listingstream/active-listings", { cache: "no-store" }).then(parseJsonResponse).then((data) => {
-        const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
-        setActiveListings(items);
-      }).catch(() => undefined);
+      if (mode === "draft-preview") {
+        refreshActiveListingsAfterPublish(publishedPropertyId).catch(() => undefined);
+      }
     } catch (error) {
       setReviewStatus(error instanceof Error ? error.message : "Could not publish draft.");
     } finally {

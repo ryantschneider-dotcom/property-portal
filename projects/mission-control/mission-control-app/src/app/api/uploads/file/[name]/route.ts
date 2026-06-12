@@ -18,11 +18,12 @@ export async function GET(
   const cookieStore = await cookies();
   const isAuthenticated = await isValidAuthToken(cookieStore.get(AUTH_COOKIE)?.value);
 
-  if (!isAuthenticated) {
+  const { name } = await context.params;
+  const isPublicSuiteMedia = /^public-suite-media-[a-zA-Z0-9._-]+$/.test(name);
+
+  if (!isAuthenticated && !isPublicSuiteMedia) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const { name } = await context.params;
   const filePath = path.resolve(uploadsDir, name);
 
   if (filePath !== resolvedUploadsDir && !filePath.startsWith(`${resolvedUploadsDir}${path.sep}`)) {
@@ -35,7 +36,7 @@ export async function GET(
     return new Response(file, {
       status: 200,
       headers: {
-        "Content-Type": "application/octet-stream",
+        "Content-Type": name.toLowerCase().endsWith(".png") ? "image/png" : name.toLowerCase().match(/\.(jpe?g)$/) ? "image/jpeg" : "application/octet-stream",
         "Content-Disposition": `inline; filename="${contentDispositionFilename(path.basename(name))}"`,
       },
     });

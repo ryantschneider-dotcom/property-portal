@@ -1,16 +1,67 @@
+import { promises as fs } from "fs";
+import path from "path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
-import { approvePropertyPortalReviewDraft, changePropertyPortalDraftLifecycle, createPropertyPortalProxyError } from "@/lib/property-portal-client";
+import { approvePropertyPortalReviewDraft, changePropertyPortalDraftLifecycle, createPropertyPortalProxyError, type StagedListingImageUpload } from "@/lib/property-portal-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const uploadsDir = path.join(process.cwd(), "data", "uploads");
 
 async function requirePierManagerAuth() {
   const cookieStore = await cookies();
   const ok = await isValidAuthToken(cookieStore.get(AUTH_COOKIE)?.value);
   if (!ok) throw new Error("Unauthorized");
+}
+
+function safeStoredName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function isPdfFile(file: File) {
+  return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name);
+}
+
+async function rasterizeFirstPdfPage(file: File) {
+  const input = Buffer.from(await file.arrayBuffer());
+  const png = await sharp(input, { density: 160, limitInputPixels: false }).png().toBuffer();
+  return {
+    buffer: png,
+    storedSuffix: ".png",
+    contentType: "image/png",
+    originalName: file.name,
+  };
+}
+
+function absoluteUploadUrl(request: Request, storedName: string) {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+  const origin = request.headers.get("origin") || (forwardedHost ? `${forwardedProto}://${forwardedHost}` : new URL(request.url).origin);
+  return `${origin.replace(/\/+$/, "")}/api/uploads/file/${encodeURIComponent(storedName)}`;
+}
+
+async function createLocalStagedAssetUpload(request: Request, file: File, options: { slug?: string; index: number }): Promise<StagedListingImageUpload | null> {
+  await fs.mkdir(uploadsDir, { recursive: true });
+  const pdf = isPdfFile(file);
+  const rendered = pdf ? await rasterizeFirstPdfPage(file) : null;
+  const originalBuffer = rendered ? rendered.buffer : Buffer.from(await file.arrayBuffer());
+  const originalName = rendered ? rendered.originalName : file.name;
+  const extension = rendered?.storedSuffix || path.extname(file.name) || ".jpg";
+  const base = path.basename(file.name, path.extname(file.name)) || "suite-upload";
+  const storedName = `public-suite-media-${Date.now()}-${options.index}-${safeStoredName(options.slug || "listing")}-${safeStoredName(base)}${extension}`;
+  const filePath = path.join(uploadsDir, storedName);
+  await fs.writeFile(filePath, originalBuffer);
+  return {
+    url: absoluteUploadUrl(request, storedName),
+    path: `/api/uploads/file/${storedName}`,
+    contentType: rendered?.contentType || file.type || "application/octet-stream",
+    size: originalBuffer.byteLength,
+    originalName,
+  };
 }
 
 export async function POST(request: Request) {
@@ -44,7 +95,13 @@ export async function POST(request: Request) {
     }
 
     if (!draft) return NextResponse.json({ error: "Draft is required" }, { status: 400 });
-    const result = await approvePropertyPortalReviewDraft({ draft: draft as Parameters<typeof approvePropertyPortalReviewDraft>[0]["draft"], assets, mode });
+    const typedDraft = draft as Parameters<typeof approvePropertyPortalReviewDraft>[0]["draft"];
+    const result = await approvePropertyPortalReviewDraft({
+      draft: typedDraft,
+      assets,
+      mode,
+      uploadStagedImage: (file, options) => createLocalStagedAssetUpload(request, file, options),
+    });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

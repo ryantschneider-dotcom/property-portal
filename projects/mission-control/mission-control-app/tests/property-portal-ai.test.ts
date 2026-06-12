@@ -288,7 +288,7 @@ test("plain-English suite updates extract explicit Available Sq. Ft. and Rent Ra
   assert.equal(suites[0].suiteNumber, "C");
   assert.equal(suites[0].availableSqFt, "1900");
   assert.equal(suites[0].baseRent, "1900");
-  assert.equal(suites[0].rentType, "Monthly");
+  assert.equal(suites[0].rentType, "Plus Utilities");
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).availableSqFt, 1900);
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).askingPriceRatePerSf, 1900);
 });
@@ -542,7 +542,7 @@ test("deterministic suite parser overwrites duplicated AI suite arrays and prese
   assert.equal(suites.filter((suite: any) => suite.suiteNumber === "M").length, 1);
   assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").availableSqFt, "1900");
   assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").baseRent, "1900");
-  assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").rentType, "Monthly");
+  assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").rentType, "NNN");
   assert.equal(suites.find((suite: any) => suite.suiteNumber === "M").unpriced, false);
 });
 
@@ -571,7 +571,7 @@ test("modification AI draft fetches current listing from property-portal before 
     writer,
   });
 
-  assert.equal(calls[0], "https://portal.example.com/api/properties/2812-williams-street");
+  assert.match(calls[0], /^https:\/\/portal\.example\.com\/api\/properties\/2812-williams-street\?fresh=\d+$/);
   assert.equal(draft.kind, "modification");
   assert.equal(draft.status, "ready_for_broker_review");
   assert.deepEqual(draft.structuredUpdates.pricing, { askingPriceRatePerSf: 22, listingPriceVisibility: "per_sf" });

@@ -6,6 +6,7 @@ type SuiteRecord = {
   baseRent: string;
   rentType: string;
   spaceType?: string;
+  suiteNotes?: string;
   unpriced?: boolean;
   suitePhotos?: unknown[];
   suiteFloorPlans?: unknown[];
@@ -59,11 +60,12 @@ function normalizeSuiteRows(value: unknown): SuiteRecord[] {
         unpriced: suite.unpriced === true,
       };
       if (asString(suite.spaceType)) normalized.spaceType = asString(suite.spaceType);
+      if (asString(suite.suiteNotes) || asString(suite.notes) || asString(suite.description)) normalized.suiteNotes = asString(suite.suiteNotes) || asString(suite.notes) || asString(suite.description);
       if (Array.isArray(suite.suitePhotos)) normalized.suitePhotos = suite.suitePhotos;
       if (Array.isArray(suite.suiteFloorPlans)) normalized.suiteFloorPlans = suite.suiteFloorPlans;
       return normalized;
     })
-    .filter((suite) => suite.suiteNumber || suite.availableSqFt || suite.baseRent || suite.rentType);
+    .filter((suite) => suite.suiteNumber || suite.availableSqFt || suite.baseRent || suite.rentType || suite.suiteNotes);
 }
 
 function totalSuiteSqFt(suites: SuiteRecord[]) {
@@ -159,11 +161,12 @@ function extractSuiteRate(instructions: string, suiteNumber: string) {
 }
 
 function extractRentType(instructions: string) {
-  if (/\b(?:per\s+month|\/\s*mo(?:nth)?|monthly)\b/i.test(instructions)) return "Monthly";
-  const match = instructions.match(/\b(NNN|modified\s+gross|full\s+service|gross)\b/i);
+  const match = instructions.match(/\b(NNN|NN|modified\s+gross|full\s+service|plus\s+utilities|gross)\b/i);
   if (!match) return null;
   const value = match[1].replace(/\s+/g, " ").trim();
-  return value.toLowerCase() === "nnn" ? "NNN" : value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const lower = value.toLowerCase();
+  if (lower === "nnn" || lower === "nn") return value.toUpperCase();
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function extractSuiteSpaceType(instructions: string, suiteNumber?: string) {
@@ -177,6 +180,21 @@ function extractSuiteSpaceType(instructions: string, suiteNumber?: string) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function cleanExtractedNote(value: string | undefined) {
+  return asString(value)
+    .replace(/^(?:suite\s+[A-Za-z0-9-]+\s*)?(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
+    .replace(/[.。]$/, "")
+    .trim();
+}
+
+function extractSuiteNotes(instructions: string, suiteNumber: string) {
+  const escapedSuite = escapeRegExp(suiteNumber);
+  const scoped = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,80}?(?:suite\\s*)?(?:notes?|description|comments?)\\s*(?:to|as|=|is|:)?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
+  const labeled = instructions.match(/(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*["“]?([^"”\n.]{8,360})/i);
+  const note = cleanExtractedNote(scoped?.[1] || labeled?.[1]);
+  return note || null;
 }
 
 function shouldMarkUnpriced(instructions: string) {
@@ -268,9 +286,10 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
   if (suiteIndex === -1) {
     const size = extractSuiteSize(instructions, suiteNumber);
     const rate = extractSuiteRate(instructions, suiteNumber);
-    const rentType = extractRentType(instructions) || "NNN";
+    const rentType = extractRentType(instructions) || "";
     const spaceType = extractSuiteSpaceType(instructions, suiteNumber);
-    const hasExplicitSuiteFacts = size != null || rate != null || Boolean(extractRentType(instructions)) || Boolean(spaceType);
+    const suiteNotes = extractSuiteNotes(instructions, suiteNumber);
+    const hasExplicitSuiteFacts = size != null || rate != null || Boolean(extractRentType(instructions)) || Boolean(spaceType) || Boolean(suiteNotes);
     if (shouldAddSuite(instructions) || hasExplicitSuiteFacts) {
       const suite: SuiteRecord = {
         suiteNumber,
@@ -282,6 +301,7 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
         suiteFloorPlans: [],
       };
       if (spaceType) suite.spaceType = spaceType;
+      if (suiteNotes) suite.suiteNotes = suiteNotes;
       const actionVerb = shouldAddSuite(instructions) ? "Added" : "Updated";
       return { suites: [...suites.filter((suite) => !suiteMatches(suite, suiteNumber)), suite], changed: true, messages: [`${actionVerb} Suite ${suiteNumber} to the active suite stack.`] };
     }
@@ -320,6 +340,13 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     current.spaceType = spaceType;
     changed = true;
     messages.push(`Updated Suite ${suiteNumber} space type to ${spaceType}.`);
+  }
+
+  const suiteNotes = extractSuiteNotes(instructions, suiteNumber);
+  if (suiteNotes) {
+    current.suiteNotes = suiteNotes;
+    changed = true;
+    messages.push(`Updated Suite ${suiteNumber} notes.`);
   }
 
   if (/suite\s+[A-Za-z0-9-]+.*?(?:unpriced|call\s+for\s+price|inquire)/i.test(instructions)) {

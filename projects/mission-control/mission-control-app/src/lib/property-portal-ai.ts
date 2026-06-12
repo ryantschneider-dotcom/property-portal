@@ -136,6 +136,8 @@ Task:
 - When changing one suite, preserve every existing suite not explicitly mentioned by the broker. Return an admin.suites array that includes all unchanged suites plus the corrected changed suite rows. Only omit/delete suite rows when the broker explicitly says a suite is leased/removed/deleted/dropped, or says to remove/clear all suites. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
 - For suite-specific uploaded files, never put file descriptions or user-provided labels into URLs. The backend will attach actual Firebase Storage download URLs to suites[].suitePhotos or suites[].suiteFloorPlans; do not place suite floor plans/photos in parent media, photos, heroImageUrl, or listing.photos.
 - For suite rows, extract admin.suites[].spaceType only when the broker explicitly describes a real architectural/use type such as Office, Retail, Industrial, Warehouse, Storage, Flex, Medical Office, Restaurant, or Showroom. Never write "Available Space" as a suite spaceType; omit the field when unstated so ListingStream can inherit root propertyType.
+- For suite rows, actively extract lease type/expense structure into admin.suites[].rentType only when the broker states it (NNN, NN, Gross, Modified Gross, Full Service, Plus Utilities). If no lease type is stated for a suite, omit or preserve the existing rentType; do not invent NNN.
+- For suite rows, extract suite-specific notes/descriptions into admin.suites[].suiteNotes when the broker provides Suite Notes, suite-specific description, condition notes, or availability comments.
 - Do not invent unsupported facts
 
 Required JSON keys:
@@ -369,8 +371,12 @@ export async function createNewListingReviewDraft(input: { input: Record<string,
 export async function fetchPropertyPortalListing(input: { propertyIdOrSlug: string; baseUrl?: string; fetchImpl?: PropertyPortalFetch }) {
   const fetchImpl = input.fetchImpl ?? fetch;
   const response = await withPropertyPortalTimeout(
-    fetchImpl(buildPropertyPortalUrl(`/api/properties/${encodeURIComponent(input.propertyIdOrSlug)}`, input.baseUrl), {
+    fetchImpl(buildPropertyPortalUrl(`/api/properties/${encodeURIComponent(input.propertyIdOrSlug)}?fresh=${Date.now()}`, input.baseUrl), {
       cache: "no-store",
+      headers: {
+        "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+        Pragma: "no-cache",
+      },
     }),
     Number(process.env.PROPERTY_PORTAL_LISTING_FETCH_TIMEOUT_MS ?? 20_000),
     "ListingStream backend request timed out while fetching the current listing for AI drafting. Please try again shortly.",
