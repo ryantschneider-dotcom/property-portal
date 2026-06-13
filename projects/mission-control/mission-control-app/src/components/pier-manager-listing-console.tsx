@@ -399,6 +399,34 @@ const initialIntakeStatus = "Ready for Broker Hub intake — launch a listing th
 const initialModificationStatus = "Select an active ListingStream property and describe the change in plain English.";
 const submissionSuccessLabel = "Submission Successful";
 
+type SyndicationChannelStatus = "queued" | "running" | "succeeded" | "blocked" | "failed" | "skipped";
+type SyndicationChannel = {
+  platform: string;
+  status: SyndicationChannelStatus;
+  strategy: string;
+  attempts: number;
+  lastAttemptAt: string | null;
+  nextRetryAt: string | null;
+  message: string;
+};
+type SyndicationJobSummary = {
+  id: string;
+  slug: string;
+  listingTitle: string;
+  eventType: string;
+  status: string;
+  updatedAt: string;
+  channels: Record<string, SyndicationChannel>;
+};
+type SyndicationReadiness = { platform: string; enabled: boolean; strategy: string; hasCredentialSurface: boolean; message: string };
+
+type SyndicationStatusPayload = {
+  success?: boolean;
+  readiness?: SyndicationReadiness[];
+  jobs?: SyndicationJobSummary[];
+  error?: string;
+};
+
 export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) {
   const [intakeForm, setIntakeForm] = useState<IntakeFormState>(initialIntakeState);
   const [suites, setSuites] = useState<BrokerHubSuiteInput[]>([createSuite()]);
@@ -426,6 +454,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
   const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
   const [mailchimpStatus, setMailchimpStatus] = useState("Choose an audience to create a Mailchimp draft. This tool is separate from listing revisions and never sends automatically.");
+  const [syndicationPayload, setSyndicationPayload] = useState<SyndicationStatusPayload | null>(null);
+  const [syndicationStatus, setSyndicationStatus] = useState("Loading syndication command center…");
+  const [syndicationBusy, setSyndicationBusy] = useState(false);
 
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
@@ -459,6 +490,41 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       cancelled = true;
     };
   }, []);
+
+  async function refreshSyndicationStatus() {
+    setSyndicationBusy(true);
+    try {
+      const data = await fetch("/api/listingstream/syndication", { cache: "no-store" }).then(parseJsonResponse) as SyndicationStatusPayload;
+      setSyndicationPayload(data);
+      const attentionCount = (data.jobs ?? []).filter((job) => job.status === "attention").length;
+      setSyndicationStatus(attentionCount ? `${attentionCount} syndication job${attentionCount === 1 ? "" : "s"} need attention.` : "Syndication command center is current.");
+    } catch (error) {
+      setSyndicationStatus(error instanceof Error ? error.message : "Could not load syndication status.");
+    } finally {
+      setSyndicationBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshSyndicationStatus();
+  }, []);
+
+  async function retrySyndicationJob(jobId: string, platform?: string) {
+    setSyndicationBusy(true);
+    setSyndicationStatus("Manual retry queued…");
+    try {
+      await fetch("/api/listingstream/syndication", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "retry", jobId, platform }),
+      }).then(parseJsonResponse);
+      await refreshSyndicationStatus();
+    } catch (error) {
+      setSyndicationStatus(error instanceof Error ? error.message : "Manual retry failed.");
+    } finally {
+      setSyndicationBusy(false);
+    }
+  }
 
   function revealReviewDraft(target: "panel" | "actions" = "panel") {
     window.setTimeout(() => {
@@ -870,6 +936,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     : null;
   const reviewChecklist = visibleReviewDraft ? getDraftReviewChecklist(visibleReviewDraft) : defaultReviewChecklist();
   const deltaSummaryRows = visibleReviewDraft?.kind === "modification" ? summarizeDeltaChanges(visibleReviewDraft.review.deltaPreview) : [];
+  const syndicationJobs = syndicationPayload?.jobs ?? [];
+  const latestSyndicationJob = syndicationJobs[0] ?? null;
+  const syndicationReadiness = syndicationPayload?.readiness ?? [];
 
   return (
     <div className="space-y-6">
@@ -908,6 +977,54 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-[#f6a87f]">Minimum to submit</p>
           <p className="mt-3 text-sm leading-6 text-zinc-300">{intakeRequiredSummary}</p>
         </div>
+      </section>
+
+      <section data-testid="syndication-command-center" className="rounded-[1.35rem] border border-[#CB521E]/20 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Syndication Command Center</p>
+            <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">Multi-channel listing distribution</h3>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Mobile-first control plane for CoStar / LoopNet, Crexi, CityFeet, TenantBase, CommercialSource, CommercialEdge, TheBrokerList, and Brevitas.</p>
+          </div>
+          <button type="button" onClick={() => void refreshSyndicationStatus()} disabled={syndicationBusy} className="rounded-xl border border-[#CB521E]/30 bg-[#CB521E] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+            {syndicationBusy ? "Refreshing…" : "Refresh status"}
+          </button>
+        </div>
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-700">{syndicationStatus}</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {syndicationReadiness.map((channel) => (
+            <div key={channel.platform} className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-zinc-500">{channel.platform}</p>
+              <p className={`mt-2 text-sm font-bold ${channel.enabled && channel.hasCredentialSurface ? "text-emerald-700" : "text-amber-700"}`}>{channel.enabled && channel.hasCredentialSurface ? "Ready" : "Needs credentials"}</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">{channel.strategy}</p>
+            </div>
+          ))}
+        </div>
+        {latestSyndicationJob ? (
+          <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-400">Latest job</p>
+                <h4 className="mt-1 text-base font-bold text-zinc-950">{latestSyndicationJob.listingTitle}</h4>
+                <p className="mt-1 break-all text-xs text-zinc-500">{latestSyndicationJob.slug} • {latestSyndicationJob.status} • {latestSyndicationJob.updatedAt}</p>
+              </div>
+              <button type="button" onClick={() => void retrySyndicationJob(latestSyndicationJob.id)} disabled={syndicationBusy} className="rounded-xl border border-zinc-300 px-4 py-3 text-sm font-bold text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60">Manual retry</button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {Object.values(latestSyndicationJob.channels ?? {}).map((channel) => (
+                <div key={channel.platform} className="flex flex-col gap-2 rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-bold text-zinc-900">{channel.platform}: {channel.status}</p>
+                    <p className="mt-1 text-zinc-500">{channel.message}</p>
+                  </div>
+                  <button type="button" onClick={() => void retrySyndicationJob(latestSyndicationJob.id, channel.platform)} disabled={syndicationBusy} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 font-bold text-zinc-700 disabled:opacity-60">Retry channel</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm leading-6 text-zinc-500">No syndication events have been queued yet. The first publish or approved update will create the initial distribution job.</p>
+        )}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
