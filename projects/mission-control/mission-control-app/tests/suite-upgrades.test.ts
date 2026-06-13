@@ -92,6 +92,28 @@ test("suite notes parser rewrites conversational broker instructions as public-f
   assert.doesNotMatch(String(suiteM?.suiteNotes), /under suite M|that says|please add/i);
 });
 
+test("suite notes parser treats broker 'space' wording as a suite update and rewrites public copy", async () => {
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Parrott Plaza",
+    descriptionHtml: "<p>Suite P updated.</p>",
+    highlights: [],
+    structuredUpdates: {},
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: "I need a description under space P that says this suite has a clean retail showroom up front with storage in the back.",
+    fetchImpl: async () => Response.json(currentListing),
+    writer,
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  const suiteP = suites.find((suite) => suite.suiteNumber === "P");
+  assert.equal(suiteP?.suiteNotes, "This suite has a clean retail showroom up front with storage in the back.");
+  assert.doesNotMatch(String(suiteP?.suiteNotes), /under space P|that says|I need/i);
+});
+
 test("suite notes parser preserves verbatim copy only when broker explicitly asks for exact wording", async () => {
   const writer: PropertyPortalCloudWriter = async () => ({
     title: "Parrott Plaza",

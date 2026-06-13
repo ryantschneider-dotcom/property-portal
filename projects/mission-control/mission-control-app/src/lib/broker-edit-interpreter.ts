@@ -128,14 +128,14 @@ function extractLeasedSuite(instructions: string) {
 }
 
 function extractSuiteNumber(instructions: string) {
-  const addMatch = instructions.match(/(?:add|create|include|insert|new)\s+suite\s+([A-Za-z0-9-]+)/i);
+  const addMatch = instructions.match(/(?:add|create|include|insert|new)\s+(?:suite|space)\s+([A-Za-z0-9-]+)/i);
   if (addMatch?.[1]) return addMatch[1].trim();
-  const match = instructions.match(/suite\s+([A-Za-z0-9-]+)/i);
+  const match = instructions.match(/(?:suite|space)\s+([A-Za-z0-9-]+)/i);
   return match?.[1]?.trim() || null;
 }
 
 function shouldAddSuite(instructions: string) {
-  return /\b(?:add|create|include|insert|new)\s+suite\s+[A-Za-z0-9-]+/i.test(instructions);
+  return /\b(?:add|create|include|insert|new)\s+(?:suite|space)\s+[A-Za-z0-9-]+/i.test(instructions);
 }
 
 function escapeRegExp(value: string) {
@@ -208,7 +208,7 @@ function cleanNarrativeCopy(value: string | undefined, options: { verbatim?: boo
     .replace(/^[\s"“”'`]+|[\s"“”'`]+$/g, "")
     .replace(/^(?:please\s+)?(?:add|update|change|set|replace|write|put|include)\s+(?:a\s+|the\s+)?(?:new\s+)?/i, "")
     .replace(/^(?:a\s+|the\s+)?(?:property\s+description|lease\s+description|sale\s+description|location\s+description|neighborhood\s+description|area\s+description|suite\s+notes?|notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
-    .replace(/^(?:under|for|to|on)\s+(?:suite\s+)?[A-Za-z0-9-]+\s+(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
+    .replace(/^(?:under|for|to|on)\s+(?:(?:suite|space)\s+)?[A-Za-z0-9-]+\s+(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
     .replace(/^(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
     .replace(/[.。]$/, "")
     .trim();
@@ -226,11 +226,11 @@ function cleanExtractedNote(value: string | undefined, options: { verbatim?: boo
 function extractSuiteNotes(instructions: string, suiteNumber: string) {
   const escapedSuite = escapeRegExp(suiteNumber);
   const verbatim = isExplicitVerbatimInstruction(instructions);
-  const exact = instructions.match(new RegExp(`(?:for\\s+)?suite\\s+${escapedSuite}[\\s,;:-]{0,20}(?:put|write|use|copy|transcribe)\\s+(?:this|the following|it)?\\s*(?:in\\s+)?exactly\\s*:?\\s*["“]?([^"”\\n]{3,360})`, "i"));
+  const exact = instructions.match(new RegExp(`(?:for\\s+)?(?:suite|space)\\s+${escapedSuite}[\\s,;:-]{0,20}(?:put|write|use|copy|transcribe)\\s+(?:this|the following|it)?\\s*(?:in\\s+)?exactly\\s*:?\\s*["“]?([^"”\\n]{3,360})`, "i"));
   if (exact?.[1]) return cleanExtractedNote(exact[1], { verbatim: true }) || null;
 
-  const scoped = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,120}?(?:suite\\s*)?(?:notes?|description|comments?)\\s*(?:to|as|=|is|:)?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
-  const saysScoped = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,140}?(?:that\\s+)?(?:says?|reads?|should\\s+say|should\\s+read)\\s*:?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
+  const scoped = instructions.match(new RegExp(`(?:suite|space)\\s+${escapedSuite}[\\s\\S]{0,120}?(?:(?:suite|space)\\s*)?(?:notes?|description|comments?)\\s*(?:to|as|=|is|:)?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
+  const saysScoped = instructions.match(new RegExp(`(?:suite|space)\\s+${escapedSuite}[\\s\\S]{0,140}?(?:that\\s+)?(?:says?|reads?|should\\s+say|should\\s+read)\\s*:?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
   const labeled = instructions.match(/(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*["“]?([^"”\n.]{8,360})/i);
   const note = cleanExtractedNote(scoped?.[1] || saysScoped?.[1] || labeled?.[1], { verbatim });
   return note || null;
