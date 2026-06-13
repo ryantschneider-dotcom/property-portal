@@ -546,11 +546,74 @@ test("suite floor plan image uploads route to suiteFloorPlans and discard placeh
 });
 
 
-test("approve route source keeps PDF uploads as safe URL fallback and does not rasterize in Vercel", async () => {
+
+test("approval publish request strips raw file payloads before JSON transit to ListingStream", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; bodyText: string; body: Record<string, any> }> = [];
+  const firebaseUrl = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/suite-p-plan.pdf?alt=media&token=safe123";
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "publish-live",
+    assets: [new File(["%PDF fake body"], "suite-p-floor-plan.pdf", { type: "application/pdf" })],
+    uploadStagedImage: async () => ({
+      url: firebaseUrl,
+      path: "property-intake/parrott/suite-p-floor-plan.pdf",
+      contentType: "application/pdf",
+      size: 1024,
+      originalName: "suite-p-floor-plan.pdf",
+      buffer: "RAW_BUFFER_SHOULD_NOT_TRANSIT",
+      base64: "JVBERi0xLjQKRAW_BASE64_SHOULD_NOT_TRANSIT",
+      bytes: [37, 80, 68, 70],
+      uploadPayload: { raw: "RAW_UPLOAD_PAYLOAD_SHOULD_NOT_TRANSIT" },
+    } as any),
+    draft: {
+      kind: "modification",
+      title: "42 West Montgomery Cross Road",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "42-west-montgomery-cross-road", instructions: "Attach the PDF floor plan to Suite P." },
+      currentListing: {
+        slug: "42-west-montgomery-cross-road",
+        admin: { suites: [] },
+        media: { heroImageUrl: "https://cdn.example.com/hero.jpg" },
+        uploadPayload: { raw: "RAW_CURRENT_LISTING_PAYLOAD_SHOULD_NOT_TRANSIT" },
+      },
+      structuredUpdates: {
+        admin: { suites: [{
+          suiteNumber: "P",
+          availableSqFt: "1900",
+          baseRent: "1900",
+          rentType: "Monthly",
+          suiteFloorPlans: [{ url: firebaseUrl, buffer: "RAW_NESTED_BUFFER_SHOULD_NOT_TRANSIT", base64: "RAW_NESTED_BASE64_SHOULD_NOT_TRANSIT" }, "gs://private-bucket/suite-p.pdf"],
+          suitePhotos: [{ url: "https://firebase.storage.url/not-real" }],
+        }] },
+        localPath: "/tmp/raw-upload.pdf",
+      },
+    },
+    fetchImpl: async (url, init) => {
+      const bodyText = String(init?.body ?? "");
+      calls.push({ url: String(url), bodyText, body: JSON.parse(bodyText) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/42-west-montgomery-cross-road" } });
+    },
+  });
+
+  const call = calls.find((item) => item.url.endsWith("/api/admin/properties/launch-package"));
+  assert.ok(call);
+  assert.deepEqual(call.body.approvedPayload.admin.suites[0].suiteFloorPlans, [firebaseUrl]);
+  assert.deepEqual(call.body.approvedPayload.admin.suites[0].suitePhotos, []);
+  assert.doesNotMatch(call.bodyText, /RAW_|base64|buffer|bytes|uploadPayload|localPath|gs:\/\/|firebase\.storage\.url/);
+  assert.ok(call.bodyText.length < 20_000);
+});
+
+test("approve route uploads staged PDF media to Firebase before ListingStream JSON publish", async () => {
   const routeSource = await readFile("src/app/api/listingstream/approve-draft/route.ts", "utf8");
   assert.doesNotMatch(routeSource, /sharp\(input,\s*\{\s*density/i);
-  assert.match(routeSource, /preservePdfUploadWithoutRasterizing/);
-  assert.match(routeSource, /contentType:\s*file\.type\s*\|\|\s*"application\/pdf"/);
+  assert.doesNotMatch(routeSource, /fs\.writeFile|api\/uploads\/file|preservePdfUploadWithoutRasterizing/);
+  assert.match(routeSource, /uploadStagedAssetToFirebase/);
+  assert.match(routeSource, /firebasestorage\.googleapis\.com\/v0\/b/);
+  assert.match(routeSource, /firebaseStorageDownloadTokens/);
+  assert.match(routeSource, /uploadStagedImage:\s*\(file, options\) => uploadStagedAssetToFirebase\(file, options\)/);
 });
 
 test("mission-control revision proxy forwards property-portal internal token helper", async () => {

@@ -122,6 +122,65 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+const DANGEROUS_TRANSIT_PAYLOAD_KEYS = new Set([
+  "arrayBuffer",
+  "base64",
+  "blob",
+  "buffer",
+  "bytes",
+  "content",
+  "data",
+  "file",
+  "fileData",
+  "fileObject",
+  "localPath",
+  "raw",
+  "rawFile",
+  "uploadPayload",
+]);
+
+function isSafePublicTransitUrl(value: unknown) {
+  if (typeof value !== "string") return false;
+  const url = value.trim();
+  if (!/^https?:\/\/[^\s]+$/i.test(url)) return false;
+  if (/^https?:\/\/firebase\.storage\.url\//i.test(url)) return false;
+  if (/^https?:\/\/storage\.cloud\.google\.com\//i.test(url)) return false;
+  if (/^(?:gs|data|blob):/i.test(url)) return false;
+  return true;
+}
+
+function normalizeTransitAssetUrls(value: unknown) {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return Array.from(new Set(items.map(extractAssetUrl).filter((url): url is string => Boolean(url && isSafePublicTransitUrl(url)))));
+}
+
+export function sanitizeListingStreamJsonTransitPayload(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return /^(?:gs|data|blob):/i.test(trimmed) ? undefined : value;
+  }
+  if (typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    const sanitizedItems = value.map(sanitizeListingStreamJsonTransitPayload).filter((item) => item !== undefined);
+    return sanitizedItems;
+  }
+  if (!isRecord(value)) return undefined;
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (DANGEROUS_TRANSIT_PAYLOAD_KEYS.has(key)) continue;
+    if (/^(suiteFloorPlans|suitePhotos)$/i.test(key)) {
+      const urls = normalizeTransitAssetUrls(nested);
+      output[key] = urls;
+      continue;
+    }
+    const sanitized = sanitizeListingStreamJsonTransitPayload(nested);
+    if (sanitized !== undefined) output[key] = sanitized;
+  }
+  return output;
+}
+
 function hasMeaningfulValue(value: unknown): boolean {
   if (value == null) return false;
   if (typeof value === "string") return value.trim().length > 0;
@@ -713,6 +772,7 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
   }
 
   const approvedSlug = saveSlug || clean(savePayload.slug as string | undefined) || buildSlugFromTitle(clean(savePayload.title as string | undefined));
+  const outboundApprovedPayload = sanitizeListingStreamJsonTransitPayload({ ...savePayload, slug: approvedSlug }) as Record<string, unknown>;
   const launchResponse = await safePropertyPortalFetch(fetchImpl, buildPropertyPortalUrl("/api/admin/properties/launch-package", input.baseUrl), {
     method: "POST",
     headers: {
@@ -724,7 +784,7 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
       actorEmail: "pier-manager@piercommercial.com",
       action: input.mode === "draft-preview" ? "save-draft" : "publish-live",
       note: input.mode === "draft-preview" ? "Saved as draft preview from PIER Manager broker review loop. Ascendix intentionally bypassed." : "Approved live from PIER Manager broker review loop.",
-      approvedPayload: { ...savePayload, slug: approvedSlug },
+      approvedPayload: outboundApprovedPayload,
     }),
   }, "ListingStream launch-package publish and Ascendix sync");
   const launchResult = await parsePortalResponse(launchResponse);
