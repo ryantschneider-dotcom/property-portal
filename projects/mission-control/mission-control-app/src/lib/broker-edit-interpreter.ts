@@ -182,7 +182,28 @@ function extractSuiteSpaceType(instructions: string, suiteNumber?: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function cleanNarrativeCopy(value: string | undefined) {
+function isExplicitVerbatimInstruction(instructions: string) {
+  return /\b(?:put|write|use|copy|transcribe)\s+(?:this|the following|it)?\s*(?:in\s+)?exactly\b/i.test(instructions);
+}
+
+function polishPublicNarrativeCopy(value: string) {
+  let text = asString(value).trim();
+  if (!text) return text;
+
+  text = text
+    .replace(/\bthe space is\s+100%\s+storage\s+with\s+overhead\s+drive[- ]in\s+roll\s*up\s+door\s+and\s+pedestrian\s+door\b/i, "The space is 100% storage and features an overhead drive-in rollup door alongside a single pedestrian access door")
+    .replace(/\bwith\s+overhead\s+drive[- ]in\s+roll\s*up\s+door\s+and\s+pedestrian\s+door\b/i, "and features an overhead drive-in rollup door alongside a single pedestrian access door")
+    .replace(/\boverhead\s+drive[- ]in\s+roll\s*up\s+door\b/i, "overhead drive-in rollup door")
+    .replace(/\bpedestrian\s+door\b/i, "single pedestrian access door")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  if (!/[.!?]$/.test(text)) text += ".";
+  return text;
+}
+
+function cleanNarrativeCopy(value: string | undefined, options: { verbatim?: boolean } = {}) {
   let text = asString(value)
     .replace(/^[\s"“”'`]+|[\s"“”'`]+$/g, "")
     .replace(/^(?:please\s+)?(?:add|update|change|set|replace|write|put|include)\s+(?:a\s+|the\s+)?(?:new\s+)?/i, "")
@@ -193,20 +214,25 @@ function cleanNarrativeCopy(value: string | undefined) {
     .trim();
 
   text = text.replace(/^["“”'`]+|["“”'`]+$/g, "").trim();
-  return text;
+  return options.verbatim ? text : polishPublicNarrativeCopy(text);
 }
 
-function cleanExtractedNote(value: string | undefined) {
-  return cleanNarrativeCopy(value)
+function cleanExtractedNote(value: string | undefined, options: { verbatim?: boolean } = {}) {
+  return cleanNarrativeCopy(value, options)
     .replace(/^(?:suite\s+[A-Za-z0-9-]+\s*)?(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
     .trim();
 }
 
 function extractSuiteNotes(instructions: string, suiteNumber: string) {
   const escapedSuite = escapeRegExp(suiteNumber);
-  const scoped = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,80}?(?:suite\\s*)?(?:notes?|description|comments?)\\s*(?:to|as|=|is|:)?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
+  const verbatim = isExplicitVerbatimInstruction(instructions);
+  const exact = instructions.match(new RegExp(`(?:for\\s+)?suite\\s+${escapedSuite}[\\s,;:-]{0,20}(?:put|write|use|copy|transcribe)\\s+(?:this|the following|it)?\\s*(?:in\\s+)?exactly\\s*:?\\s*["“]?([^"”\\n]{3,360})`, "i"));
+  if (exact?.[1]) return cleanExtractedNote(exact[1], { verbatim: true }) || null;
+
+  const scoped = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,120}?(?:suite\\s*)?(?:notes?|description|comments?)\\s*(?:to|as|=|is|:)?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
+  const saysScoped = instructions.match(new RegExp(`suite\\s+${escapedSuite}[\\s\\S]{0,140}?(?:that\\s+)?(?:says?|reads?|should\\s+say|should\\s+read)\\s*:?\\s*["“]?([^"”\\n.]{8,360})`, "i"));
   const labeled = instructions.match(/(?:suite\s*)?(?:notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*["“]?([^"”\n.]{8,360})/i);
-  const note = cleanExtractedNote(scoped?.[1] || labeled?.[1]);
+  const note = cleanExtractedNote(scoped?.[1] || saysScoped?.[1] || labeled?.[1], { verbatim });
   return note || null;
 }
 
