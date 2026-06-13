@@ -56,6 +56,122 @@ async function prepareDraftPreviewAssets(stagedAssets: File[], mode: "draft-prev
   return { assets: prepared, skippedCount };
 }
 
+
+function isPdfFile(file: File) {
+  return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name || "");
+}
+
+function safeStorageSegment(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "listing";
+}
+
+function getBrowserFirebaseStorageBucket() {
+  const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
+  if (!bucket) throw new Error("Mission Control browser Firebase Storage bucket is not configured.");
+  return bucket;
+}
+
+async function renderPdfFirstPageToImageFile(file: File) {
+  const pdfjs = await import("pdfjs-dist");
+  const loadingTask = (pdfjs as any).getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true });
+  const pdf = await loadingTask.promise;
+  const page = await pdf.getPage(1);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(2.2, Math.max(1, 1400 / Math.max(baseViewport.width, 1)));
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.floor(viewport.width));
+  canvas.height = Math.max(1, Math.floor(viewport.height));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create browser canvas for PDF floor plan rendering.");
+  await page.render({ canvasContext: context, viewport }).promise;
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+  await pdf.destroy();
+  if (!blob) throw new Error("Could not convert PDF floor plan page to an image.");
+  return new File([blob], file.name.replace(/\.pdf$/i, "-page-1.jpg"), { type: "image/jpeg" });
+}
+
+async function uploadClientFloorPlanImageToFirebase(file: File, context: { slug: string; index: number }) {
+  const [{ initializeApp, getApps }, { getDownloadURL, getStorage, ref, uploadBytes }] = await Promise.all([
+    import("firebase/app"),
+    import("firebase/storage"),
+  ]);
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
+  const storageBucket = getBrowserFirebaseStorageBucket();
+  const app = getApps().find((candidate) => candidate.name === "mission-control-browser-storage") || initializeApp({
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "mission-control-browser-upload",
+    authDomain: projectId ? `${projectId}.firebaseapp.com` : undefined,
+    projectId,
+    storageBucket,
+  }, "mission-control-browser-storage");
+  const storage = getStorage(app);
+  const token = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = [
+    "property-intake",
+    "client-suite-floorplans",
+    safeStorageSegment(context.slug),
+    `${Date.now()}-${context.index}-${safeStorageSegment(file.name)}`,
+  ].join("/");
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file, {
+    contentType: file.type || "image/jpeg",
+    customMetadata: {
+      generatedBy: "mission-control-client-pdfjs",
+      browserUploadToken: token,
+    },
+  });
+  return getDownloadURL(storageRef);
+}
+
+function extractSuiteTargetFromDraft(draft: BrokerReviewDraft, fileName: string) {
+  const sourceInput = isRecord(draft.sourceInput) ? draft.sourceInput : {};
+  const text = [sourceInput.instructions, fileName, draft.title].filter(Boolean).join(" ");
+  return text.match(/suite\s*#?\s*([A-Za-z0-9-]+)/i)?.[1]?.trim().toLowerCase() || "";
+}
+
+function addSuiteFloorPlanUrlToDraft(draft: BrokerReviewDraft, fileName: string, url: string): BrokerReviewDraft {
+  const target = extractSuiteTargetFromDraft(draft, fileName);
+  const clone = JSON.parse(JSON.stringify(draft)) as BrokerReviewDraft;
+  const structuredUpdates = isRecord(clone.structuredUpdates) ? clone.structuredUpdates as Record<string, unknown> : {};
+  const admin = isRecord(structuredUpdates.admin) ? structuredUpdates.admin as Record<string, unknown> : {};
+  const suites = Array.isArray(admin.suites) ? admin.suites : [];
+  if (!suites.length) return clone;
+  let matched = false;
+  const nextSuites = suites.map((suite, index) => {
+    if (!isRecord(suite)) return suite;
+    const suiteNumber = String(suite.suiteNumber ?? "").trim().toLowerCase();
+    const shouldAttach = target ? suiteNumber === target : suites.length === 1 && index === 0;
+    if (!shouldAttach) return suite;
+    matched = true;
+    const existing = Array.isArray(suite.suiteFloorPlans) ? suite.suiteFloorPlans.map((item) => String(item ?? "")).filter(Boolean) : [];
+    return { ...suite, suiteFloorPlans: [...existing, url] };
+  });
+  if (!matched && isRecord(nextSuites[0])) {
+    const first = nextSuites[0] as Record<string, unknown>;
+    const existing = Array.isArray(first.suiteFloorPlans) ? first.suiteFloorPlans.map((item) => String(item ?? "")).filter(Boolean) : [];
+    nextSuites[0] = { ...first, suiteFloorPlans: [...existing, url] };
+  }
+  clone.structuredUpdates = { ...structuredUpdates, admin: { ...admin, suites: nextSuites } } as BrokerReviewDraft["structuredUpdates"];
+  return clone;
+}
+
+async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerReviewDraft; assets: File[]; slug: string }) {
+  let draft = input.draft;
+  const assetsForApi: File[] = [];
+  let convertedCount = 0;
+  for (const asset of input.assets) {
+    if (!isPdfFile(asset)) {
+      assetsForApi.push(asset);
+      continue;
+    }
+    const imageFile = await renderPdfFirstPageToImageFile(asset);
+    const imageUrl = await uploadClientFloorPlanImageToFirebase(imageFile, { slug: input.slug, index: convertedCount + 1 });
+    draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
+    convertedCount += 1;
+  }
+  return { draft, assetsForApi, convertedCount };
+}
+
 function createSuite(): BrokerHubSuiteInput {
   return { suiteNumber: "", availableSqFt: "", baseRent: "", rentType: "NNN", unpriced: false };
 }
@@ -644,13 +760,20 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       ? "Saving ListingStream draft preview... Ascendix will be bypassed for this safety test."
       : "Uploading staged photos, flyers, and documents... Publishing live and syncing Ascendix...");
     try {
-      const formData = new FormData();
-      formData.set("draft", JSON.stringify(reviewDraft));
-      formData.set("mode", mode);
       const stagedAssets = reviewDraft.kind === "new-listing" ? [heroPhoto, ...intakeAssets].filter((asset): asset is File => Boolean(asset)) : modificationAssets;
-      const { assets: preparedAssets, skippedCount } = await prepareDraftPreviewAssets(stagedAssets, mode);
+      const initialSlug = selectedPropertyId || visibleReviewDraft?.title || "listing";
+      const clientPrepared = await prepareClientSideSuiteFloorPlanImages({ draft: reviewDraft, assets: stagedAssets, slug: initialSlug });
+      if (clientPrepared.convertedCount) {
+        setReviewStatus(`Rendered ${clientPrepared.convertedCount} PDF floor plan(s) in the browser and uploaded image thumbnails to Firebase before publishing.`);
+      }
+      const draftForPublish = clientPrepared.draft;
+      const assetsForApi = clientPrepared.assetsForApi;
+      const formData = new FormData();
+      formData.set("draft", JSON.stringify(draftForPublish));
+      formData.set("mode", mode);
+      const { assets: preparedAssets, skippedCount } = await prepareDraftPreviewAssets(assetsForApi, mode);
       for (const asset of preparedAssets) formData.append("assets", asset);
-      if (mode === "draft-preview" && stagedAssets.length) {
+      if (mode === "draft-preview" && assetsForApi.length) {
         setReviewStatus(skippedCount
           ? `Compressed draft preview media under Vercel upload limits. Skipped oversized extras: ${skippedCount}.`
           : "Compressed draft preview media under Vercel upload limits.");

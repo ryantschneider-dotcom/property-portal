@@ -870,13 +870,25 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /These fields always remain available for manual broker entry/);
 });
 
+test("broker review UI rasterizes PDF floor plans client-side before upload/transit", async () => {
+  const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /import\("pdfjs-dist"\)/);
+  assert.match(source, /disableWorker:\s*true/);
+  assert.match(source, /document\.createElement\("canvas"\)/);
+  assert.match(source, /canvas\.toBlob\([^)]*"image\/jpeg"/s);
+  assert.match(source, /uploadBytes\(/);
+  assert.match(source, /getDownloadURL\(/);
+  assert.match(source, /suiteFloorPlans:\s*\[/);
+  assert.match(source, /prepareClientSideSuiteFloorPlanImages\(\{ draft: reviewDraft, assets: stagedAssets/);
+  assert.doesNotMatch(source, /formData\.append\("assets", asset\).*pdf/i);
+});
+
 test("broker review UI compresses draft preview media before posting to Vercel approval route", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /MAX_DRAFT_PREVIEW_UPLOAD_BYTES/);
   assert.match(source, /compressImageForDraftPreview/);
   assert.match(source, /createImageBitmap/);
-  assert.match(source, /prepareDraftPreviewAssets\(stagedAssets, mode\)/);
-  assert.match(source, /under Vercel upload limits/);
+  assert.match(source, /prepareDraftPreviewAssets\(assetsForApi, mode\)/);
   assert.match(source, /Skipped oversized extras/);
 });
 
