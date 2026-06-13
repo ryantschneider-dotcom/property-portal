@@ -12,8 +12,10 @@ test("Mission Control exposes authenticated mobile syndication status proxy", ()
   assert.match(route, /export async function POST/);
 });
 
-test("PIER Manager includes mobile-first native syndication monitor copy", () => {
+test("PIER Manager includes mobile-first CoStar rep-email syndication monitor copy", () => {
   assert.match(consoleSource, /Syndication Command Center/);
+  assert.match(consoleSource, /rep-email dispatches/);
+  assert.match(consoleSource, /accepted by Resend/);
   assert.match(consoleSource, /native direct syndication/);
   assert.match(consoleSource, /CoStar|LoopNet|Crexi|Brevitas/);
   assert.match(consoleSource, /Refresh status/);

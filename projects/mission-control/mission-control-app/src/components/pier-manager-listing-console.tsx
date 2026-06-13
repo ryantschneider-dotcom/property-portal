@@ -984,7 +984,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Syndication Command Center</p>
             <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">Multi-channel listing distribution</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Mobile-first control plane for native direct syndication to CoStar / LoopNet, Crexi, CityFeet, TenantBase, CommercialSource, CommercialEdge, TheBrokerList, and Brevitas.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Mobile-first control plane for CoStar / LoopNet rep-email dispatches plus native direct syndication to Crexi, CityFeet, TenantBase, CommercialSource, CommercialEdge, TheBrokerList, and Brevitas. Successful CoStar / LoopNet rows confirm the structured email was accepted by Resend for the account representative.</p>
           </div>
           <button type="button" onClick={() => void refreshSyndicationStatus()} disabled={syndicationBusy} className="rounded-xl border border-[#CB521E]/30 bg-[#CB521E] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
             {syndicationBusy ? "Refreshing…" : "Refresh status"}
