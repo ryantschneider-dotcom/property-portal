@@ -1,0 +1,126 @@
+import { createSign, randomUUID } from "crypto";
+import path from "path";
+
+export type MissionControlFirebaseUpload = {
+  url: string;
+  path: string;
+  contentType: string;
+  size: number;
+  originalName: string;
+};
+
+type FirebaseServiceAccount = {
+  client_email: string;
+  private_key: string;
+  token_uri?: string;
+};
+
+let cachedFirebaseAccessToken: { token: string; expiresAt: number } | null = null;
+
+function base64UrlJson(value: unknown) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function getFirebaseServiceAccount(): FirebaseServiceAccount {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+  if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is required for Mission Control staged media uploads.");
+  const parsed = JSON.parse(raw) as FirebaseServiceAccount;
+  if (!parsed.client_email || !parsed.private_key) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is missing client_email or private_key.");
+  return parsed;
+}
+
+export function getFirebaseStorageBucket() {
+  const bucket = (process.env.FIREBASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "").trim();
+  if (!bucket) throw new Error("FIREBASE_STORAGE_BUCKET is required for Mission Control staged media uploads.");
+  return bucket;
+}
+
+async function getFirebaseAccessToken() {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedFirebaseAccessToken && cachedFirebaseAccessToken.expiresAt - 60 > now) return cachedFirebaseAccessToken.token;
+  const serviceAccount = getFirebaseServiceAccount();
+  const tokenUri = serviceAccount.token_uri || "https://oauth2.googleapis.com/token";
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/devstorage.read_write",
+    aud: tokenUri,
+    iat: now,
+    exp: now + 3600,
+  };
+  const unsignedJwt = `${base64UrlJson(header)}.${base64UrlJson(claim)}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(unsignedJwt);
+  signer.end();
+  const signature = signer.sign(serviceAccount.private_key.replace(/\\n/g, "\n")).toString("base64url");
+  const assertion = `${unsignedJwt}.${signature}`;
+  const response = await fetch(tokenUri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  const data = await response.json().catch(() => ({})) as { access_token?: string; expires_in?: number };
+  if (!response.ok || !data.access_token) throw new Error(`Firebase Storage auth failed with status ${response.status}.`);
+  cachedFirebaseAccessToken = { token: data.access_token, expiresAt: now + Number(data.expires_in || 3600) };
+  return data.access_token;
+}
+
+export function safeFirebaseObjectSegment(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_") || "upload";
+}
+
+export function isPdfUploadFile(file: File) {
+  return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name);
+}
+
+export async function uploadMissionControlFirebaseFile(file: File, options: { slug?: string; index: number; folder?: string[]; fallbackBaseName?: string }): Promise<MissionControlFirebaseUpload> {
+  const bucket = getFirebaseStorageBucket();
+  const token = randomUUID();
+  const originalBuffer = Buffer.from(await file.arrayBuffer());
+  const originalName = file.name || options.fallbackBaseName || "suite-upload";
+  const extension = path.extname(originalName) || (isPdfUploadFile(file) ? ".pdf" : ".bin");
+  const base = path.basename(originalName, path.extname(originalName)) || options.fallbackBaseName || "suite-upload";
+  const folder = options.folder?.length ? options.folder : ["property-intake", safeFirebaseObjectSegment(options.slug || "listing"), "suite-media"];
+  const objectName = [
+    ...folder.map(safeFirebaseObjectSegment),
+    `${Date.now()}-${options.index}-${safeFirebaseObjectSegment(base)}${extension}`,
+  ].join("/");
+  const contentType = file.type || (isPdfUploadFile(file) ? "application/pdf" : "application/octet-stream");
+  const metadata = {
+    name: objectName,
+    contentType,
+    metadata: { firebaseStorageDownloadTokens: token },
+  };
+  const boundary = `mission-control-${randomUUID()}`;
+  const metadataPart = Buffer.from([
+    `--${boundary}`,
+    "Content-Type: application/json; charset=UTF-8",
+    "",
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    `Content-Type: ${contentType}`,
+    "",
+  ].join("\r\n"));
+  const closingPart = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const accessToken = await getFirebaseAccessToken();
+  const response = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o?uploadType=multipart&name=${encodeURIComponent(objectName)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+    },
+    body: Buffer.concat([metadataPart, originalBuffer, closingPart]),
+  });
+  if (!response.ok) throw new Error(`Firebase Storage upload failed with status ${response.status}.`);
+  const url = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(objectName)}?${new URLSearchParams({ alt: "media", token })}`;
+  return {
+    url,
+    path: objectName,
+    contentType,
+    size: originalBuffer.byteLength,
+    originalName,
+  };
+}

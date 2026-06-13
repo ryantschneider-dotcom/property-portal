@@ -884,10 +884,13 @@ test("broker review UI rasterizes PDF floor plans client-side before upload/tran
   assert.match(source, /finally \{[\s\S]*await safePdfJsTeardown\(\{ page, pdf, loadingTask \}\);[\s\S]*\}/);
   assert.match(source, /document\.createElement\("canvas"\)/);
   assert.match(source, /canvas\.toBlob\([\s\S]*"image\/jpeg"/);
-  assert.match(source, /uploadBytes\(/);
-  assert.match(source, /getDownloadURL\(/);
+  assert.match(source, /uploadClientFloorPlanImageViaMissionControl/);
+  assert.match(source, /fetch\("\/api\/listingstream\/client-floorplan-upload"/);
+  assert.match(source, /formData\.set\("file", file\)/);
   assert.match(source, /suiteFloorPlans:\s*\[/);
   assert.match(source, /prepareClientSideSuiteFloorPlanImages\(\{ draft: reviewDraft, assets: stagedAssets/);
+  assert.doesNotMatch(source, /import\("firebase\/storage"\)/);
+  assert.doesNotMatch(source, /uploadBytes\(/);
   assert.doesNotMatch(source, /formData\.append\("assets", asset\).*pdf/i);
 });
 

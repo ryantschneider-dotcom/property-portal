@@ -62,16 +62,6 @@ function isPdfFile(file: File) {
   return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name || "");
 }
 
-function safeStorageSegment(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "listing";
-}
-
-function getBrowserFirebaseStorageBucket() {
-  const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
-  if (!bucket) throw new Error("Mission Control browser Firebase Storage bucket is not configured.");
-  return bucket;
-}
-
 function configurePdfJsWorker(pdfjs: { GlobalWorkerOptions?: { workerSrc?: string } }) {
   if (typeof window === "undefined") return;
   const workerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_WORKER_VERSION}/build/pdf.worker.mjs`;
@@ -121,36 +111,18 @@ async function renderPdfFirstPageToImageFile(file: File) {
   }
 }
 
-async function uploadClientFloorPlanImageToFirebase(file: File, context: { slug: string; index: number }) {
-  const [{ initializeApp, getApps }, { getDownloadURL, getStorage, ref, uploadBytes }] = await Promise.all([
-    import("firebase/app"),
-    import("firebase/storage"),
-  ]);
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
-  const storageBucket = getBrowserFirebaseStorageBucket();
-  const app = getApps().find((candidate) => candidate.name === "mission-control-browser-storage") || initializeApp({
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "mission-control-browser-upload",
-    authDomain: projectId ? `${projectId}.firebaseapp.com` : undefined,
-    projectId,
-    storageBucket,
-  }, "mission-control-browser-storage");
-  const storage = getStorage(app);
-  const token = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const path = [
-    "property-intake",
-    "client-suite-floorplans",
-    safeStorageSegment(context.slug),
-    `${Date.now()}-${context.index}-${safeStorageSegment(file.name)}`,
-  ].join("/");
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file, {
-    contentType: file.type || "image/jpeg",
-    customMetadata: {
-      generatedBy: "mission-control-client-pdfjs",
-      browserUploadToken: token,
-    },
+async function uploadClientFloorPlanImageViaMissionControl(file: File, context: { slug: string; index: number }) {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("slug", context.slug);
+  formData.set("index", String(context.index));
+  const response = await fetch("/api/listingstream/client-floorplan-upload", {
+    method: "POST",
+    body: formData,
   });
-  return getDownloadURL(storageRef);
+  const data = await parseJsonResponse(response) as { url?: string };
+  if (!data.url) throw new Error("Mission Control floor plan image upload did not return a Firebase download URL.");
+  return data.url;
 }
 
 function extractSuiteTargetFromDraft(draft: BrokerReviewDraft, fileName: string) {
@@ -195,7 +167,7 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
       continue;
     }
     const imageFile = await renderPdfFirstPageToImageFile(asset);
-    const imageUrl = await uploadClientFloorPlanImageToFirebase(imageFile, { slug: input.slug, index: convertedCount + 1 });
+    const imageUrl = await uploadClientFloorPlanImageViaMissionControl(imageFile, { slug: input.slug, index: convertedCount + 1 });
     draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
     convertedCount += 1;
   }

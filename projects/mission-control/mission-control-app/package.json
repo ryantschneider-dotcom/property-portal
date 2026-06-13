@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@turf/turf": "^7.3.5",
-    "firebase": "^12.14.0",
     "next": "16.2.1",
     "pdfjs-dist": "^6.0.227",
     "puppeteer-core": "^25.1.0",

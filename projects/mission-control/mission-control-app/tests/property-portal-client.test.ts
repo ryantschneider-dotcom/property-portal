@@ -608,12 +608,27 @@ test("approval publish request strips raw file payloads before JSON transit to L
 
 test("approve route uploads staged PDF media to Firebase before ListingStream JSON publish", async () => {
   const routeSource = await readFile("src/app/api/listingstream/approve-draft/route.ts", "utf8");
+  const firebaseSource = await readFile("src/lib/mission-control-firebase-storage.ts", "utf8");
   assert.doesNotMatch(routeSource, /sharp\(input,\s*\{\s*density/i);
   assert.doesNotMatch(routeSource, /fs\.writeFile|api\/uploads\/file|preservePdfUploadWithoutRasterizing/);
   assert.match(routeSource, /uploadStagedAssetToFirebase/);
-  assert.match(routeSource, /firebasestorage\.googleapis\.com\/v0\/b/);
-  assert.match(routeSource, /firebaseStorageDownloadTokens/);
+  assert.match(firebaseSource, /firebasestorage\.googleapis\.com\/v0\/b/);
+  assert.match(firebaseSource, /firebaseStorageDownloadTokens/);
   assert.match(routeSource, /uploadStagedImage:\s*\(file, options\) => uploadStagedAssetToFirebase\(file, options\)/);
+});
+
+test("client floor plan upload route stores browser-rasterized images through Admin credentials and returns public media URL", async () => {
+  const routeSource = await readFile("src/app/api/listingstream/client-floorplan-upload/route.ts", "utf8");
+  const firebaseSource = await readFile("src/lib/mission-control-firebase-storage.ts", "utf8");
+  assert.match(routeSource, /requirePierManagerAuth/);
+  assert.match(routeSource, /isAllowedRasterizedFloorPlan/);
+  assert.match(routeSource, /jpeg\|jpg\|png\|webp/);
+  assert.match(routeSource, /MAX_CLIENT_FLOOR_PLAN_IMAGE_BYTES/);
+  assert.match(routeSource, /folder:\s*\["property-intake", "client-suite-floorplans", slug\]/);
+  assert.match(routeSource, /uploadMissionControlFirebaseFile/);
+  assert.match(firebaseSource, /firebaseStorageDownloadTokens/);
+  assert.match(firebaseSource, /new URLSearchParams\(\{ alt: "media", token \}\)/);
+  assert.match(firebaseSource, /devstorage\.read_write/);
 });
 
 test("mission-control revision proxy forwards property-portal internal token helper", async () => {
