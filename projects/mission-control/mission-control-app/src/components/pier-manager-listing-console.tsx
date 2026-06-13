@@ -78,26 +78,47 @@ function configurePdfJsWorker(pdfjs: { GlobalWorkerOptions?: { workerSrc?: strin
   if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 }
 
+async function safePdfJsTeardown(resources: { page?: unknown; pdf?: unknown; loadingTask?: unknown }) {
+  const cleanupCalls = [
+    () => (resources.page as { cleanup?: () => unknown })?.cleanup?.(),
+    () => (resources.pdf as { cleanup?: () => unknown })?.cleanup?.(),
+    () => (resources.loadingTask as { destroy?: () => unknown })?.destroy?.(),
+    () => (resources.pdf as { destroy?: () => unknown })?.destroy?.(),
+  ];
+  for (const cleanup of cleanupCalls) {
+    try {
+      await cleanup();
+    } catch (error) {
+      console.warn("Ignored PDF.js cleanup failure after successful floor plan render", error);
+    }
+  }
+}
+
 async function renderPdfFirstPageToImageFile(file: File) {
   if (typeof window === "undefined") throw new Error("PDF floor plan rasterization must run in the browser.");
   const pdfjs = await import("pdfjs-dist");
   configurePdfJsWorker(pdfjs);
   const loadingTask = (pdfjs as any).getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const pdf = await loadingTask.promise;
-  const page = await pdf.getPage(1);
-  const baseViewport = page.getViewport({ scale: 1 });
-  const scale = Math.min(2.2, Math.max(1, 1400 / Math.max(baseViewport.width, 1)));
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.floor(viewport.width));
-  canvas.height = Math.max(1, Math.floor(viewport.height));
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not create browser canvas for PDF floor plan rendering.");
-  await page.render({ canvasContext: context, viewport }).promise;
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
-  await pdf.destroy();
-  if (!blob) throw new Error("Could not convert PDF floor plan page to an image.");
-  return new File([blob], file.name.replace(/\.pdf$/i, "-page-1.jpg"), { type: "image/jpeg" });
+  let pdf: unknown;
+  let page: unknown;
+  try {
+    pdf = await loadingTask.promise;
+    page = await (pdf as { getPage: (pageNumber: number) => Promise<any> }).getPage(1);
+    const baseViewport = (page as { getViewport: (options: { scale: number }) => { width: number; height: number } }).getViewport({ scale: 1 });
+    const scale = Math.min(2.2, Math.max(1, 1400 / Math.max(baseViewport.width, 1)));
+    const viewport = (page as { getViewport: (options: { scale: number }) => unknown }).getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.floor((viewport as { width: number }).width));
+    canvas.height = Math.max(1, Math.floor((viewport as { height: number }).height));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not create browser canvas for PDF floor plan rendering.");
+    await (page as { render: (options: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> } }).render({ canvasContext: context, viewport }).promise;
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
+    if (!blob) throw new Error("Could not convert PDF floor plan page to an image.");
+    return new File([blob], file.name.replace(/\.pdf$/i, "-page-1.jpg"), { type: "image/jpeg" });
+  } finally {
+    await safePdfJsTeardown({ page, pdf, loadingTask });
+  }
 }
 
 async function uploadClientFloorPlanImageToFirebase(file: File, context: { slug: string; index: number }) {

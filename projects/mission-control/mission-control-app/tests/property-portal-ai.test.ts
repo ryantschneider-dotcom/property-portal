@@ -877,8 +877,13 @@ test("broker review UI rasterizes PDF floor plans client-side before upload/tran
   assert.match(source, /GlobalWorkerOptions\.workerSrc\s*=/);
   assert.match(source, /unpkg\.com\/pdfjs-dist@\$\{PDFJS_WORKER_VERSION\}\/[\s\S]*build\/pdf\.worker\.mjs/);
   assert.match(source, /configurePdfJsWorker\(pdfjs\)/);
+  assert.match(source, /safePdfJsTeardown/);
+  assert.match(source, /resources\.page[\s\S]*cleanup\?\.\(\)/);
+  assert.match(source, /resources\.loadingTask[\s\S]*destroy\?\.\(\)/);
+  assert.match(source, /console\.warn\("Ignored PDF\.js cleanup failure after successful floor plan render"/);
+  assert.match(source, /finally \{[\s\S]*await safePdfJsTeardown\(\{ page, pdf, loadingTask \}\);[\s\S]*\}/);
   assert.match(source, /document\.createElement\("canvas"\)/);
-  assert.match(source, /canvas\.toBlob\([^)]*"image\/jpeg"/s);
+  assert.match(source, /canvas\.toBlob\([\s\S]*"image\/jpeg"/);
   assert.match(source, /uploadBytes\(/);
   assert.match(source, /getDownloadURL\(/);
   assert.match(source, /suiteFloorPlans:\s*\[/);
