@@ -84,6 +84,25 @@ async function safePdfJsTeardown(resources: { page?: unknown; pdf?: unknown; loa
   }
 }
 
+function assertCanvasHasVisiblePdfContent(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const sampleWidth = canvas.width;
+  const sampleHeight = canvas.height;
+  const imageData = context.getImageData(0, 0, sampleWidth, sampleHeight).data;
+  let visiblePixels = 0;
+  const stride = Math.max(4, Math.floor(imageData.length / 120_000 / 4) * 4);
+  for (let index = 0; index < imageData.length; index += stride) {
+    const red = imageData[index] ?? 255;
+    const green = imageData[index + 1] ?? 255;
+    const blue = imageData[index + 2] ?? 255;
+    if (red < 245 || green < 245 || blue < 245) visiblePixels += 1;
+  }
+  if (visiblePixels < 12) {
+    throw new Error("The PDF floor plan rendered as a blank white page. Please upload a PDF page with visible plan content.");
+  }
+}
+
 async function renderPdfFirstPageToImageFile(file: File) {
   if (typeof window === "undefined") throw new Error("PDF floor plan rasterization must run in the browser.");
   const pdfjs = await import("pdfjs-dist");
@@ -102,7 +121,15 @@ async function renderPdfFirstPageToImageFile(file: File) {
     canvas.height = Math.max(1, Math.floor((viewport as { height: number }).height));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not create browser canvas for PDF floor plan rendering.");
-    await (page as { render: (options: { canvasContext: CanvasRenderingContext2D; viewport: unknown }) => { promise: Promise<void> } }).render({ canvasContext: context, viewport }).promise;
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    await (page as { render: (options: { canvasContext: CanvasRenderingContext2D; viewport: unknown; annotationMode?: number; renderInteractiveForms?: boolean }) => { promise: Promise<void> } }).render({
+      canvasContext: context,
+      viewport,
+      annotationMode: (pdfjs as any).AnnotationMode?.ENABLE_FORMS ?? 2,
+      renderInteractiveForms: true,
+    }).promise;
+    assertCanvasHasVisiblePdfContent(canvas);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.88));
     if (!blob) throw new Error("Could not convert PDF floor plan page to an image.");
     return new File([blob], file.name.replace(/\.pdf$/i, "-page-1.jpg"), { type: "image/jpeg" });

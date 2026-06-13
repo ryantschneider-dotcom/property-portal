@@ -883,6 +883,9 @@ test("broker review UI rasterizes PDF floor plans client-side before upload/tran
   assert.match(source, /console\.warn\("Ignored PDF\.js cleanup failure after successful floor plan render"/);
   assert.match(source, /finally \{[\s\S]*await safePdfJsTeardown\(\{ page, pdf, loadingTask \}\);[\s\S]*\}/);
   assert.match(source, /document\.createElement\("canvas"\)/);
+  assert.match(source, /context\.fillStyle\s*=\s*"#fff"/);
+  assert.match(source, /annotationMode:\s*\(pdfjs as any\)\.AnnotationMode\?\.ENABLE_FORMS/);
+  assert.match(source, /assertCanvasHasVisiblePdfContent\(canvas\)/);
   assert.match(source, /canvas\.toBlob\([\s\S]*"image\/jpeg"/);
   assert.match(source, /uploadClientFloorPlanImageViaMissionControl/);
   assert.match(source, /fetch\("\/api\/listingstream\/client-floorplan-upload"/);
