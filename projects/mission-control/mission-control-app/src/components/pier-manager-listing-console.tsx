@@ -19,6 +19,7 @@ const propertyTypes = ["Retail", "Industrial", "Office", "Flex", "Land", "Multif
 const brokers = ["Ryan T. Schneider", "Anthony", "Joel", "Other PIER Broker"];
 const rentTypes = ["NNN", "Modified Gross", "Full Service", "Gross", "Monthly", "Call for details"];
 const MAX_DRAFT_PREVIEW_UPLOAD_BYTES = 850_000;
+const PDFJS_WORKER_VERSION = "6.0.227";
 
 type IntakeFormState = Omit<BrokerHubIntakeInput, "heroPhotoCount" | "suites">;
 
@@ -71,9 +72,17 @@ function getBrowserFirebaseStorageBucket() {
   return bucket;
 }
 
+function configurePdfJsWorker(pdfjs: { GlobalWorkerOptions?: { workerSrc?: string } }) {
+  if (typeof window === "undefined") return;
+  const workerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_WORKER_VERSION}/build/pdf.worker.mjs`;
+  if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+}
+
 async function renderPdfFirstPageToImageFile(file: File) {
+  if (typeof window === "undefined") throw new Error("PDF floor plan rasterization must run in the browser.");
   const pdfjs = await import("pdfjs-dist");
-  const loadingTask = (pdfjs as any).getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true });
+  configurePdfJsWorker(pdfjs);
+  const loadingTask = (pdfjs as any).getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
   const pdf = await loadingTask.promise;
   const page = await pdf.getPage(1);
   const baseViewport = page.getViewport({ scale: 1 });

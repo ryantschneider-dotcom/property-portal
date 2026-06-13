@@ -873,7 +873,10 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
 test("broker review UI rasterizes PDF floor plans client-side before upload/transit", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /import\("pdfjs-dist"\)/);
-  assert.match(source, /disableWorker:\s*true/);
+  assert.match(source, /PDFJS_WORKER_VERSION\s*=\s*"6\.0\.227"/);
+  assert.match(source, /GlobalWorkerOptions\.workerSrc\s*=/);
+  assert.match(source, /unpkg\.com\/pdfjs-dist@\$\{PDFJS_WORKER_VERSION\}\/[\s\S]*build\/pdf\.worker\.mjs/);
+  assert.match(source, /configurePdfJsWorker\(pdfjs\)/);
   assert.match(source, /document\.createElement\("canvas"\)/);
   assert.match(source, /canvas\.toBlob\([^)]*"image\/jpeg"/s);
   assert.match(source, /uploadBytes\(/);
