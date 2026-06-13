@@ -627,6 +627,8 @@ test("client floor plan upload route stores browser-rasterized images through Ad
   assert.match(routeSource, /folder:\s*\["property-intake", "client-suite-floorplans", slug\]/);
   assert.match(routeSource, /uploadMissionControlFirebaseFile/);
   assert.match(firebaseSource, /firebaseStorageDownloadTokens/);
+  assert.match(firebaseSource, /Content-Type: application\/json; charset=UTF-8\\r\\n\\r\\n/);
+  assert.match(firebaseSource, /Content-Type: \$\{contentType\}\\r\\n\\r\\n/);
   assert.match(firebaseSource, /new URLSearchParams\(\{ alt: "media", token \}\)/);
   assert.match(firebaseSource, /devstorage\.read_write/);
 });

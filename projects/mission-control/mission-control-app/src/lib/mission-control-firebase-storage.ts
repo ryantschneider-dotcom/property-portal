@@ -95,15 +95,13 @@ export async function uploadMissionControlFirebaseFile(file: File, options: { sl
     metadata: { firebaseStorageDownloadTokens: token },
   };
   const boundary = `mission-control-${randomUUID()}`;
-  const metadataPart = Buffer.from([
-    `--${boundary}`,
-    "Content-Type: application/json; charset=UTF-8",
-    "",
-    JSON.stringify(metadata),
-    `--${boundary}`,
-    `Content-Type: ${contentType}`,
-    "",
-  ].join("\r\n"));
+  const metadataPart = Buffer.from(
+    `--${boundary}\r\n` +
+    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${contentType}\r\n\r\n`,
+  );
   const closingPart = Buffer.from(`\r\n--${boundary}--\r\n`);
   const accessToken = await getFirebaseAccessToken();
   const response = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o?uploadType=multipart&name=${encodeURIComponent(objectName)}`, {
@@ -114,7 +112,10 @@ export async function uploadMissionControlFirebaseFile(file: File, options: { sl
     },
     body: Buffer.concat([metadataPart, originalBuffer, closingPart]),
   });
-  if (!response.ok) throw new Error(`Firebase Storage upload failed with status ${response.status}.`);
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Firebase Storage upload failed with status ${response.status}${body ? `: ${body.slice(0, 240)}` : ""}`);
+  }
   const url = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(objectName)}?${new URLSearchParams({ alt: "media", token })}`;
   return {
     url,
