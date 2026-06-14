@@ -12,6 +12,9 @@ test("Gate 4 exposes mobile offering-site launch command center in PIER Manager"
   assert.match(component, /activeListings\.map/);
   assert.match(component, /offeringSiteSelectedListingId/);
   assert.match(component, /\/api\/listingstream\/offering-sites/);
+  assert.match(component, /Gathering Public Records/);
+  assert.match(component, /Scraping GIS Data/);
+  assert.match(component, /public-record backfill/);
   assert.match(component, /gate:\s*"5"/);
   assert.match(component, /data-testid="offering-site-live-url"/);
   assert.match(component, /Open \/ copy live offering site/);

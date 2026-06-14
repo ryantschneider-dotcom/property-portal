@@ -437,7 +437,7 @@ type OfferingSiteGenerationJob = {
   createdAt?: string;
   updatedAt?: string;
   completedAt?: string | null;
-  baseline?: { validation?: { isValid?: boolean; missingFields?: string[] } };
+  baseline?: { validation?: { isValid?: boolean; missingFields?: string[]; missingRequiredFields?: string[] } };
   enrichment?: unknown;
   siteText?: { framework?: string };
   deployment?: { publicUrl?: string | null; customDomain?: string | null; deploymentUrl?: string | null; routePath?: string | null; routed?: boolean; assetCdnValidated?: boolean };
@@ -446,7 +446,7 @@ type OfferingSiteGenerationJob = {
 };
 type OfferingSiteCommandPayload = {
   job?: OfferingSiteGenerationJob;
-  baseline?: { validation?: { isValid?: boolean; missingFields?: string[] } };
+  baseline?: { validation?: { isValid?: boolean; missingFields?: string[]; missingRequiredFields?: string[] } };
   gate2?: unknown;
   error?: string;
 };
@@ -559,16 +559,17 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
 
   function getOfferingSiteTimelineSteps(job: OfferingSiteGenerationJob | null) {
-    const missingFields = job?.baseline?.validation?.missingFields ?? [];
-    const hasGate1 = Boolean(job && job.status !== "queued");
+    const missingFields = job?.baseline?.validation?.missingRequiredFields ?? job?.baseline?.validation?.missingFields ?? [];
+    const isGatheringRecords = job?.status === "gathering-public-records" || job?.status === "scraping-gis-data" || Boolean(job?.logs?.some((log) => /Gathering Public Records|Scraping GIS Data|county-gis|tax-assessor|AlphaMap/i.test(log.message || "")));
+    const hasGate1 = Boolean(job && job.status !== "queued" && !isGatheringRecords);
     const hasGate2 = Boolean(job?.siteText?.framework === "golden-isles-prestige-v1" || job?.enrichment);
     const hasGate3 = Boolean(job?.siteText?.framework === "golden-isles-prestige-v1");
     const hasGate5 = Boolean(job?.status === "deployed" || job?.deployment?.publicUrl || job?.deployment?.routed);
     const isBlocked = job?.status === "blocked";
     const isFailed = job?.status === "failed";
     return [
-      { label: "Source Pulled & Scrubbed", gate: "Gate 1", complete: hasGate1 && !isBlocked && !isFailed, current: job?.status === "ready-for-generation", issue: isBlocked ? `Blocked data state${missingFields.length ? `: ${missingFields.join(", ")}` : ""}` : "" },
-      { label: "Market Context & Copy Enriched", gate: "Gate 2", complete: hasGate2 && !isFailed, current: Boolean(job && !hasGate2 && !isBlocked && !isFailed), issue: isFailed ? job?.error || job?.logs?.find((log) => log.level === "error")?.message || "Enrichment failed." : "" },
+      { label: isGatheringRecords ? "Gathering Public Records..." : "Source Pulled & Scrubbed", gate: "Gate 1", complete: hasGate1 && !isBlocked && !isFailed, current: isGatheringRecords || job?.status === "ready-for-generation", issue: isBlocked ? `Blocked data state${missingFields.length ? `: ${missingFields.join(", ")}` : ""}` : "" },
+      { label: isGatheringRecords ? "Scraping GIS Data..." : "Market Context & Copy Enriched", gate: "Gate 2", complete: hasGate2 && !isFailed, current: Boolean(job && !hasGate2 && !isBlocked && !isFailed), issue: isFailed ? job?.error || job?.logs?.find((log) => log.level === "error")?.message || "Enrichment failed." : "" },
       { label: "Responsive Layout Compiled", gate: "Gate 3", complete: hasGate3 && !isFailed, current: Boolean(hasGate2 && !hasGate3 && !isFailed), issue: "" },
       { label: "Site Live & Routed", gate: "Gate 5", complete: hasGate5, current: Boolean(hasGate3 && !hasGate5), issue: hasGate3 && !hasGate5 ? "Waiting for final routing gate." : "" },
     ];
@@ -582,7 +583,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     }
     setOfferingSiteBusy(true);
     setOfferingSiteError("");
-    setOfferingSiteStatus(retryJob ? "Retrying offering site build from Gate 1 → Gate 3…" : "Launching offering site build from Gate 1 → Gate 3…");
+    setOfferingSiteStatus(retryJob ? "Retrying offering site build with autonomous public-record backfill…" : "Launching offering site build. Gathering Public Records and Scraping GIS Data before any blocked state…");
     try {
       const payload = await fetch("/api/listingstream/offering-sites", {
         method: "POST",
@@ -592,7 +593,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       if (payload.job) {
         setOfferingSiteJob(payload.job);
         setOfferingSiteLastJobId(payload.job.id);
-        const missingFields = payload.job.baseline?.validation?.missingFields ?? payload.baseline?.validation?.missingFields ?? [];
+        const missingFields = payload.job.baseline?.validation?.missingRequiredFields ?? payload.job.baseline?.validation?.missingFields ?? payload.baseline?.validation?.missingRequiredFields ?? payload.baseline?.validation?.missingFields ?? [];
         // Gate 4 explicitly surfaces baseline.validation.missingFields from ListingStream blocked states.
         if (payload.job.status === "blocked") {
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
@@ -1097,7 +1098,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Offering Site Command Center</p>
             <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">Golden Isles website builds from your phone</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Select an active ListingStream property, launch the Gate 1 → Gate 3 compiler, and monitor blocked, failed, or retry-ready states without leaving PIER Manager.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Select an active ListingStream property, launch the autonomous Gate 1 → Gate 5 compiler, and watch public-record gathering, GIS scraping, blocked, failed, retry-ready, and live-routed states without leaving PIER Manager.</p>
           </div>
           <button type="button" onClick={() => void refreshOfferingSiteJob()} disabled={offeringSiteBusy || !offeringSiteLastJobId} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">
             {offeringSiteBusy ? "Refreshing…" : "Refresh Timeline"}
