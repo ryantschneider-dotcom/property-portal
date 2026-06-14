@@ -2,7 +2,6 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
-import { pushActivityEvent } from "@/lib/activity-log";
 import {
   buildCopilotPrompt,
   CopilotMessage,
@@ -12,7 +11,6 @@ import {
 } from "@/lib/hermes-copilot";
 import { getOpenClawHealth, sendOpenClawChat } from "@/lib/openclaw-client";
 import { buildPropertyPortalUrl, getPropertyPortalInternalHeaders, safePropertyPortalFetch } from "@/lib/property-portal-client";
-import { readStore, writeStore } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,9 +80,8 @@ async function runCopilotAction(command: string | null, args: string) {
 export async function GET() {
   try {
     await requireAuth();
-    const store = await readStore();
     const backend = await getOpenClawHealth(3000);
-    return NextResponse.json({ ok: true, messages: normalizeCopilotMessages(store.copilotMessages), backend });
+    return NextResponse.json({ ok: true, messages: [], backend });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load Co-Pilot" }, { status: 500 });
@@ -94,13 +91,12 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await requireAuth();
-    const body = (await request.json().catch(() => ({}))) as { message?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { message?: unknown; history?: unknown };
     const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
     if (!rawMessage) return NextResponse.json({ error: "message is required" }, { status: 400 });
 
     const parsed = parseCopilotCommand(rawMessage);
-    const store = await readStore();
-    const history = normalizeCopilotMessages(store.copilotMessages);
+    const history = normalizeCopilotMessages(body.history);
     const userMessage = makeMessage("user", rawMessage, parsed.command, "sent");
     const prompt = buildCopilotPrompt(parsed.command, parsed.args, history);
     const [backend, action, openClaw] = await Promise.all([
@@ -114,16 +110,9 @@ export async function POST(request: Request) {
       : createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action });
     const assistantMessage = makeMessage("assistant", assistantContent, parsed.command, openClaw.ok || action?.ok ? "ok" : "error");
 
-    store.copilotMessages = [...history, userMessage, assistantMessage].slice(-80);
-    pushActivityEvent(store, {
-      type: "chat",
-      title: `Hermes Co-Pilot: ${parsed.command || "chat"}`,
-      detail: assistantContent,
-      createdAt: assistantMessage.createdAt,
-    });
-    await writeStore(store);
+    const messages = [...history, userMessage, assistantMessage].slice(-80);
 
-    return NextResponse.json({ ok: true, messages: store.copilotMessages, assistant: assistantMessage, backend, action, openClaw });
+    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, openClaw });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to send Co-Pilot message" }, { status: 500 });

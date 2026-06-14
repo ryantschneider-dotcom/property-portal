@@ -10,6 +10,34 @@ type CopilotState = {
   backend?: { ok: boolean; status: string; url?: string; error?: string };
 };
 
+const COPILOT_MESSAGES_STORAGE_KEY = "hermes-copilot:copilotMessages";
+
+function readLocalCopilotMessages() {
+  if (typeof window === "undefined") return [] as CopilotMessage[];
+  try {
+    const raw = window.localStorage.getItem(COPILOT_MESSAGES_STORAGE_KEY);
+    if (!raw) return [] as CopilotMessage[];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [] as CopilotMessage[];
+    return parsed.filter((message): message is CopilotMessage => {
+      if (!message || typeof message !== "object") return false;
+      const candidate = message as Partial<CopilotMessage>;
+      return (candidate.role === "user" || candidate.role === "assistant") && typeof candidate.content === "string" && typeof candidate.createdAt === "string";
+    }).slice(-80);
+  } catch {
+    return [] as CopilotMessage[];
+  }
+}
+
+function writeLocalCopilotMessages(messages: CopilotMessage[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COPILOT_MESSAGES_STORAGE_KEY, JSON.stringify(messages.slice(-80)));
+  } catch {
+    // Browser storage can be unavailable in private mode; the server API remains stateless either way.
+  }
+}
+
 export function HermesCopilotConsole() {
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -23,15 +51,20 @@ export function HermesCopilotConsole() {
     let cancelled = false;
     async function load() {
       try {
+        const localMessages = readLocalCopilotMessages();
         const response = await fetch("/api/hermes-copilot", { cache: "no-store" });
         const data = (await response.json()) as CopilotState & { error?: string };
         if (!response.ok) throw new Error(data.error || "Unable to load Hermes Co-Pilot");
         if (!cancelled) {
-          setMessages(data.messages || []);
+          setMessages(localMessages);
           setBackend(data.backend);
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) {
+          const localMessages = readLocalCopilotMessages();
+          setMessages(localMessages);
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -41,6 +74,10 @@ export function HermesCopilotConsole() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    writeLocalCopilotMessages(messages);
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -65,29 +102,32 @@ export function HermesCopilotConsole() {
       createdAt: new Date().toISOString(),
       status: "sent",
     };
-    setMessages((current) => [...current, optimistic]);
+    const requestHistory = messages.slice(-80);
+    const optimisticMessages = [...requestHistory, optimistic].slice(-80);
+    setMessages(optimisticMessages);
+    writeLocalCopilotMessages(optimisticMessages);
     try {
       const response = await fetch("/api/hermes-copilot", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: payload }),
+        body: JSON.stringify({ message: payload, history: requestHistory }),
       });
       const data = (await response.json()) as CopilotState & { error?: string };
       if (!response.ok) throw new Error(data.error || "Hermes Co-Pilot send failed");
-      setMessages(data.messages || []);
+      const nextMessages = data.messages || optimisticMessages;
+      setMessages(nextMessages);
+      writeLocalCopilotMessages(nextMessages);
       setBackend(data.backend);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setMessages((current) => [
-        ...current,
-        {
-          id: `error-${Date.now()}`,
-          role: "assistant",
-          content: `## Co-Pilot Error\n\n${err instanceof Error ? err.message : String(err)}`,
-          createdAt: new Date().toISOString(),
-          status: "error",
-        },
-      ]);
+      const errorMessage: CopilotMessage = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: `## Co-Pilot Error\n\n${err instanceof Error ? err.message : String(err)}`,
+        createdAt: new Date().toISOString(),
+        status: "error",
+      };
+      setMessages((current) => [...current, errorMessage].slice(-80));
     } finally {
       setSending(false);
     }

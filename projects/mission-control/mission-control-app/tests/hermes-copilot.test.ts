@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   buildCopilotPrompt,
@@ -61,4 +62,18 @@ test("Hermes Co-Pilot status fallback reports Vercel/OpenClaw health and secure 
   assert.match(output, /OpenClaw: live/i);
   assert.match(output, /Vercel reachable/i);
   assert.match(output, /secure tunnel/i);
+});
+
+test("Hermes Co-Pilot API remains stateless on Vercel and never imports the disk store", () => {
+  const routeSource = readFileSync("src/app/api/hermes-copilot/route.ts", "utf8");
+
+  assert.doesNotMatch(routeSource, /@\/lib\/storage/);
+  assert.doesNotMatch(routeSource, /readStore|writeStore|pushActivityEvent/);
+});
+
+test("Hermes Co-Pilot browser console owns durable chat history in localStorage", () => {
+  const componentSource = readFileSync("src/components/hermes-copilot-console.tsx", "utf8");
+
+  assert.match(componentSource, /localStorage/);
+  assert.match(componentSource, /copilotMessages|hermes-copilot/);
 });
