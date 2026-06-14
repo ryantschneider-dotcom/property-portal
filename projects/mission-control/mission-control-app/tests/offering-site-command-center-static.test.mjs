@@ -12,7 +12,9 @@ test("Gate 4 exposes mobile offering-site launch command center in PIER Manager"
   assert.match(component, /activeListings\.map/);
   assert.match(component, /offeringSiteSelectedListingId/);
   assert.match(component, /\/api\/listingstream\/offering-sites/);
-  assert.match(component, /gate:\s*"2"/);
+  assert.match(component, /gate:\s*"5"/);
+  assert.match(component, /data-testid="offering-site-live-url"/);
+  assert.match(component, /Open \/ copy live offering site/);
 });
 
 test("Gate 4 renders mobile step timeline for Gates 1, 2, 3, and future Gate 5", () => {
@@ -45,4 +47,13 @@ test("Gate 4 Mission Control proxy protects and forwards ListingStream offering-
   assert.match(route, /export async function POST/);
   assert.match(route, /export async function GET/);
   assert.match(route, /offering site/);
+});
+
+
+test("Gate 5 dashboard finalizes live routed URL for mobile sharing", () => {
+  assert.match(component, /deployment\?\.publicUrl/);
+  assert.match(component, /deployment\?\.customDomain/);
+  assert.match(component, /Offering site is live and routed/);
+  assert.match(component, /Copy the public URL below and send it from your phone/);
+  assert.match(component, /Site Live & Routed/);
 });

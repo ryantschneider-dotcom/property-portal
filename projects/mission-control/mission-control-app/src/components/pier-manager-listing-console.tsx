@@ -440,7 +440,7 @@ type OfferingSiteGenerationJob = {
   baseline?: { validation?: { isValid?: boolean; missingFields?: string[] } };
   enrichment?: unknown;
   siteText?: { framework?: string };
-  deployment?: { publicUrl?: string | null; routed?: boolean };
+  deployment?: { publicUrl?: string | null; customDomain?: string | null; deploymentUrl?: string | null; routePath?: string | null; routed?: boolean; assetCdnValidated?: boolean };
   logs?: { level?: string; stage?: string; message?: string; createdAt?: string }[];
   error?: string;
 };
@@ -587,7 +587,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       const payload = await fetch("/api/listingstream/offering-sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-mobile", gate: "2" }),
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-mobile", gate: "5" }),
       }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
@@ -598,7 +598,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
           setOfferingSiteStatus("Offering site build is blocked. Fix the source data gaps and retry from your phone.");
         } else {
-          setOfferingSiteStatus("Gate 1–3 build cycle completed or advanced. Timeline updated below.");
+          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Offering site is live and routed. Copy the public URL below and send it from your phone." : "Gate 1–5 build cycle completed or advanced. Timeline updated below.");
         }
       } else {
         setOfferingSiteError(payload.error || "ListingStream did not return an offering site job.");
@@ -1147,7 +1147,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         {offeringSiteJob ? (
           <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 text-xs leading-5 text-zinc-500">
             <p><span className="font-bold text-zinc-900">Latest job:</span> {offeringSiteJob.id} • {offeringSiteJob.status} • {offeringSiteJob.updatedAt || "timestamp pending"}</p>
-            {offeringSiteJob.deployment?.publicUrl ? <a className="mt-2 inline-flex font-bold text-[#CB521E]" href={offeringSiteJob.deployment.publicUrl} target="_blank" rel="noopener noreferrer">Open live offering site</a> : null}
+            {(offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.customDomain) ? <a data-testid="offering-site-live-url" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-4 py-2 font-extrabold text-white" href={(offeringSiteJob.deployment.publicUrl || offeringSiteJob.deployment.customDomain) as string} target="_blank" rel="noopener noreferrer">Open / copy live offering site</a> : null}
           </div>
         ) : null}
       </section>
