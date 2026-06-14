@@ -110,7 +110,7 @@ export function HermesCopilotConsole() {
       const response = await fetch("/api/hermes-copilot", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: payload, history: requestHistory }),
+        body: JSON.stringify({ message: payload, history: requestHistory, copilotMessages: requestHistory }),
       });
       const data = (await response.json()) as CopilotState & { error?: string };
       if (!response.ok) throw new Error(data.error || "Hermes Co-Pilot send failed");

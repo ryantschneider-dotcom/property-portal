@@ -66,30 +66,37 @@ export function normalizeCopilotMessages(input: unknown): CopilotMessage[] {
   return messages.slice(-80);
 }
 
+export function getCopilotHistoryFromRequestBody(body: unknown): CopilotMessage[] {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [];
+  const candidate = body as Record<string, unknown>;
+  return normalizeCopilotMessages(candidate.copilotMessages ?? candidate.history);
+}
+
 export function buildCopilotPrompt(command: CopilotCommandName | null, args: string, history: CopilotMessage[]) {
   const recentContext = history.slice(-12).map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n");
   const target = args.trim() || "the current context";
+  const defaultMarketContext = "Default market context: Assume all properties are located in Savannah, Chatham County, GA unless explicitly stated otherwise.";
   const contextBlock = recentContext ? `\n\nActive Mission Control conversation context:\n${recentContext}` : "";
   const executorMandate =
     "You are the executor. Execute the required tools immediately to fulfill this slash command. Do not acknowledge a queue, do not say the task is processing, and do not wait for another system. Return only the execution results, source URLs, and any blockers after you have actually run the tools.";
 
   switch (command) {
     case "/intel":
-      return `${executorMandate}\n\nRun /intel for: ${target}. Use web/research tools now: scrape official reporting, agency documents, primary sources, and alternative viewpoints. Return two clearly separated sections: OFFICIAL REPORTING and ALTERNATIVE VIEWPOINTS, then a PIER broker bottom line.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nRun /intel for: ${target}. Use web/research tools now: scrape official reporting, agency documents, primary sources, and alternative viewpoints. Return two clearly separated sections: OFFICIAL REPORTING and ALTERNATIVE VIEWPOINTS, then a PIER broker bottom line.${contextBlock}`;
     case "/spin":
-      return `${executorMandate}\n\nRun /spin with tone/angle: ${target}. Use the most recent /intel data in context when available; if source facts are missing, use tools to gather them before drafting. Draft a persuasive piece from that angle without fabricating facts. Include headline, thesis, argument, counterargument, and close.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nRun /spin with tone/angle: ${target}. Use the most recent /intel data in context when available; if source facts are missing, use tools to gather them before drafting. Draft a persuasive piece from that angle without fabricating facts. Include headline, thesis, argument, counterargument, and close.${contextBlock}`;
     case "/ig_cre":
-      return `${executorMandate}\n\nDraft a PIER Commercial Instagram post about: ${target}. Use tools for any factual/current claims before writing. Tone: corporate, institutional, CCIM-level, understated, no hype. Include caption, visual direction, and hashtags.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nDraft a PIER Commercial Instagram post about: ${target}. Use tools for any factual/current claims before writing. Tone: corporate, institutional, CCIM-level, understated, no hype. Include caption, visual direction, and hashtags.${contextBlock}`;
     case "/ig_life":
-      return `${executorMandate}\n\nDraft a lifestyle Instagram post about: ${target}. Use tools if factual/current verification is needed before writing. Tone: authentic, hands-on, grounded Ryan voice for woodworking, goat milk soap, beekeeping, family projects, or land stewardship. Include caption, visual direction, and hashtags.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nDraft a lifestyle Instagram post about: ${target}. Use tools if factual/current verification is needed before writing. Tone: authentic, hands-on, grounded Ryan voice for woodworking, goat milk soap, beekeeping, family projects, or land stewardship. Include caption, visual direction, and hashtags.${contextBlock}`;
     case "/site":
-      return `${executorMandate}\n\nTrigger and supervise the Gate 1-5 Offering Site Generator for listing: ${target}. Use the available Mission Control/ListingStream tools immediately. Report Gate 1 baseline, Gate 2 enrichment, Gate 5 deployment URL, and blockers. Use ListingStream/Mission Control safe public-only rules.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nTrigger and supervise the Gate 1-5 Offering Site Generator for listing: ${target}. Use the available Mission Control/ListingStream tools immediately. Report Gate 1 baseline, Gate 2 enrichment, Gate 5 deployment URL, and blockers. Use ListingStream/Mission Control safe public-only rules.${contextBlock}`;
     case "/scrape":
-      return `${executorMandate}\n\nRun the county GIS/qPublic playbook for address/listing: ${target}. Use tools now: address variants, qPublic/direct lookup, geocoding, county property-search endpoints, and ArcGIS REST spatial queries. Return the raw data, source URLs, PARID, acreage, zoning, assessed values, owner/public-record facts, and any missing fields.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nRun the county GIS/qPublic playbook for address/listing: ${target}. Use tools now: address variants, qPublic/direct lookup, geocoding, county property-search endpoints, and ArcGIS REST spatial queries. Return the raw data, source URLs, PARID, acreage, zoning, assessed values, owner/public-record facts, and any missing fields.${contextBlock}`;
     case "/status":
-      return `${executorMandate}\n\nReport uptime and queue health for Vercel, Mission Control, ListingStream, and OpenClaw. Use available system/status tools immediately. Include gateway health, queue posture, recent errors, and whether the secure tunnel is configured.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nReport uptime and queue health for Vercel, Mission Control, ListingStream, and OpenClaw. Use available system/status tools immediately. Include gateway health, queue posture, recent errors, and whether the secure tunnel is configured.${contextBlock}`;
     default:
-      return `${args.trim()}${contextBlock}`;
+      return `${defaultMarketContext}\n\n${args.trim()}${contextBlock}`;
   }
 }
 
@@ -112,9 +119,10 @@ export function createCopilotAssistantFallback(input: {
 
 export function stripReasoningTags(text: string) {
   return text
-    .replace(/(?:[ \t]*\n)+[ \t]*<think\b[^>]*>[\s\S]*?<\/think>[ \t]*(?:\n[ \t]*)+/gi, "\n")
-    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/(?:[ \t]*\n)*[ \t]*<(?:think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)\b[^>]*>[\s\S]*?<\/(?:think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)>[ \t]*(?:\n[ \t]*)*/gi, "\n")
+    .replace(/<\/?(?:final|answer|response|message|assistant|output)\b[^>]*>/gi, "")
+    .replace(/<\/?[a-zA-Z_][\w:.-]*\b[^>]*>/g, "")
+    .replace(/\n{2,}/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n[ \t]+/g, "\n")
     .replace(/[ \t]{2,}/g, " ")

@@ -6,6 +6,7 @@ import {
   buildCopilotPrompt,
   copilotSlashCommands,
   createCopilotAssistantFallback,
+  getCopilotHistoryFromRequestBody,
   normalizeCopilotMessages,
   parseCopilotCommand,
   renderMarkdownPreview,
@@ -38,6 +39,20 @@ test("Hermes Co-Pilot prompt wraps slash commands in business-specific execution
   assert.match(prompt, /county GIS\/qPublic playbook/i);
   assert.match(prompt, /12 West State Street/);
   assert.match(prompt, /return the raw data/i);
+  assert.match(prompt, /Savannah, Chatham County, GA/i);
+  assert.match(prompt, /unless explicitly stated otherwise/i);
+});
+
+test("Hermes Co-Pilot prompt carries prior chat turns into follow-up requests", () => {
+  const prompt = buildCopilotPrompt(null, "chatham county, ga", [
+    { id: "u1", role: "user", content: "/scrape 12 West State Street", createdAt: "2026-06-14T00:00:00.000Z" },
+    { id: "a1", role: "assistant", content: "What county and state is this in?", createdAt: "2026-06-14T00:00:01.000Z" },
+  ]);
+
+  assert.match(prompt, /Active Mission Control conversation context/i);
+  assert.match(prompt, /USER: \/scrape 12 West State Street/);
+  assert.match(prompt, /ASSISTANT: What county and state is this in\?/);
+  assert.match(prompt, /chatham county, ga/i);
 });
 
 test("Hermes Co-Pilot slash prompts explicitly require immediate tool execution", () => {
@@ -54,11 +69,24 @@ test("Hermes Co-Pilot slash prompts explicitly require immediate tool execution"
 });
 
 test("Hermes Co-Pilot strips internal reasoning tags before rendering", () => {
-  const dirty = "Before\n<think>I should not be visible\nwith multiple lines</think>\nAfter <think>hidden</think> done";
+  const dirty = "Before\n<think>I should not be visible\nwith multiple lines</think>\n<tool>{\"secret\":true}</tool>\nAfter <final>parcel data</final> done";
   const clean = stripReasoningTags(dirty);
 
-  assert.equal(clean, "Before\nAfter done");
-  assert.doesNotMatch(renderMarkdownPreview(dirty), /I should not be visible|hidden|think/i);
+  assert.equal(clean, "Before\nAfter parcel data done");
+  assert.doesNotMatch(renderMarkdownPreview(dirty), /I should not be visible|secret|think|tool|final/i);
+});
+
+test("Hermes Co-Pilot accepts copilotMessages request history from the browser", () => {
+  const history = getCopilotHistoryFromRequestBody({
+    copilotMessages: [
+      { id: "u1", role: "user", content: "/scrape 12 West State Street", createdAt: "2026-06-14T00:00:00.000Z" },
+      { id: "a1", role: "assistant", content: "What county and state is this in?", createdAt: "2026-06-14T00:00:01.000Z" },
+    ],
+  });
+
+  assert.equal(history.length, 2);
+  assert.equal(history[0].content, "/scrape 12 West State Street");
+  assert.equal(history[1].content, "What county and state is this in?");
 });
 
 test("Hermes Co-Pilot memory normalization preserves active conversation history only", () => {
@@ -111,4 +139,7 @@ test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued ac
   assert.match(clientSource, /agent\.wait/);
   assert.match(clientSource, /chat\.history/);
   assert.match(clientSource, /copilot-exec/);
+  assert.match(routeSource, /getCopilotHistoryFromRequestBody/);
+  assert.match(routeSource, /history/);
+  assert.match(clientSource, /history/);
 });

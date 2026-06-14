@@ -1,3 +1,5 @@
+import type { CopilotMessage } from "@/lib/hermes-copilot";
+
 function gatewayWsUrl() {
   return (process.env.OPENCLAW_GATEWAY_WS_URL || process.env.OPENCLAW_GATEWAY_URL || "ws://127.0.0.1:18789").trim();
 }
@@ -23,6 +25,7 @@ export async function getOpenClawHealth(timeoutMs = 5000) {
 
 type RpcResponse = { type: "res"; id: string; ok: true; payload: unknown } | { type: "res"; id: string; ok: false; error?: { message?: string; code?: string } };
 type OpenClawChatResult = { ok: true; response?: unknown; runId?: string; text: string } | { ok: false; response?: unknown; error: string };
+type OpenClawChatOptions = { sessionKey?: string; timeoutMs?: number; history?: CopilotMessage[] };
 
 function requestId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -105,7 +108,7 @@ function extractAssistantTextAfterRun(history: unknown, runId: string) {
   return "";
 }
 
-async function sendViaMacMiniExecutor(message: string, options: { sessionKey?: string; timeoutMs?: number }): Promise<OpenClawChatResult | null> {
+async function sendViaMacMiniExecutor(message: string, options: OpenClawChatOptions): Promise<OpenClawChatResult | null> {
   const token = process.env.OPENCLAW_GATEWAY_TOKEN?.trim();
   if (!token) return null;
   const controller = new AbortController();
@@ -117,7 +120,7 @@ async function sendViaMacMiniExecutor(message: string, options: { sessionKey?: s
       cache: "no-store",
       signal: controller.signal,
       headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "user-agent": "mission-control-vercel/1.0" },
-      body: JSON.stringify({ message, sessionKey: options.sessionKey || "main", timeoutMs }),
+      body: JSON.stringify({ message, sessionKey: options.sessionKey || "main", timeoutMs, history: options.history || [] }),
     });
     if (response.status === 404) return null;
     const data = (await response.json().catch(() => ({}))) as { ok?: unknown; text?: unknown; error?: unknown; runId?: unknown; response?: unknown };
@@ -133,7 +136,7 @@ async function sendViaMacMiniExecutor(message: string, options: { sessionKey?: s
   }
 }
 
-async function sendViaGatewayWebSocket(message: string, options: { sessionKey?: string; timeoutMs?: number } = {}): Promise<OpenClawChatResult> {
+async function sendViaGatewayWebSocket(message: string, options: OpenClawChatOptions = {}): Promise<OpenClawChatResult> {
   const url = gatewayWsUrl();
   const token = process.env.OPENCLAW_GATEWAY_TOKEN?.trim();
   const timeoutMs = options.timeoutMs ?? 55000;
@@ -189,7 +192,7 @@ async function sendViaGatewayWebSocket(message: string, options: { sessionKey?: 
   }
 }
 
-export async function sendOpenClawChat(message: string, options: { sessionKey?: string; timeoutMs?: number } = {}) {
+export async function sendOpenClawChat(message: string, options: OpenClawChatOptions = {}) {
   const executorResult = await sendViaMacMiniExecutor(message, options);
   if (executorResult) return executorResult;
   return sendViaGatewayWebSocket(message, options);
