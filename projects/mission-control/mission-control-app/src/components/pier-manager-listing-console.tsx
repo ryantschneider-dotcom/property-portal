@@ -427,6 +427,31 @@ type SyndicationStatusPayload = {
   error?: string;
 };
 
+
+type OfferingSiteJobStatus = "queued" | "ready-for-generation" | "blocked" | "generating" | "deploying" | "deployed" | "failed" | string;
+type OfferingSiteGenerationJob = {
+  id: string;
+  listingId?: string;
+  slug?: string;
+  status: OfferingSiteJobStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  completedAt?: string | null;
+  baseline?: { validation?: { isValid?: boolean; missingFields?: string[] } };
+  enrichment?: unknown;
+  siteText?: { framework?: string };
+  deployment?: { publicUrl?: string | null; routed?: boolean };
+  logs?: { level?: string; stage?: string; message?: string; createdAt?: string }[];
+  error?: string;
+};
+type OfferingSiteCommandPayload = {
+  job?: OfferingSiteGenerationJob;
+  baseline?: { validation?: { isValid?: boolean; missingFields?: string[] } };
+  gate2?: unknown;
+  error?: string;
+};
+
+
 export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) {
   const [intakeForm, setIntakeForm] = useState<IntakeFormState>(initialIntakeState);
   const [suites, setSuites] = useState<BrokerHubSuiteInput[]>([createSuite()]);
@@ -457,6 +482,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [syndicationPayload, setSyndicationPayload] = useState<SyndicationStatusPayload | null>(null);
   const [syndicationStatus, setSyndicationStatus] = useState("Loading syndication command center…");
   const [syndicationBusy, setSyndicationBusy] = useState(false);
+  const [offeringSiteSelectedListingId, setOfferingSiteSelectedListingId] = useState("");
+  const [offeringSiteJob, setOfferingSiteJob] = useState<OfferingSiteGenerationJob | null>(null);
+  const [offeringSiteLastJobId, setOfferingSiteLastJobId] = useState("");
+  const [offeringSiteStatus, setOfferingSiteStatus] = useState("Select an active listing to launch a Golden Isles offering website build.");
+  const [offeringSiteError, setOfferingSiteError] = useState("");
+  const [offeringSiteBusy, setOfferingSiteBusy] = useState(false);
 
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
@@ -524,6 +555,83 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     } finally {
       setSyndicationBusy(false);
     }
+  }
+
+
+  function getOfferingSiteTimelineSteps(job: OfferingSiteGenerationJob | null) {
+    const missingFields = job?.baseline?.validation?.missingFields ?? [];
+    const hasGate1 = Boolean(job && job.status !== "queued");
+    const hasGate2 = Boolean(job?.siteText?.framework === "golden-isles-prestige-v1" || job?.enrichment);
+    const hasGate3 = Boolean(job?.siteText?.framework === "golden-isles-prestige-v1");
+    const hasGate5 = Boolean(job?.status === "deployed" || job?.deployment?.publicUrl || job?.deployment?.routed);
+    const isBlocked = job?.status === "blocked";
+    const isFailed = job?.status === "failed";
+    return [
+      { label: "Source Pulled & Scrubbed", gate: "Gate 1", complete: hasGate1 && !isBlocked && !isFailed, current: job?.status === "ready-for-generation", issue: isBlocked ? `Blocked data state${missingFields.length ? `: ${missingFields.join(", ")}` : ""}` : "" },
+      { label: "Market Context & Copy Enriched", gate: "Gate 2", complete: hasGate2 && !isFailed, current: Boolean(job && !hasGate2 && !isBlocked && !isFailed), issue: isFailed ? job?.error || job?.logs?.find((log) => log.level === "error")?.message || "Enrichment failed." : "" },
+      { label: "Responsive Layout Compiled", gate: "Gate 3", complete: hasGate3 && !isFailed, current: Boolean(hasGate2 && !hasGate3 && !isFailed), issue: "" },
+      { label: "Site Live & Routed", gate: "Gate 5", complete: hasGate5, current: Boolean(hasGate3 && !hasGate5), issue: hasGate3 && !hasGate5 ? "Waiting for final routing gate." : "" },
+    ];
+  }
+
+  async function launchOfferingSiteBuild(listingId?: string, retryJob?: OfferingSiteGenerationJob | null) {
+    const targetListingId = listingId || offeringSiteSelectedListingId;
+    if (!targetListingId) {
+      setOfferingSiteError("Select an active ListingStream listing before launching a Golden Isles site build.");
+      return;
+    }
+    setOfferingSiteBusy(true);
+    setOfferingSiteError("");
+    setOfferingSiteStatus(retryJob ? "Retrying offering site build from Gate 1 → Gate 3…" : "Launching offering site build from Gate 1 → Gate 3…");
+    try {
+      const payload = await fetch("/api/listingstream/offering-sites", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-mobile", gate: "2" }),
+      }).then(parseJsonResponse) as OfferingSiteCommandPayload;
+      if (payload.job) {
+        setOfferingSiteJob(payload.job);
+        setOfferingSiteLastJobId(payload.job.id);
+        const missingFields = payload.job.baseline?.validation?.missingFields ?? payload.baseline?.validation?.missingFields ?? [];
+        // Gate 4 explicitly surfaces baseline.validation.missingFields from ListingStream blocked states.
+        if (payload.job.status === "blocked") {
+          setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
+          setOfferingSiteStatus("Offering site build is blocked. Fix the source data gaps and retry from your phone.");
+        } else {
+          setOfferingSiteStatus("Gate 1–3 build cycle completed or advanced. Timeline updated below.");
+        }
+      } else {
+        setOfferingSiteError(payload.error || "ListingStream did not return an offering site job.");
+      }
+    } catch (error) {
+      setOfferingSiteError(error instanceof Error ? error.message : "Offering site build failed.");
+      setOfferingSiteStatus("Offering site build needs attention.");
+    } finally {
+      setOfferingSiteBusy(false);
+    }
+  }
+
+  async function refreshOfferingSiteJob(jobId = offeringSiteLastJobId) {
+    if (!jobId) return;
+    setOfferingSiteBusy(true);
+    setOfferingSiteError("");
+    try {
+      const payload = await fetch(`/api/listingstream/offering-sites?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" }).then(parseJsonResponse) as OfferingSiteCommandPayload;
+      if (payload.job) {
+        setOfferingSiteJob(payload.job);
+        setOfferingSiteStatus("Offering site timeline refreshed.");
+      } else {
+        setOfferingSiteError(payload.error || "No offering site job returned.");
+      }
+    } catch (error) {
+      setOfferingSiteError(error instanceof Error ? error.message : "Could not refresh offering site job.");
+    } finally {
+      setOfferingSiteBusy(false);
+    }
+  }
+
+  function retryOfferingSiteBuild() {
+    void launchOfferingSiteBuild(offeringSiteJob?.listingId || offeringSiteSelectedListingId, offeringSiteJob);
   }
 
   function revealReviewDraft(target: "panel" | "actions" = "panel") {
@@ -940,6 +1048,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const latestSyndicationJob = syndicationJobs[0] ?? null;
   const syndicationReadiness = syndicationPayload?.readiness ?? [];
 
+  const offeringSiteSelectedListing = useMemo(() => activeListings.find((item) => item.id === offeringSiteSelectedListingId || item.slug === offeringSiteSelectedListingId), [activeListings, offeringSiteSelectedListingId]);
+  const offeringSiteTimelineSteps = getOfferingSiteTimelineSteps(offeringSiteJob);
+  const offeringSiteCanRetry = Boolean(offeringSiteJob && ["blocked", "failed"].includes(String(offeringSiteJob.status)));
+
   return (
     <div className="space-y-6">
       {toastMessage ? (
@@ -977,6 +1089,67 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-[#f6a87f]">Minimum to submit</p>
           <p className="mt-3 text-sm leading-6 text-zinc-300">{intakeRequiredSummary}</p>
         </div>
+      </section>
+
+
+      <section data-testid="offering-site-command-center" className="rounded-[1.35rem] border border-[#CB521E]/20 bg-[linear-gradient(180deg,#ffffff,#fff8f4)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Offering Site Command Center</p>
+            <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">Golden Isles website builds from your phone</h3>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Select an active ListingStream property, launch the Gate 1 → Gate 3 compiler, and monitor blocked, failed, or retry-ready states without leaving PIER Manager.</p>
+          </div>
+          <button type="button" onClick={() => void refreshOfferingSiteJob()} disabled={offeringSiteBusy || !offeringSiteLastJobId} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">
+            {offeringSiteBusy ? "Refreshing…" : "Refresh Timeline"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+          <label className="space-y-2">
+            <span className="text-xs font-extrabold uppercase tracking-[0.18em] text-zinc-500">Active ListingStream property</span>
+            <select value={offeringSiteSelectedListingId} onChange={(event) => setOfferingSiteSelectedListingId(event.target.value)} className={inputClass}>
+              <option value="">Select listing to build</option>
+              {activeListings.map((listing) => (
+                <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={() => void launchOfferingSiteBuild()} disabled={offeringSiteBusy || !offeringSiteSelectedListingId} className="self-end rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+            {offeringSiteBusy ? "Building…" : "Launch Golden Isles Site Build"}
+          </button>
+        </div>
+
+        {offeringSiteSelectedListing ? (
+          <p className="mt-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600"><span className="font-bold text-zinc-950">Selected:</span> {offeringSiteSelectedListing.address || offeringSiteSelectedListing.title || offeringSiteSelectedListing.slug}</p>
+        ) : null}
+
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-700">{offeringSiteStatus}</div>
+        {offeringSiteError ? (
+          <div role="alert" className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+            {offeringSiteError}
+            <button type="button" onClick={retryOfferingSiteBuild} disabled={offeringSiteBusy || !offeringSiteCanRetry} className="mt-3 block rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-extrabold text-amber-900 disabled:opacity-50">Retry Build</button>
+          </div>
+        ) : null}
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {offeringSiteTimelineSteps.map((step) => (
+            <div key={step.label} className={`rounded-3xl border p-4 shadow-sm ${step.complete ? "border-emerald-200 bg-emerald-50" : step.issue ? "border-amber-300 bg-amber-50" : step.current ? "border-[#CB521E]/40 bg-[#CB521E]/10" : "border-zinc-200 bg-white"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-zinc-500">{step.gate}</p>
+                <span className={`grid h-7 w-7 place-items-center rounded-full text-sm font-black ${step.complete ? "bg-emerald-600 text-white" : step.issue ? "bg-amber-500 text-white" : "bg-zinc-200 text-zinc-600"}`}>{step.complete ? "✓" : step.current ? "…" : ""}</span>
+              </div>
+              <h4 className="mt-3 text-sm font-extrabold text-zinc-950">{step.label}</h4>
+              <p className="mt-2 text-xs leading-5 text-zinc-600">{step.issue || (step.complete ? "Complete" : step.current ? "In progress / awaiting next engine stage" : "Pending")}</p>
+            </div>
+          ))}
+        </div>
+
+        {offeringSiteJob ? (
+          <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 text-xs leading-5 text-zinc-500">
+            <p><span className="font-bold text-zinc-900">Latest job:</span> {offeringSiteJob.id} • {offeringSiteJob.status} • {offeringSiteJob.updatedAt || "timestamp pending"}</p>
+            {offeringSiteJob.deployment?.publicUrl ? <a className="mt-2 inline-flex font-bold text-[#CB521E]" href={offeringSiteJob.deployment.publicUrl} target="_blank" rel="noopener noreferrer">Open live offering site</a> : null}
+          </div>
+        ) : null}
       </section>
 
       <section data-testid="syndication-command-center" className="rounded-[1.35rem] border border-[#CB521E]/20 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
