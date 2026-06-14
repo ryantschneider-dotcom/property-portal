@@ -8,6 +8,7 @@ import {
   createCopilotAssistantFallback,
   normalizeCopilotMessages,
   parseCopilotCommand,
+  stripReasoningTags,
 } from "@/lib/hermes-copilot";
 import { getOpenClawHealth, sendOpenClawChat } from "@/lib/openclaw-client";
 import { buildPropertyPortalUrl, getPropertyPortalInternalHeaders, safePropertyPortalFetch } from "@/lib/property-portal-client";
@@ -102,8 +103,8 @@ export async function POST(request: Request) {
     ]);
 
     const assistantContent = openClaw.ok
-      ? openClaw.text
-      : createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action });
+      ? stripReasoningTags(openClaw.text)
+      : stripReasoningTags(createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action }));
     const assistantMessage = makeMessage("assistant", assistantContent, parsed.command, openClaw.ok || action?.ok ? "ok" : "error");
 
     const messages = [...history, userMessage, assistantMessage].slice(-80);

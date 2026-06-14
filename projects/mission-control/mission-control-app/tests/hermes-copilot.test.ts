@@ -8,6 +8,8 @@ import {
   createCopilotAssistantFallback,
   normalizeCopilotMessages,
   parseCopilotCommand,
+  renderMarkdownPreview,
+  stripReasoningTags,
 } from "../src/lib/hermes-copilot";
 
 test("Hermes Co-Pilot registers Ryan's hard-coded slash command suite", () => {
@@ -36,6 +38,27 @@ test("Hermes Co-Pilot prompt wraps slash commands in business-specific execution
   assert.match(prompt, /county GIS\/qPublic playbook/i);
   assert.match(prompt, /12 West State Street/);
   assert.match(prompt, /return the raw data/i);
+});
+
+test("Hermes Co-Pilot slash prompts explicitly require immediate tool execution", () => {
+  const scrapePrompt = buildCopilotPrompt("/scrape", "12 West State Street, Savannah, GA 31401", []);
+  const intelPrompt = buildCopilotPrompt("/intel", "Savannah port expansion", []);
+
+  for (const prompt of [scrapePrompt, intelPrompt]) {
+    assert.match(prompt, /execute the required tools immediately/i);
+    assert.match(prompt, /do not acknowledge.*queue|do not say.*processing|do not wait for another system/i);
+    assert.match(prompt, /return only the execution results/i);
+  }
+  assert.match(scrapePrompt, /you are the executor/i);
+  assert.match(scrapePrompt, /run.*GIS|query.*ArcGIS|use.*tools/i);
+});
+
+test("Hermes Co-Pilot strips internal reasoning tags before rendering", () => {
+  const dirty = "Before\n<think>I should not be visible\nwith multiple lines</think>\nAfter <think>hidden</think> done";
+  const clean = stripReasoningTags(dirty);
+
+  assert.equal(clean, "Before\nAfter done");
+  assert.doesNotMatch(renderMarkdownPreview(dirty), /I should not be visible|hidden|think/i);
 });
 
 test("Hermes Co-Pilot memory normalization preserves active conversation history only", () => {
