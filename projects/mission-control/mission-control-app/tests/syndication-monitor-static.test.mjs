@@ -14,10 +14,10 @@ test("Mission Control exposes authenticated mobile syndication status proxy", ()
 
 test("PIER Manager includes mobile-first CoStar and Crexi rep-email syndication monitor copy", () => {
   assert.match(consoleSource, /Syndication Command Center/);
-  assert.match(consoleSource, /CoStar \/ LoopNet and Crexi rep-email dispatches/);
+  assert.match(consoleSource, /finalized external channels: CoStar \/ LoopNet and Crexi/);
   assert.match(consoleSource, /accepted by Resend/);
-  assert.match(consoleSource, /native direct syndication to CityFeet/);
-  assert.match(consoleSource, /CoStar|LoopNet|Crexi|Brevitas/);
+  assert.match(consoleSource, /ListingStream remains the internal source of truth/);
+  assert.doesNotMatch(consoleSource, /CityFeet|TenantBase|CommercialSource|CommercialEdge|TheBrokerList|Brevitas|native direct syndication/);
   assert.match(consoleSource, /Refresh status/);
   assert.match(consoleSource, /Manual retry/);
 });
