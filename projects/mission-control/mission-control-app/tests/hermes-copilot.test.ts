@@ -77,3 +77,15 @@ test("Hermes Co-Pilot browser console owns durable chat history in localStorage"
   assert.match(componentSource, /localStorage/);
   assert.match(componentSource, /copilotMessages|hermes-copilot/);
 });
+
+test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued acknowledgement", () => {
+  const routeSource = readFileSync("src/app/api/hermes-copilot/route.ts", "utf8");
+  const clientSource = readFileSync("src/lib/openclaw-client.ts", "utf8");
+
+  assert.match(routeSource, /openClaw\.text/);
+  assert.doesNotMatch(routeSource, /Your command is now running in the active Hermes\/OpenClaw session/);
+  assert.doesNotMatch(routeSource, /County GIS\/qPublic playbook queued/);
+  assert.match(clientSource, /agent\.wait/);
+  assert.match(clientSource, /chat\.history/);
+  assert.match(clientSource, /copilot-exec/);
+});

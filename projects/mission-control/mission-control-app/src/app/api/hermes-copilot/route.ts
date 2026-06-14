@@ -70,10 +70,6 @@ async function runCopilotAction(command: string | null, args: string) {
     }
   }
 
-  if (command === "/scrape") {
-    return { ok: true, summary: `County GIS/qPublic playbook queued for ${args || "the requested address"}; OpenClaw will return raw parcel data in this conversation when connected.` };
-  }
-
   return null;
 }
 
@@ -102,11 +98,11 @@ export async function POST(request: Request) {
     const [backend, action, openClaw] = await Promise.all([
       getOpenClawHealth(3000),
       runCopilotAction(parsed.command, parsed.args),
-      sendOpenClawChat(prompt, { sessionKey: "main", timeoutMs: 20000 }),
+      sendOpenClawChat(prompt, { sessionKey: "main", timeoutMs: 55000 }),
     ]);
 
     const assistantContent = openClaw.ok
-      ? `## Sent to OpenClaw\n\nYour command is now running in the active Hermes/OpenClaw session.\n\n${action?.summary ? `Action status: ${action.summary}` : "I will stream completion state into the active backend session."}`
+      ? openClaw.text
       : createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action });
     const assistantMessage = makeMessage("assistant", assistantContent, parsed.command, openClaw.ok || action?.ok ? "ok" : "error");
 
