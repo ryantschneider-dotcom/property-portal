@@ -6,11 +6,13 @@ import { ToolRun } from "@/lib/mission-data";
 import { ListingTaskRecord } from "@/lib/listing-tasks-data";
 import { ProjectNoteRecord } from "@/lib/project-notes-data";
 import { ProjectRecord } from "@/lib/projects-data";
+import { CopilotMessage, normalizeCopilotMessages } from "@/lib/hermes-copilot";
 import { UploadedFileRecord } from "@/lib/uploads-data";
 
 export type MissionStore = {
   toolRuns: ToolRun[];
   chatRuns: ChatActionRun[];
+  copilotMessages: CopilotMessage[];
   projects: ProjectRecord[];
   uploads: UploadedFileRecord[];
   projectNotes: ProjectNoteRecord[];
@@ -52,6 +54,7 @@ const tempFile = path.join(dataDir, "mission-control-store.tmp.json");
 const emptyStore: MissionStore = {
   toolRuns: [],
   chatRuns: [],
+  copilotMessages: [],
   projects: [],
   uploads: [],
   projectNotes: [],
@@ -85,6 +88,7 @@ function normalizeStore(store: Partial<MissionStore>): MissionStore {
   return {
     toolRuns: Array.isArray(store.toolRuns) ? store.toolRuns : [],
     chatRuns: Array.isArray(store.chatRuns) ? store.chatRuns : [],
+    copilotMessages: normalizeCopilotMessages(store.copilotMessages),
     projects: Array.isArray(store.projects) ? store.projects : [],
     uploads: Array.isArray(store.uploads) ? store.uploads : [],
     projectNotes: Array.isArray(store.projectNotes) ? store.projectNotes : [],

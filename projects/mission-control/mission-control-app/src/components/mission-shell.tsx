@@ -34,7 +34,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: "/tools", label: "AI Tools", match: "prefix" },
       { href: "/workflows", label: "Workflows", match: "prefix" },
       { href: "/uploads", label: "Uploads", match: "prefix" },
-      { href: "/chat", label: "Hermes Co-Pilot", match: "prefix" },
+      { href: "/hermes-co-pilot", label: "Hermes Co-Pilot", match: "prefix" },
     ],
   },
   {
