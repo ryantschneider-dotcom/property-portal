@@ -25,7 +25,6 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: "/offering-summaries", label: "Offering Summaries", match: "prefix" },
       { href: "/listing-agreements", label: "Listing Agreements", match: "prefix" },
       { href: "/sales-contracts", label: "Sales Contracts", match: "prefix" },
-      { href: "/offering-websites", label: "Offering Websites", match: "prefix" },
       { href: "/daily-control", label: "Daily Task Control", match: "prefix" },
     ],
   },

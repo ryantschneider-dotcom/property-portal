@@ -37,14 +37,6 @@ const modules = [
     step: "04",
   },
   {
-    title: "Offering Websites",
-    href: "/offering-websites",
-    description: "Public-safe single-property website plans with hero copy, sections, CTAs, and exclusions.",
-    status: "Phase 3 live",
-    statusTone: "green",
-    step: "05",
-  },
-  {
     title: "Daily Task Control",
     href: "/daily-control",
     description: "Kanban-style execution board tying listings, deliverables, follow-ups, and Hermes prompts together.",
@@ -64,7 +56,7 @@ export default async function Home() {
   return (
     <MissionShell
       title="Executive Dashboard"
-      subtitle="PIER’s private command center for turning listing intake into summaries, agreements, contracts, websites, daily tasks, and Hermes-assisted execution."
+      subtitle="PIER’s private command center for turning listing intake into summaries, agreements, contracts, Gate 5 offering sites, daily tasks, and Hermes-assisted execution."
       currentPath="/"
       actions={[
         { href: "/projects", label: "Enter a listing", tone: "primary" },
@@ -83,11 +75,11 @@ export default async function Home() {
               Run the listing workflow from one clean source record.
             </h3>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-300 md:text-base md:leading-7">
-              Enter the listing once, attach the supporting files, then use Mission Control to generate the internal packets that drive marketing, documents, public pages, and daily follow-up.
+              Enter the listing once, attach the supporting files, then use Mission Control to generate the internal packets that drive marketing, documents, Gate 5 offering sites, and daily follow-up.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <HeroButton href="/projects" label="Add or review listings" primary />
-              <HeroButton href="/offering-websites" label="Preview public website plans" />
+              <HeroButton href="/pier-manager" label="Open Gate 5 Command Center" />
             </div>
           </div>
 
@@ -128,7 +120,7 @@ export default async function Home() {
           </div>
         </Card>
 
-        <Card title="Six-module build map" description="Green modules are ready for review. Gray modules are shells that still need deeper workflow wiring.">
+        <Card title="Five-module build map" description="Offering-site activity now lives exclusively in PIER Manager’s Gate 5 Command Center.">
           <div className="grid gap-3 lg:grid-cols-2">
             {modules.map((module) => (
               <Link key={module.href} href={module.href} className="group rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:-translate-y-0.5 hover:border-[#CB521E]/35 hover:bg-white hover:shadow-md">
