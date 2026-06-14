@@ -79,7 +79,7 @@ export async function sendOpenClawChat(message: string, options: { sessionKey?: 
       {
         minProtocol: 4,
         maxProtocol: 4,
-        client: { id: "webchat", version: "mission-control", platform: "server", mode: "webchat" },
+        client: { id: "cli", version: "mission-control", platform: "server", mode: "webchat" },
         role: "operator",
         scopes: ["operator.read", "operator.write"],
         caps: ["tool-events"],
