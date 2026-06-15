@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
-import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
+import { AUTH_COOKIE, getAuthSession, isValidAuthToken } from "@/lib/auth";
 import { uploadMissionControlFirebaseFile } from "@/lib/mission-control-firebase-storage";
 import { approvePropertyPortalReviewDraft, changePropertyPortalDraftLifecycle, createPropertyPortalProxyError, type StagedListingImageUpload } from "@/lib/property-portal-client";
+import { buildMarketingPropagationEvent, triggerListingStreamMarketingPropagation } from "@/lib/listingstream-marketing-propagation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,8 +12,10 @@ export const maxDuration = 60;
 
 async function requirePierManagerAuth() {
   const cookieStore = await cookies();
-  const ok = await isValidAuthToken(cookieStore.get(AUTH_COOKIE)?.value);
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
+  const ok = await isValidAuthToken(token);
   if (!ok) throw new Error("Unauthorized");
+  return getAuthSession(token);
 }
 
 async function uploadStagedAssetToFirebase(file: File, options: { slug?: string; index: number }): Promise<StagedListingImageUpload | null> {
@@ -21,7 +24,7 @@ async function uploadStagedAssetToFirebase(file: File, options: { slug?: string;
 
 export async function POST(request: Request) {
   try {
-    await requirePierManagerAuth();
+    const session = await requirePierManagerAuth();
     const contentType = request.headers.get("content-type") ?? "";
     let draft: unknown;
     let mode: "draft-preview" | "publish-live" = "publish-live";
@@ -46,6 +49,10 @@ export async function POST(request: Request) {
 
     if (lifecycleAction) {
       const result = await changePropertyPortalDraftLifecycle({ propertyIdOrSlug, action: lifecycleAction });
+      if (lifecycleAction === "make-live") {
+        const event = buildMarketingPropagationEvent({ propertyIdOrSlug, reason: "listing-made-live", mode: "publish-live" });
+        if (event) after(() => triggerListingStreamMarketingPropagation(event, session).then((results) => console.info("PIER Manager V2 marketing propagation", results)).catch((error) => console.error("PIER Manager V2 marketing propagation failed", error)));
+      }
       return NextResponse.json({ ok: true, ...result });
     }
 
@@ -57,6 +64,10 @@ export async function POST(request: Request) {
       mode,
       uploadStagedImage: (file, options) => uploadStagedAssetToFirebase(file, options),
     });
+    if (mode === "publish-live") {
+      const event = buildMarketingPropagationEvent({ draft: typedDraft, propertyIdOrSlug, reason: "listing-data-updated", mode });
+      if (event) after(() => triggerListingStreamMarketingPropagation(event, session).then((results) => console.info("PIER Manager V2 marketing propagation", results)).catch((error) => console.error("PIER Manager V2 marketing propagation failed", error)));
+    }
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

@@ -169,7 +169,11 @@ test("PIER Manager hides operational tools until a global property context is se
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
   assert.match(source, /const hasActivePropertyContext = Boolean\(selectedListing && !listingPickerOpen\)/);
   assert.match(source, /data-testid=\"pier-manager-global-context\"/);
-  assert.match(source, /data-testid=\"pier-manager-tools-hidden-state\"/);
+  assert.match(source, /data-testid=\"pier-manager-fork\"/);
+  assert.match(source, /Enter a New Listing/);
+  assert.match(source, /Work with an Existing Listing/);
+  assert.match(source, /data-testid=\"om-inline-preview-sandbox\"/);
+  assert.doesNotMatch(source, /window\.open\("", "_blank"/);
   assert.match(source, /Operational tools are hidden until you select a listing/);
   assert.match(source, /\{hasActivePropertyContext \? \(\s*<>[\s\S]*data-testid=\"offering-site-command-center\"/);
   assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"syndication-command-center\"/);
@@ -179,6 +183,8 @@ test("PIER Manager hides operational tools until a global property context is se
 test("Mission Control OM draft proxy routes forward broker-authenticated revision and approval requests", () => {
   const draftsRoute = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/drafts/route.ts", import.meta.url), "utf8");
   const approveRoute = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/drafts/[draftId]/approve/route.ts", import.meta.url), "utf8");
+  const listingApproveRoute = readFileSync(new URL("../src/app/api/listingstream/approve-draft/route.ts", import.meta.url), "utf8");
+  const propagationLib = readFileSync(new URL("../src/lib/listingstream-marketing-propagation.ts", import.meta.url), "utf8");
   assert.match(draftsRoute, /getAuthSession/);
   assert.match(draftsRoute, /getBrokerProfileForSession/);
   assert.match(draftsRoute, /\/api\/admin\/offering-memorandums\/\$\{encodeURIComponent\(slug\)\}\/drafts/);
@@ -186,6 +192,11 @@ test("Mission Control OM draft proxy routes forward broker-authenticated revisio
   assert.match(approveRoute, /getAuthSession/);
   assert.match(approveRoute, /\/approve/);
   assert.match(approveRoute, /getPropertyPortalInternalHeaders/);
+  assert.match(listingApproveRoute, /triggerListingStreamMarketingPropagation/);
+  assert.match(listingApproveRoute, /after\(\(\) => triggerListingStreamMarketingPropagation/);
+  assert.match(propagationLib, /attachToListing: true/);
+  assert.match(propagationLib, /replaceExisting: true/);
+  assert.match(propagationLib, /mode: \"auto-propagation\"/);
 });
 
 test("PIER Manager Email Blast controls are refreshable and mobile-safe", () => {

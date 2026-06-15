@@ -8,7 +8,7 @@ const route = readFileSync("src/app/api/listingstream/offering-sites/route.ts", 
 test("Gate 4 exposes mobile offering-site launch command center in PIER Manager", () => {
   assert.match(component, /data-testid="offering-site-command-center"/);
   assert.match(component, /Offering Site Command Center/);
-  assert.match(component, /Launch Golden Isles Site Build/);
+  assert.match(component, /Launch PIER Offering Site Build/);
   assert.match(component, /activeListings\.map/);
   assert.match(component, /offeringSiteSelectedListingId/);
   assert.match(component, /\/api\/listingstream\/offering-sites/);

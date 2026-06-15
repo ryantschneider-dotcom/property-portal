@@ -460,7 +460,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [intakeStatus, setIntakeStatus] = useState(initialIntakeStatus);
   const [intakeSubmitting, setIntakeSubmitting] = useState(false);
   const [formResetKey, setFormResetKey] = useState(0);
-  const [newListingIntakeOpen, setNewListingIntakeOpen] = useState(false);
+  const [pierManagerMode, setPierManagerMode] = useState<"unselected" | "new" | "existing">("unselected");
+  const newListingIntakeOpen = pierManagerMode === "new";
 
   const [activeListings, setActiveListings] = useState<PropertyPortalActiveListing[]>([]);
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
@@ -484,6 +485,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [omRevisionInstructions, setOmRevisionInstructions] = useState("");
   const [omDraftId, setOmDraftId] = useState("");
   const [omDraftPreviewHtml, setOmDraftPreviewHtml] = useState("");
+  const [omInlinePreviewUrl, setOmInlinePreviewUrl] = useState("");
+  const [omInlinePreviewHtml, setOmInlinePreviewHtml] = useState("");
   const [omRevisionSummary, setOmRevisionSummary] = useState<string[]>([]);
   const [omRevisionAction, setOmRevisionAction] = useState<"idle" | "rendering" | "approving">("idle");
   const omRevisionRendering = omRevisionAction === "rendering";
@@ -495,7 +498,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [offeringSiteSelectedListingId, setOfferingSiteSelectedListingId] = useState("");
   const [offeringSiteJob, setOfferingSiteJob] = useState<OfferingSiteGenerationJob | null>(null);
   const [offeringSiteLastJobId, setOfferingSiteLastJobId] = useState("");
-  const [offeringSiteStatus, setOfferingSiteStatus] = useState("Select an active listing to launch a Golden Isles offering website build.");
+  const [offeringSiteStatus, setOfferingSiteStatus] = useState("Select an active listing to launch a PIER Commercial offering website build.");
   const [offeringSiteError, setOfferingSiteError] = useState("");
   const [offeringSiteBusy, setOfferingSiteBusy] = useState(false);
 
@@ -608,7 +611,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   async function launchOfferingSiteBuild(listingId?: string, retryJob?: OfferingSiteGenerationJob | null) {
     const targetListingId = listingId || offeringSiteSelectedListingId;
     if (!targetListingId) {
-      setOfferingSiteError("Select an active ListingStream listing before launching a Golden Isles site build.");
+      setOfferingSiteError("Select an active ListingStream listing before launching a PIER Commercial site build.");
       return;
     }
     setOfferingSiteBusy(true);
@@ -685,6 +688,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setHeroPhoto(null);
     setIntakeAssets([]);
     setIntakeStatus(initialIntakeStatus);
+    setPierManagerMode("unselected");
     setSelectedPropertyId("");
     setListingSearchText("");
     setListingPickerOpen(true);
@@ -712,6 +716,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setOmRevisionInstructions("");
     setOmDraftId("");
     setOmDraftPreviewHtml("");
+    if (omInlinePreviewUrl) URL.revokeObjectURL(omInlinePreviewUrl);
+    setOmInlinePreviewUrl("");
+    setOmInlinePreviewHtml("");
     setOmRevisionSummary([]);
     setOmRevisionAction("idle");
     setFormResetKey((current) => current + 1);
@@ -731,7 +738,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
-  const hasActivePropertyContext = Boolean(selectedListing && !listingPickerOpen);
+  const hasActivePropertyContext = Boolean(selectedListing && !listingPickerOpen) && pierManagerMode === "existing";
   const showFinancialToggles = Boolean(selectedListing && isForSaleListing(selectedListing) && !isLandListing(selectedListing));
   const filteredAddressListings = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
@@ -771,11 +778,15 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setOmRevisionInstructions("");
     setOmDraftId("");
     setOmDraftPreviewHtml("");
+    if (omInlinePreviewUrl) URL.revokeObjectURL(omInlinePreviewUrl);
+    setOmInlinePreviewUrl("");
+    setOmInlinePreviewHtml("");
     setOmRevisionSummary([]);
     setOmRevisionAction("idle");
   }
 
   function selectActiveListing(value: string) {
+    setPierManagerMode("existing");
     setSelectedPropertyId(value);
     setListingPickerOpen(false);
     setOmGenerating(false);
@@ -793,8 +804,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   }
 
   function reopenListingPicker() {
+    setPierManagerMode("unselected");
     setSelectedPropertyId("");
     setListingSearchText("");
+    setPierManagerMode("existing");
     setListingPickerOpen(true);
     setOmGenerating(false);
     setOmError("");
@@ -986,25 +999,18 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         const payload = contentType.includes("application/json") ? await response.json().catch(() => ({})) as { error?: string } : { error: await response.text().catch(() => "") };
         throw new Error(payload.error || `Offering Memorandum generation failed (${response.status}).`);
       }
+      if (omInlinePreviewUrl) URL.revokeObjectURL(omInlinePreviewUrl);
       if (format === "html") {
         const html = await response.text();
-        const win = window.open("", "_blank", "noopener,noreferrer");
-        if (!win) throw new Error("Popup blocker prevented the OM preview from opening. Please allow popups for Mission Control and try again.");
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        setModificationStatus("Offering Memorandum HTML preview opened in a new tab.");
+        setOmInlinePreviewHtml(html);
+        setOmInlinePreviewUrl("");
+        setModificationStatus("Offering Memorandum HTML preview rendered inline. Iterate with the vibe-code panel, then publish when ready.");
       } else {
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = blobUrl;
-        anchor.download = `${getListingSelectionValue(selectedListing)}-offering-memorandum.pdf`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
-        setModificationStatus("Offering Memorandum PDF generated successfully. Check your downloads.");
+        setOmInlinePreviewUrl(blobUrl);
+        setOmInlinePreviewHtml("");
+        setModificationStatus("Offering Memorandum PDF rendered inline. No hard-drive download was forced.");
       }
     } catch (error) {
       const message = error instanceof DOMException && error.name === "AbortError"
@@ -1197,97 +1203,69 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         </div>
       ) : null}
 
-      <section data-testid="pier-manager-global-context" className="rounded-[1.6rem] border border-[#CB521E]/25 bg-[linear-gradient(180deg,#ffffff,#fff8f4)] p-5 shadow-[0_22px_70px_rgba(15,23,42,0.10)] sm:p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <section data-testid="pier-manager-global-context" className="rounded-[1.6rem] border border-[#CB521E]/25 bg-[linear-gradient(180deg,#ffffff,#fff8f4)] p-5 shadow-[0_22px_70px_rgba(15,23,42,0.10)] sm:p-6 xl:p-8">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#CB521E]">Global Context</p>
-            <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-zinc-950">Select a Listing</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">Pick one active ListingStream property first. Operational tools stay hidden until a property context is active.</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#CB521E]">PIER Manager V2</p>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-zinc-950 xl:text-4xl">Choose your workflow</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Start with a clean fork in the road. Create a new ListingStream record, or establish an existing property context before operational tools render.</p>
           </div>
-          <button type="button" onClick={() => setNewListingIntakeOpen((open) => !open)} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:border-[#CB521E]/40 hover:text-[#CB521E]">
-            {newListingIntakeOpen ? "Hide Intake" : "Basic Intake Option"}
-          </button>
+          {pierManagerMode !== "unselected" ? (
+            <button type="button" onClick={() => { setPierManagerMode("unselected"); setSelectedPropertyId(""); setListingPickerOpen(true); setListingSearchText(""); }} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:border-[#CB521E]/40 hover:text-[#CB521E]">
+              Change Workflow
+            </button>
+          ) : null}
         </div>
 
-        <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1}>
-          <option value="">Select active ListingStream listing</option>
-          {activeListings.map((listing) => (
-            <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
-          ))}
-        </select>
+        {pierManagerMode === "unselected" ? (
+          <div data-testid="pier-manager-fork" className="mt-6 grid gap-4 lg:grid-cols-2">
+            <button type="button" onClick={() => { setPierManagerMode("new"); setSelectedPropertyId(""); setListingPickerOpen(false); }} className="rounded-[1.35rem] border border-[#CB521E]/30 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl xl:p-7">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#CB521E]">New Listing</p>
+              <h3 className="mt-3 text-2xl font-extrabold text-zinc-950">Enter a New Listing</h3>
+              <p className="mt-2 text-sm leading-6 text-zinc-600">Open only the intake pipeline for a fresh property record. Existing-listing tools stay out of the way.</p>
+            </button>
+            <button type="button" onClick={() => { setPierManagerMode("existing"); setListingPickerOpen(true); }} className="rounded-[1.35rem] border border-zinc-200 bg-zinc-950 p-5 text-left text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl xl:p-7">
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#f6a87f]">Existing Listing</p>
+              <h3 className="mt-3 text-2xl font-extrabold text-white">Work with an Existing Listing</h3>
+              <p className="mt-2 text-sm leading-6 text-zinc-300">Select one ListingStream property, then unlock Site Builder, OM Generator, Listing Editor, and syndication controls.</p>
+            </button>
+          </div>
+        ) : null}
 
-        {listingPickerOpen ? (
-          <div data-testid="listing-picker-panel" className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        {pierManagerMode === "existing" && listingPickerOpen ? (
+          <div data-testid="listing-picker-panel" className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm xl:p-5">
             <label className="space-y-2 block">
               {requiredLabel("Filter active listings", false)}
-              <input
-                data-testid="listing-filter-input"
-                value={listingSearchText}
-                onChange={(event) => updateListingSearch(event.target.value)}
-                className={inputClass}
-                placeholder="Type to filter, or scroll the full property list below"
-                autoComplete="off"
-              />
+              <input data-testid="listing-filter-input" value={listingSearchText} onChange={(event) => updateListingSearch(event.target.value)} className={inputClass} placeholder="Type to filter, or scroll the full property list below" autoComplete="off" />
             </label>
             <div className="mt-3 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
               <span>Active ListingStream properties</span>
               <span>{filteredAddressListings.length} shown</span>
             </div>
-            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="mt-2 max-h-[52vh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner sm:max-h-80">
-              {activeListings.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
-              ) : filteredAddressListings.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
-              ) : (
-                filteredAddressListings.map((listing) => {
-                  const value = getListingSelectionValue(listing);
-                  return (
-                    <button
-                      key={listing.id}
-                      data-testid="active-listing-option"
-                      type="button"
-                      role="option"
-                      aria-selected={false}
-                      onClick={() => selectActiveListing(value)}
-                      className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"
-                    >
-                      <span>{getListingSearchLabel(listing)}</span>
-                      <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
-                    </button>
-                  );
-                })
-              )}
+            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="mt-2 max-h-[52vh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner sm:max-h-96 xl:max-h-[32rem]">
+              {activeListings.length === 0 ? <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p> : filteredAddressListings.length === 0 ? <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p> : filteredAddressListings.map((listing) => {
+                const value = getListingSelectionValue(listing);
+                return <button key={listing.id} data-testid="active-listing-option" type="button" role="option" aria-selected={false} onClick={() => selectActiveListing(value)} className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"><span>{getListingSearchLabel(listing)}</span><span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span></button>;
+              })}
             </div>
           </div>
         ) : null}
 
-        {selectedListing && !listingPickerOpen ? (
+        {selectedListing && hasActivePropertyContext ? (
           <div data-testid="selected-listing-summary" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p><span className="font-extrabold">Active context:</span> {selectedListing.address || selectedListing.title || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
-              <button type="button" onClick={reopenListingPicker} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">
-                Change Selection
-              </button>
+              <button type="button" onClick={reopenListingPicker} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">Change Selection</button>
             </div>
           </div>
         ) : null}
 
-        {!hasActivePropertyContext && !newListingIntakeOpen ? (
-          <p data-testid="pier-manager-tools-hidden-state" className="mt-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-600">
-            Operational tools are hidden until you select a listing. Use Basic Intake Option only when creating a brand-new property record.
-          </p>
+        {pierManagerMode === "existing" && !hasActivePropertyContext ? (
+          <p data-testid="pier-manager-tools-hidden-state" className="mt-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-600">Operational tools are hidden until you select a listing.</p>
         ) : null}
       </section>
 
-      {newListingIntakeOpen && !hasActivePropertyContext ? (
-        <section data-testid="basic-intake-shell" className="rounded-[1.35rem] border border-zinc-200 bg-white p-5 shadow-sm">
-          <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Basic Intake</p>
-          <h3 className="mt-2 text-xl font-semibold text-zinc-950">Start a new property record</h3>
-          <p className="mt-2 text-sm leading-6 text-zinc-600">Create a fresh property record here. Existing-listing operational tools remain hidden until you choose a ListingStream property above.</p>
-        </section>
-      ) : null}
-
-      {hasActivePropertyContext ? (
+      {(newListingIntakeOpen || hasActivePropertyContext) ? (
         <>
       <section className="grid gap-4 lg:grid-cols-3">
         <div data-testid="broker-hub-premium-header" className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(203,82,30,0.22),transparent_34%),linear-gradient(135deg,#111827_0%,#172033_58%,#263245_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.22)] lg:col-span-2">
@@ -1304,11 +1282,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       </section>
 
 
+      {hasActivePropertyContext ? (
+      <> 
       <section data-testid="offering-site-command-center" className="rounded-[1.35rem] border border-[#CB521E]/20 bg-[linear-gradient(180deg,#ffffff,#fff8f4)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Offering Site Command Center</p>
-            <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">Golden Isles website builds from your phone</h3>
+            <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">PIER Commercial website builds</h3>
             <p className="mt-2 text-sm leading-6 text-zinc-600">Select an active ListingStream property, launch the autonomous Gate 1 → Gate 5 compiler, and watch public-record gathering, GIS scraping, blocked, failed, retry-ready, and live-routed states without leaving PIER Manager.</p>
           </div>
           <button type="button" onClick={() => void refreshOfferingSiteJob()} disabled={offeringSiteBusy || !offeringSiteLastJobId} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">
@@ -1327,7 +1307,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             </select>
           </label>
           <button type="button" onClick={() => void launchOfferingSiteBuild()} disabled={offeringSiteBusy || !offeringSiteSelectedListingId} className="self-end rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
-            {offeringSiteBusy ? "Building…" : "Launch Golden Isles Site Build"}
+            {offeringSiteBusy ? "Building…" : "Launch PIER Offering Site Build"}
           </button>
         </div>
 
@@ -1411,6 +1391,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <p className="mt-4 text-sm leading-6 text-zinc-500">No syndication events have been queued yet. The first publish or approved update will create the initial distribution job.</p>
         )}
       </section>
+      </>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-[1.2rem] border border-[color:rgba(217,119,6,0.16)] bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
@@ -1430,7 +1412,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr] 2xl:grid-cols-[1.35fr_0.65fr]">
+        {newListingIntakeOpen ? (
         <form key={`intake-${formResetKey}`} onSubmit={submitBrokerHubIntake} className={`${cardClass} space-y-6`}>
           <div>
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">New Listing Intake</p>
@@ -1511,7 +1494,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           </button>
           <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{intakeStatus}</p>
         </form>
+        ) : null}
 
+        {hasActivePropertyContext ? (
         <form id="listing-revision-form" onSubmit={submitModification} data-testid="listing-revision-tool" key={`modification-${formResetKey}`} className={`${cardClass} h-fit`} noValidate>
           <div className="mb-5">
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Existing Listing Modification</p>
@@ -1603,12 +1588,22 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 ) : null}
                 <div data-testid="om-action-buttons" className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button type="button" onClick={() => generateOfferingMemorandum("pdf")} disabled={omGenerating} aria-busy={omGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                    {omGenerating ? "Generating OM…" : "Generate OM"}
+                    {omGenerating ? "Generating OM…" : "Generate OM Inline Preview"}
                   </button>
                   <button type="button" onClick={() => generateOfferingMemorandum("html")} disabled={omGenerating} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                    Preview OM HTML
+                    Preview OM HTML Inline
                   </button>
                 </div>
+                {(omInlinePreviewUrl || omInlinePreviewHtml) ? (
+                  <div data-testid="om-inline-preview-sandbox" className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100">
+                    <div className="flex flex-col gap-1 border-b border-zinc-200 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+                      <span>Inline OM Preview Sandbox</span>
+                      <span>Review here; iterate below; publish only after approval</span>
+                    </div>
+                    {omInlinePreviewUrl ? <iframe data-testid="om-inline-pdf-frame" title="Inline Offering Memorandum PDF preview" src={omInlinePreviewUrl} className="h-[78vh] w-full bg-white xl:h-[82vh]" /> : null}
+                    {omInlinePreviewHtml ? <iframe data-testid="om-inline-html-frame" title="Inline Offering Memorandum HTML preview" srcDoc={omInlinePreviewHtml} className="h-[78vh] w-full bg-white xl:h-[82vh]" /> : null}
+                  </div>
+                ) : null}
                 <div data-testid="om-revision-request" className="mt-4 rounded-2xl border border-[#CB521E]/25 bg-white px-4 py-4 shadow-sm sm:px-5">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -1686,6 +1681,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
           </div>
         </form>
+        ) : null}
 
         {selectedListing && !listingPickerOpen ? (
           <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit min-w-0 overflow-hidden`}>
