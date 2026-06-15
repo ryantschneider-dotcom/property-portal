@@ -140,14 +140,34 @@ test("PIER Manager OM financial controls are manual and only visible for sale no
   assert.match(source, /setIncludeProforma\(false\)/);
 });
 
-test("PIER Manager OM actions include a revision-request lane before regeneration", () => {
+test("PIER Manager OM actions include a mobile-first AI revision loop and publish approval lane", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
   assert.match(source, /data-testid=\"om-revision-request\"/);
+  assert.match(source, /data-testid=\"om-vibe-code-textarea\"/);
+  assert.match(source, /data-testid=\"om-draft-preview-frame\"/);
+  assert.match(source, /data-testid=\"om-approve-publish\"/);
   assert.match(source, /omRevisionInstructions/);
+  assert.match(source, /omDraftId/);
+  assert.match(source, /omDraftPreviewHtml/);
   assert.match(source, /requestOfferingMemorandumRevision/);
-  assert.match(source, /source: \"om-revision\"/);
-  assert.match(source, /Send OM Revision to Review Draft/);
-  assert.match(source, /Approve the ListingStream draft update, then regenerate the OM/);
+  assert.match(source, /approveOfferingMemorandumDraft/);
+  assert.match(source, /\/api\/listingstream\/offering-memorandums\/\$\{slug\}\/drafts/);
+  assert.match(source, /\/approve/);
+  assert.match(source, /w-full min-h-\[65vh\]/);
+  assert.match(source, /Generate AI OM Preview/);
+  assert.match(source, /Approve \+ Publish OM/);
+});
+
+test("Mission Control OM draft proxy routes forward broker-authenticated revision and approval requests", () => {
+  const draftsRoute = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/drafts/route.ts", import.meta.url), "utf8");
+  const approveRoute = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/drafts/[draftId]/approve/route.ts", import.meta.url), "utf8");
+  assert.match(draftsRoute, /getAuthSession/);
+  assert.match(draftsRoute, /getBrokerProfileForSession/);
+  assert.match(draftsRoute, /\/api\/admin\/offering-memorandums\/\$\{encodeURIComponent\(slug\)\}\/drafts/);
+  assert.match(draftsRoute, /withPropertyPortalTimeout/);
+  assert.match(approveRoute, /getAuthSession/);
+  assert.match(approveRoute, /\/approve/);
+  assert.match(approveRoute, /getPropertyPortalInternalHeaders/);
 });
 
 test("PIER Manager Email Blast controls are refreshable and mobile-safe", () => {

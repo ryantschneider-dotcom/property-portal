@@ -481,6 +481,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
   const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
   const [omRevisionInstructions, setOmRevisionInstructions] = useState("");
+  const [omDraftId, setOmDraftId] = useState("");
+  const [omDraftPreviewHtml, setOmDraftPreviewHtml] = useState("");
+  const [omRevisionSummary, setOmRevisionSummary] = useState<string[]>([]);
+  const [omApproving, setOmApproving] = useState(false);
   const [syndicationPayload, setSyndicationPayload] = useState<SyndicationStatusPayload | null>(null);
   const [syndicationStatus, setSyndicationStatus] = useState("Loading syndication command center…");
   const [syndicationBusy, setSyndicationBusy] = useState(false);
@@ -702,6 +706,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setMailchimpGenerating(false);
     setMailchimpPreviewHtml("");
     setOmRevisionInstructions("");
+    setOmDraftId("");
+    setOmDraftPreviewHtml("");
+    setOmRevisionSummary([]);
+    setOmApproving(false);
     setFormResetKey((current) => current + 1);
   }
 
@@ -888,9 +896,55 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   }
 
   async function requestOfferingMemorandumRevision() {
-    if (!omRevisionInstructions.trim()) return;
-    setModificationInstructions(omRevisionInstructions);
-    await generateModificationDraft(omRevisionInstructions, { source: "om-revision" });
+    const cleanInstructions = omRevisionInstructions.trim();
+    if (!selectedListing || !cleanInstructions) return;
+    setOmGenerating(true);
+    setOmError("");
+    setPublishSuccessMessage("");
+    setToastMessage("");
+    setModificationStatus("AI is translating your vibe-code instruction into draft-only OM changes and rendering a mobile review preview…");
+    try {
+      const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
+      const data = (await fetchJsonWithTimeout(`/api/listingstream/offering-memorandums/${slug}/drafts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: cleanInstructions, draftId: omDraftId || undefined }),
+      }, 180_000)) as { draftId?: string; previewHtml?: string; parsedSummary?: string[] };
+      setOmDraftId(data.draftId || "");
+      setOmDraftPreviewHtml(data.previewHtml || "");
+      setOmRevisionSummary(Array.isArray(data.parsedSummary) ? data.parsedSummary.map((item) => String(item)).filter(Boolean) : []);
+      setModificationStatus("AI OM preview ready. Review it below on mobile, then approve + publish or send another vibe-code refinement.");
+    } catch (error) {
+      const message = getAbortableErrorMessage(error, "Could not generate AI OM preview.");
+      setOmError(message);
+      setModificationStatus(message);
+    } finally {
+      setOmGenerating(false);
+    }
+  }
+
+  async function approveOfferingMemorandumDraft() {
+    if (!selectedListing || !omDraftId) return;
+    setOmApproving(true);
+    setOmError("");
+    setModificationStatus("Finalizing the approved OM, generating the PDF, and attaching it to the live ListingStream document array…");
+    try {
+      const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
+      const data = (await fetchJsonWithTimeout(`/api/listingstream/offering-memorandums/${slug}/drafts/${encodeURIComponent(omDraftId)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }, 300_000)) as { document?: { url?: string; title?: string } };
+      const url = data.document?.url || "";
+      setModificationStatus(url ? `Approved OM published and attached to the public listing documents: ${url}` : "Approved OM published and attached to the public listing documents.");
+      setPublishSuccessMessage("Offering Memorandum approved, PDF generated, and public ListingStream document attached.");
+    } catch (error) {
+      const message = getAbortableErrorMessage(error, "Could not approve and publish OM draft.");
+      setOmError(message);
+      setModificationStatus(message);
+    } finally {
+      setOmApproving(false);
+    }
   }
 
   async function generateOfferingMemorandum(format: "pdf" | "html") {
@@ -1446,15 +1500,41 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                     Preview OM HTML
                   </button>
                 </div>
-                <div data-testid="om-revision-request" className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3">
-                  <label className="space-y-2 block">
-                    {requiredLabel("OM revision request", false)}
-                    <textarea value={omRevisionInstructions} onChange={(event) => setOmRevisionInstructions(event.target.value)} className={`${textareaClass} min-h-24`} placeholder="Example: Update Suite A to $18/SF NNN, remove Suite B, then regenerate the OM." />
+                <div data-testid="om-revision-request" className="mt-4 rounded-2xl border border-[#CB521E]/25 bg-white px-4 py-4 shadow-sm sm:px-5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">AI OM Revision Loop</p>
+                      <h5 className="mt-1 text-base font-semibold text-zinc-950">Vibe-code this specific OM draft</h5>
+                      <p className="mt-1 text-sm leading-6 text-zinc-600">Type localized OM-only changes. The live listing data stays untouched until you approve the rendered preview; approval generates the PDF and attaches it to public listing documents automatically.</p>
+                    </div>
+                    {omDraftId ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Draft {omDraftId.substring(0, 8)}</span> : null}
+                  </div>
+                  <label className="mt-4 space-y-2 block">
+                    {requiredLabel("Vibe-code instruction", false)}
+                    <textarea data-testid="om-vibe-code-textarea" value={omRevisionInstructions} onChange={(event) => setOmRevisionInstructions(event.target.value)} className={`${textareaClass} min-h-32 text-base leading-7 sm:text-sm`} placeholder="Example: Swap the hero image to https://…, insert this floorplan on page 3, and change the highlighted text to Great parking; Road signage available." />
                   </label>
-                  <p className="mt-2 text-xs leading-5 text-zinc-500">OM revisions update ListingStream through the broker review draft first; after approval, regenerate the OM so the PDF matches the saved listing data.</p>
-                  <button type="button" onClick={requestOfferingMemorandumRevision} disabled={modificationSubmitting || !selectedPropertyId || !omRevisionInstructions.trim()} className="mt-3 w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                    Send OM Revision to Review Draft
-                  </button>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <button type="button" onClick={requestOfferingMemorandumRevision} disabled={omGenerating || omApproving || !selectedPropertyId || !omRevisionInstructions.trim()} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-3 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
+                      {omGenerating ? "Rendering Preview…" : "Generate AI OM Preview"}
+                    </button>
+                    <button data-testid="om-approve-publish" type="button" onClick={approveOfferingMemorandumDraft} disabled={omGenerating || omApproving || !omDraftId || !omDraftPreviewHtml} className="w-full rounded-xl bg-[#CB521E] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
+                      {omApproving ? "Publishing OM…" : "Approve + Publish OM"}
+                    </button>
+                  </div>
+                  {omRevisionSummary.length ? (
+                    <ul className="mt-3 space-y-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                      {omRevisionSummary.map((item) => <li key={item}>• {item}</li>)}
+                    </ul>
+                  ) : null}
+                  {omDraftPreviewHtml ? (
+                    <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100">
+                      <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                        <span>Mobile OM Preview</span>
+                        <span>Pinch/scroll inside preview</span>
+                      </div>
+                      <iframe data-testid="om-draft-preview-frame" title="AI revised OM draft preview" srcDoc={omDraftPreviewHtml} className="w-full min-h-[65vh] bg-white" />
+                    </div>
+                  ) : null}
                 </div>
                 {omError ? <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{omError}</p> : null}
               </div>
