@@ -68,6 +68,17 @@ test("Hermes Co-Pilot slash prompts explicitly require immediate tool execution"
   assert.match(scrapePrompt, /run.*GIS|query.*ArcGIS|use.*tools/i);
 });
 
+test("Hermes Co-Pilot /site prompt hardcodes the native ListingStream TypeScript execution path", () => {
+  const prompt = buildCopilotPrompt("/site", "12 West State Street", []);
+
+  assert.match(prompt, /To execute this request, use your terminal tool to run the native TypeScript pipeline located in \/Users\/macclaw\/listingstream-portal\/src\/lib\/offering-site-generation\.ts via npx tsx\./);
+  assert.match(prompt, /createOfferingSiteGenerationJob/);
+  assert.match(prompt, /runOfferingSiteGate2/);
+  assert.match(prompt, /runOfferingSiteGate5/);
+  assert.match(prompt, /Do NOT run '\/site' as a shell command\./);
+  assert.match(prompt, /12 West State Street/);
+});
+
 test("Hermes Co-Pilot strips internal reasoning tags before rendering", () => {
   const dirty = "Before\n<think>I should not be visible\nwith multiple lines</think>\n<tool>{\"secret\":true}</tool>\nAfter <final>parcel data</final> done";
   const clean = stripReasoningTags(dirty);
