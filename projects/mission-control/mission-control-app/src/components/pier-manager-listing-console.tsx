@@ -460,6 +460,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [intakeStatus, setIntakeStatus] = useState(initialIntakeStatus);
   const [intakeSubmitting, setIntakeSubmitting] = useState(false);
   const [formResetKey, setFormResetKey] = useState(0);
+  const [newListingIntakeOpen, setNewListingIntakeOpen] = useState(false);
 
   const [activeListings, setActiveListings] = useState<PropertyPortalActiveListing[]>([]);
   const [activeListingsStatus, setActiveListingsStatus] = useState("Loading active listings from ListingStream backend…");
@@ -730,6 +731,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
+  const hasActivePropertyContext = Boolean(selectedListing && !listingPickerOpen);
   const showFinancialToggles = Boolean(selectedListing && isForSaleListing(selectedListing) && !isLandListing(selectedListing));
   const filteredAddressListings = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
@@ -782,6 +784,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIncludeRentRoll(false);
     setIncludeProforma(false);
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
+    setOfferingSiteSelectedListingId(value);
     if (listing) setListingSearchText(getListingSearchLabel(listing));
   }
 
@@ -798,6 +801,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     resetOmRevisionPanelState();
     setIncludeRentRoll(false);
     setIncludeProforma(false);
+    setOfferingSiteSelectedListingId("");
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -1193,6 +1197,98 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         </div>
       ) : null}
 
+      <section data-testid="pier-manager-global-context" className="rounded-[1.6rem] border border-[#CB521E]/25 bg-[linear-gradient(180deg,#ffffff,#fff8f4)] p-5 shadow-[0_22px_70px_rgba(15,23,42,0.10)] sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#CB521E]">Global Context</p>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-zinc-950">Select a Listing</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">Pick one active ListingStream property first. Marketing, documents, OM revisions, Gate 1-5, and syndication tools stay hidden until a property context is active.</p>
+          </div>
+          <button type="button" onClick={() => setNewListingIntakeOpen((open) => !open)} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:border-[#CB521E]/40 hover:text-[#CB521E]">
+            {newListingIntakeOpen ? "Hide Intake" : "Basic Intake Option"}
+          </button>
+        </div>
+
+        <select value={selectedPropertyId} onChange={() => undefined} className="sr-only" aria-hidden="true" tabIndex={-1}>
+          <option value="">Select active ListingStream listing</option>
+          {activeListings.map((listing) => (
+            <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
+          ))}
+        </select>
+
+        {listingPickerOpen ? (
+          <div data-testid="listing-picker-panel" className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <label className="space-y-2 block">
+              {requiredLabel("Filter active listings", false)}
+              <input
+                data-testid="listing-filter-input"
+                value={listingSearchText}
+                onChange={(event) => updateListingSearch(event.target.value)}
+                className={inputClass}
+                placeholder="Type to filter, or scroll the full property list below"
+                autoComplete="off"
+              />
+            </label>
+            <div className="mt-3 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
+              <span>Active ListingStream properties</span>
+              <span>{filteredAddressListings.length} shown</span>
+            </div>
+            <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="mt-2 max-h-[52vh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner sm:max-h-80">
+              {activeListings.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p>
+              ) : filteredAddressListings.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p>
+              ) : (
+                filteredAddressListings.map((listing) => {
+                  const value = getListingSelectionValue(listing);
+                  return (
+                    <button
+                      key={listing.id}
+                      data-testid="active-listing-option"
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      onClick={() => selectActiveListing(value)}
+                      className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"
+                    >
+                      <span>{getListingSearchLabel(listing)}</span>
+                      <span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        {selectedListing && !listingPickerOpen ? (
+          <div data-testid="selected-listing-summary" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p><span className="font-extrabold">Active context:</span> {selectedListing.address || selectedListing.title || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
+              <button type="button" onClick={reopenListingPicker} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">
+                Change Selection
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {!hasActivePropertyContext && !newListingIntakeOpen ? (
+          <p data-testid="pier-manager-tools-hidden-state" className="mt-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-600">
+            Operational tools are hidden until you select a listing. Use Basic Intake Option only when creating a brand-new property record.
+          </p>
+        ) : null}
+      </section>
+
+      {newListingIntakeOpen && !hasActivePropertyContext ? (
+        <section data-testid="basic-intake-shell" className="rounded-[1.35rem] border border-zinc-200 bg-white p-5 shadow-sm">
+          <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Basic Intake</p>
+          <h3 className="mt-2 text-xl font-semibold text-zinc-950">Start a new property record</h3>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">Create a fresh property record here. Existing-listing operational tools remain hidden until you choose a ListingStream property above.</p>
+        </section>
+      ) : null}
+
+      {hasActivePropertyContext ? (
+        <>
       <section className="grid gap-4 lg:grid-cols-3">
         <div data-testid="broker-hub-premium-header" className="overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(203,82,30,0.22),transparent_34%),linear-gradient(135deg,#111827_0%,#172033_58%,#263245_100%)] p-5 text-white shadow-[0_22px_70px_rgba(15,23,42,0.22)] lg:col-span-2">
           <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-zinc-400">PIER Broker Hub</p>
@@ -1641,6 +1737,9 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           </form>
         ) : null}
       </div>
+
+      </>
+      ) : null}
 
       {visibleReviewDraft ? (
         <section ref={reviewPanelRef} id="broker-review-draft" tabIndex={-1} data-testid="review-draft-panel" className="rounded-3xl border border-[#CB521E]/30 bg-white p-6 shadow-sm">

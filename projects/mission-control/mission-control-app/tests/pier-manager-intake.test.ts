@@ -165,6 +165,17 @@ test("PIER Manager OM actions include a mobile-first AI revision loop and publis
   assert.doesNotMatch(source, /setOmGenerating\(true\);[\s\S]{0,400}offering-memorandums\/\$\{slug\}\/drafts/);
 });
 
+test("PIER Manager hides operational tools until a global property context is selected", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /const hasActivePropertyContext = Boolean\(selectedListing && !listingPickerOpen\)/);
+  assert.match(source, /data-testid=\"pier-manager-global-context\"/);
+  assert.match(source, /data-testid=\"pier-manager-tools-hidden-state\"/);
+  assert.match(source, /Operational tools are hidden until you select a listing/);
+  assert.match(source, /\{hasActivePropertyContext \? \(\s*<>[\s\S]*data-testid=\"offering-site-command-center\"/);
+  assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"syndication-command-center\"/);
+  assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"om-revision-request\"/);
+});
+
 test("Mission Control OM draft proxy routes forward broker-authenticated revision and approval requests", () => {
   const draftsRoute = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/drafts/route.ts", import.meta.url), "utf8");
   const approveRoute = readFileSync(new URL("../src/app/api/listingstream/offering-memorandums/[slug]/drafts/[draftId]/approve/route.ts", import.meta.url), "utf8");
