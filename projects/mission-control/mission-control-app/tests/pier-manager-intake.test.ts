@@ -156,6 +156,13 @@ test("PIER Manager OM actions include a mobile-first AI revision loop and publis
   assert.match(source, /w-full min-h-\[65vh\]/);
   assert.match(source, /Generate AI OM Preview/);
   assert.match(source, /Approve \+ Publish OM/);
+  assert.match(source, /const \[omRevisionAction, setOmRevisionAction\] = useState<\"idle\" \| \"rendering\" \| \"approving\">\(\"idle\"\)/);
+  assert.match(source, /data-testid=\"om-revision-idle-state\"/);
+  assert.match(source, /No preview rendering starts automatically/);
+  assert.match(source, /disabled=\{omRevisionBusy \|\| !selectedPropertyId \|\| !omRevisionInstructions\.trim\(\)\}/);
+  assert.match(source, /disabled=\{omRevisionBusy \|\| !omDraftId \|\| !omDraftPreviewHtml\}/);
+  assert.doesNotMatch(source, /omGenerating \|\| omApproving/);
+  assert.doesNotMatch(source, /setOmGenerating\(true\);[\s\S]{0,400}offering-memorandums\/\$\{slug\}\/drafts/);
 });
 
 test("Mission Control OM draft proxy routes forward broker-authenticated revision and approval requests", () => {

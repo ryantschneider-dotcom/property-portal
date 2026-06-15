@@ -484,7 +484,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [omDraftId, setOmDraftId] = useState("");
   const [omDraftPreviewHtml, setOmDraftPreviewHtml] = useState("");
   const [omRevisionSummary, setOmRevisionSummary] = useState<string[]>([]);
-  const [omApproving, setOmApproving] = useState(false);
+  const [omRevisionAction, setOmRevisionAction] = useState<"idle" | "rendering" | "approving">("idle");
+  const omRevisionRendering = omRevisionAction === "rendering";
+  const omRevisionApproving = omRevisionAction === "approving";
+  const omRevisionBusy = omRevisionAction !== "idle";
   const [syndicationPayload, setSyndicationPayload] = useState<SyndicationStatusPayload | null>(null);
   const [syndicationStatus, setSyndicationStatus] = useState("Loading syndication command center…");
   const [syndicationBusy, setSyndicationBusy] = useState(false);
@@ -709,7 +712,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setOmDraftId("");
     setOmDraftPreviewHtml("");
     setOmRevisionSummary([]);
-    setOmApproving(false);
+    setOmRevisionAction("idle");
     setFormResetKey((current) => current + 1);
   }
 
@@ -762,11 +765,20 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     return items;
   }
 
+  function resetOmRevisionPanelState() {
+    setOmRevisionInstructions("");
+    setOmDraftId("");
+    setOmDraftPreviewHtml("");
+    setOmRevisionSummary([]);
+    setOmRevisionAction("idle");
+  }
+
   function selectActiveListing(value: string) {
     setSelectedPropertyId(value);
     setListingPickerOpen(false);
     setOmGenerating(false);
     setOmError("");
+    resetOmRevisionPanelState();
     setIncludeRentRoll(false);
     setIncludeProforma(false);
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
@@ -783,6 +795,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setListingPickerOpen(true);
     setOmGenerating(false);
     setOmError("");
+    resetOmRevisionPanelState();
     setIncludeRentRoll(false);
     setIncludeProforma(false);
   }
@@ -897,8 +910,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   async function requestOfferingMemorandumRevision() {
     const cleanInstructions = omRevisionInstructions.trim();
-    if (!selectedListing || !cleanInstructions) return;
-    setOmGenerating(true);
+    if (!selectedListing || !cleanInstructions || omRevisionBusy) return;
+    setOmRevisionAction("rendering");
     setOmError("");
     setPublishSuccessMessage("");
     setToastMessage("");
@@ -919,13 +932,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setOmError(message);
       setModificationStatus(message);
     } finally {
-      setOmGenerating(false);
+      setOmRevisionAction("idle");
     }
   }
 
   async function approveOfferingMemorandumDraft() {
-    if (!selectedListing || !omDraftId) return;
-    setOmApproving(true);
+    if (!selectedListing || !omDraftId || omRevisionBusy) return;
+    setOmRevisionAction("approving");
     setOmError("");
     setModificationStatus("Finalizing the approved OM, generating the PDF, and attaching it to the live ListingStream document array…");
     try {
@@ -943,7 +956,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setOmError(message);
       setModificationStatus(message);
     } finally {
-      setOmApproving(false);
+      setOmRevisionAction("idle");
     }
   }
 
@@ -1514,13 +1527,31 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                     <textarea data-testid="om-vibe-code-textarea" value={omRevisionInstructions} onChange={(event) => setOmRevisionInstructions(event.target.value)} className={`${textareaClass} min-h-32 text-base leading-7 sm:text-sm`} placeholder="Example: Swap the hero image to https://…, insert this floorplan on page 3, and change the highlighted text to Great parking; Road signage available." />
                   </label>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                    <button type="button" onClick={requestOfferingMemorandumRevision} disabled={omGenerating || omApproving || !selectedPropertyId || !omRevisionInstructions.trim()} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-3 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                      {omGenerating ? "Rendering Preview…" : "Generate AI OM Preview"}
+                    <button
+                      type="button"
+                      onClick={requestOfferingMemorandumRevision}
+                      disabled={omRevisionBusy || !selectedPropertyId || !omRevisionInstructions.trim()}
+                      aria-busy={omRevisionRendering}
+                      className={`w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-3 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:opacity-60 sm:w-auto ${omRevisionRendering ? "cursor-wait" : "disabled:cursor-not-allowed"}`}
+                    >
+                      {omRevisionRendering ? "Rendering Preview…" : "Generate AI OM Preview"}
                     </button>
-                    <button data-testid="om-approve-publish" type="button" onClick={approveOfferingMemorandumDraft} disabled={omGenerating || omApproving || !omDraftId || !omDraftPreviewHtml} className="w-full rounded-xl bg-[#CB521E] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                      {omApproving ? "Publishing OM…" : "Approve + Publish OM"}
+                    <button
+                      data-testid="om-approve-publish"
+                      type="button"
+                      onClick={approveOfferingMemorandumDraft}
+                      disabled={omRevisionBusy || !omDraftId || !omDraftPreviewHtml}
+                      aria-busy={omRevisionApproving}
+                      className={`w-full rounded-xl bg-[#CB521E] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:opacity-60 sm:w-auto ${omRevisionApproving ? "cursor-wait" : "disabled:cursor-not-allowed"}`}
+                    >
+                      {omRevisionApproving ? "Publishing OM…" : "Approve + Publish OM"}
                     </button>
                   </div>
+                  {!omDraftPreviewHtml && !omRevisionBusy ? (
+                    <p data-testid="om-revision-idle-state" className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                      Idle: enter a vibe-code instruction, then tap Generate AI OM Preview. No preview rendering starts automatically.
+                    </p>
+                  ) : null}
                   {omRevisionSummary.length ? (
                     <ul className="mt-3 space-y-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                       {omRevisionSummary.map((item) => <li key={item}>• {item}</li>)}
