@@ -1202,7 +1202,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#CB521E]">Global Context</p>
             <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-zinc-950">Select a Listing</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">Pick one active ListingStream property first. Marketing, documents, OM revisions, Gate 1-5, and syndication tools stay hidden until a property context is active.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">Pick one active ListingStream property first. Operational tools stay hidden until a property context is active.</p>
           </div>
           <button type="button" onClick={() => setNewListingIntakeOpen((open) => !open)} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:border-[#CB521E]/40 hover:text-[#CB521E]">
             {newListingIntakeOpen ? "Hide Intake" : "Basic Intake Option"}
