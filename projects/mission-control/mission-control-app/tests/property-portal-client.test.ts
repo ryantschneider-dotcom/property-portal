@@ -133,6 +133,45 @@ test("modification approval payload preserves canonical title, media, and unchan
   assert.equal(payload.workflowStatus, "draft_preview");
 });
 
+test("modification approval payload preserves property use across root and nested ListingStream fields", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "42-w-montgomery-cross-road",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "42-w-montgomery-cross-road" },
+      currentListing: {
+        slug: "42-w-montgomery-cross-road",
+        title: "42 W Montgomery Cross Road",
+        propertyType: "Office",
+        category: "Office",
+        type: "Office",
+        listingType: "Office",
+        property: { propertyType: "Office", type: "Office", category: "Office", buildingSizeSf: 11000 },
+        content: { leaseTitle: "42 W Montgomery Cross Road" },
+      },
+      structuredUpdates: {
+        propertyType: "Office / Storage",
+        category: "Office / Storage",
+        property: { type: "Office / Storage" },
+        content: { leaseDescription: "Updated mixed office/storage positioning." },
+      },
+    },
+  });
+
+  assert.equal(payload.propertyType, "Office / Storage");
+  assert.equal(payload.category, "Office / Storage");
+  assert.equal(payload.type, "Office / Storage");
+  assert.equal(payload.listingType, "Office / Storage");
+  assert.equal((payload.property as Record<string, unknown>).propertyType, "Office / Storage");
+  assert.equal((payload.property as Record<string, unknown>).type, "Office / Storage");
+  assert.equal((payload.property as Record<string, unknown>).category, "Office / Storage");
+  assert.equal((payload.property as Record<string, unknown>).buildingSizeSf, 11000);
+});
+
 test("approved status-change payload preserves ListingStream lifecycle status fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "publish-live",

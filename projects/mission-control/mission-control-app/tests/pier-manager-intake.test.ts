@@ -124,7 +124,7 @@ test("PIER Manager AI draft requests have browser timeout cleanup and visible er
   assert.match(source, /fetchJsonWithTimeout\("\/api\/listingstream\/ai-draft"/);
   assert.match(source, /window\.clearTimeout\(timeout\)/);
   assert.match(source, /setModificationSubmitting\(false\)/);
-  assert.match(source, /getAbortableErrorMessage\(error, "Could not generate listing modification draft\."\)/);
+  assert.match(source, /getAbortableErrorMessage\(error, isOmRevision \? "Could not generate OM revision draft\." : "Could not generate listing modification draft\."\)/);
   assert.match(source, /AI draft generation timed out in the browser/);
 });
 
@@ -138,6 +138,27 @@ test("PIER Manager OM financial controls are manual and only visible for sale no
   assert.match(source, /Include Proforma/);
   assert.match(source, /setIncludeRentRoll\(false\)/);
   assert.match(source, /setIncludeProforma\(false\)/);
+});
+
+test("PIER Manager OM actions include a revision-request lane before regeneration", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /data-testid=\"om-revision-request\"/);
+  assert.match(source, /omRevisionInstructions/);
+  assert.match(source, /requestOfferingMemorandumRevision/);
+  assert.match(source, /source: \"om-revision\"/);
+  assert.match(source, /Send OM Revision to Review Draft/);
+  assert.match(source, /Approve the ListingStream draft update, then regenerate the OM/);
+});
+
+test("PIER Manager Email Blast controls are refreshable and mobile-safe", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /function loadMailchimpAudiences/);
+  assert.match(source, /Refresh Audiences/);
+  assert.match(source, /data-testid=\"mailchimp-audience-select\"/);
+  assert.match(source, /data-testid=\"mailchimp-action-buttons\"[\s\S]*flex flex-col gap-2 sm:flex-row/);
+  assert.match(source, /data-testid=\"mailchimp-email-blast\"[\s\S]*min-w-0 overflow-hidden/);
+  assert.match(source, /mailchimpGenerating \|\| mailchimpLoading/);
+  assert.match(source, /w-full rounded-xl bg-\[#CB521E\]/);
 });
 
 test("PIER Manager OM generation forwards manual financial page flags to the proxy route", () => {

@@ -470,15 +470,17 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
   const [modificationSubmitting, setModificationSubmitting] = useState(false);
-  const [mailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([{ id: "pier-default", name: "PIER Commercial audience", memberCount: null }]);
+  const [mailchimpAudiences, setMailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([]);
   const [mailchimpAudienceId, setMailchimpAudienceId] = useState("");
   const [mailchimpSubjectLine, setMailchimpSubjectLine] = useState("");
   const [mailchimpFromName, setMailchimpFromName] = useState("PIER Commercial Real Estate");
   const [mailchimpFromEmail, setMailchimpFromEmail] = useState("ryan@piercommercial.com");
   const [includeFinancials, setIncludeFinancials] = useState(false);
+  const [mailchimpLoading, setMailchimpLoading] = useState(false);
   const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
   const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
-  const [mailchimpStatus, setMailchimpStatus] = useState("Choose an audience to create a Mailchimp draft. This tool is separate from listing revisions and never sends automatically.");
+  const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
+  const [omRevisionInstructions, setOmRevisionInstructions] = useState("");
   const [syndicationPayload, setSyndicationPayload] = useState<SyndicationStatusPayload | null>(null);
   const [syndicationStatus, setSyndicationStatus] = useState("Loading syndication command center…");
   const [syndicationBusy, setSyndicationBusy] = useState(false);
@@ -520,6 +522,26 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  async function loadMailchimpAudiences(options: { silent?: boolean } = {}) {
+    setMailchimpLoading(true);
+    if (!options.silent) setMailchimpStatus("Loading Mailchimp audiences/lists…");
+    try {
+      const data = await parseJsonResponse(await fetch("/api/listingstream/mailchimp/lists", { cache: "no-store" }));
+      const items = Array.isArray(data.items) ? (data.items as { id: string; name: string; memberCount: number | null }[]) : [];
+      setMailchimpAudiences(items);
+      setMailchimpAudienceId((current) => current || items[0]?.id || "");
+      setMailchimpStatus(items.length ? `${items.length} Mailchimp audience/list option(s) loaded. Choose one and create a draft campaign when ready.` : String(data.error || "No Mailchimp audiences returned yet."));
+    } catch (error) {
+      setMailchimpStatus(error instanceof Error ? error.message : "Could not load Mailchimp audiences.");
+    } finally {
+      setMailchimpLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadMailchimpAudiences({ silent: true });
   }, []);
 
   async function refreshSyndicationStatus() {
@@ -670,6 +692,16 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIncludeRetailAerial(false);
     setIncludeRentRoll(false);
     setIncludeProforma(false);
+    setMailchimpAudienceId("");
+    setMailchimpSubjectLine("");
+    setMailchimpFromName("PIER Commercial Real Estate");
+    setMailchimpFromEmail("ryan@piercommercial.com");
+    setIncludeFinancials(false);
+    setMailchimpStatus("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
+    setMailchimpLoading(false);
+    setMailchimpGenerating(false);
+    setMailchimpPreviewHtml("");
+    setOmRevisionInstructions("");
     setFormResetKey((current) => current + 1);
   }
 
@@ -807,6 +839,40 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     }
   }
 
+  async function generateModificationDraft(instructions: string, options: { source: "listing-revision" | "om-revision" } = { source: "listing-revision" }) {
+    const cleanInstructions = instructions.trim();
+    if (!selectedPropertyId || !cleanInstructions) return;
+    setModificationSubmitting(true);
+    setPublishSuccessMessage("");
+    setToastMessage("");
+    const isOmRevision = options.source === "om-revision";
+    setModificationStatus(isOmRevision
+      ? "Routing OM revision request through the ListingStream review draft flow before regenerating the Offering Memorandum…"
+      : "AI is analyzing property data... Fetching the current portal payload and drafting premium marketing copy from your delta...");
+    try {
+      const data = (await fetchJsonWithTimeout("/api/listingstream/ai-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "modification", propertyIdOrSlug: selectedPropertyId, instructions: cleanInstructions }),
+      }, 90_000)) as { draft: unknown };
+      const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
+        kind: "modification",
+        title: selectedListing?.title || selectedListing?.address || selectedPropertyId || "Listing modification draft",
+        sourceInput: { propertyIdOrSlug: selectedPropertyId, instructions: cleanInstructions, source: options.source },
+      });
+      setReviewDraft(draft);
+      revealReviewDraft("actions");
+      setReviewStatus(`Review Draft ready for ${isOmRevision ? "OM revision" : "modification"}. ${modificationAssets.length} media/document file(s) staged for the portal update.`);
+      setModificationStatus(isOmRevision
+        ? "OM revision draft ready. Approve the ListingStream draft update, then regenerate the OM from the revised listing data."
+        : "Revised listing draft ready for broker review; nothing has been published yet.");
+    } catch (error) {
+      setModificationStatus(getAbortableErrorMessage(error, isOmRevision ? "Could not generate OM revision draft." : "Could not generate listing modification draft."));
+    } finally {
+      setModificationSubmitting(false);
+    }
+  }
+
   async function submitModification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const validationError = getListingRevisionValidationError({
@@ -818,32 +884,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setModificationStatus(validationError);
       return;
     }
-    setModificationSubmitting(true);
-    setPublishSuccessMessage("");
-    setToastMessage("");
-    setModificationStatus("AI is analyzing property data... Fetching the current portal payload and drafting premium marketing copy from your delta...");
-    try {
-      const data = (await fetchJsonWithTimeout("/api/listingstream/ai-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "modification", propertyIdOrSlug: selectedPropertyId, instructions: modificationInstructions.trim() }),
-      }, 90_000)) as { draft: unknown };
-      const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
-        kind: "modification",
-        title: selectedListing?.title || selectedListing?.address || selectedPropertyId || "Listing modification draft",
-        sourceInput: { propertyIdOrSlug: selectedPropertyId, instructions: modificationInstructions.trim() },
-      });
-      setReviewDraft(draft);
-      revealReviewDraft("actions");
-      setReviewStatus(`Review Draft ready for modification. ${modificationAssets.length} media/document file(s) staged for the portal update.`);
-      setModificationStatus("Revised listing draft ready for broker review; nothing has been published yet.");
-    } catch (error) {
-      setModificationStatus(getAbortableErrorMessage(error, "Could not generate listing modification draft."));
-    } finally {
-      setModificationSubmitting(false);
-    }
+    await generateModificationDraft(modificationInstructions, { source: "listing-revision" });
   }
 
+  async function requestOfferingMemorandumRevision() {
+    if (!omRevisionInstructions.trim()) return;
+    setModificationInstructions(omRevisionInstructions);
+    await generateModificationDraft(omRevisionInstructions, { source: "om-revision" });
+  }
 
   async function generateOfferingMemorandum(format: "pdf" | "html") {
     if (!selectedListing) return;
@@ -1362,7 +1410,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
               <div data-testid="selected-listing-summary" className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p><span className="font-semibold text-zinc-900">Selected:</span> {selectedListing.address || selectedListing.title || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
-                  <button type="button" onClick={reopenListingPicker} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">
+                  <button type="button" onClick={reopenListingPicker} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">
                     Change Selection
                   </button>
                 </div>
@@ -1390,12 +1438,22 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                     </div>
                   </div>
                 ) : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => generateOfferingMemorandum("pdf")} disabled={omGenerating} aria-busy={omGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+                <div data-testid="om-action-buttons" className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <button type="button" onClick={() => generateOfferingMemorandum("pdf")} disabled={omGenerating} aria-busy={omGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
                     {omGenerating ? "Generating OM…" : "Generate OM"}
                   </button>
-                  <button type="button" onClick={() => generateOfferingMemorandum("html")} disabled={omGenerating} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60">
+                  <button type="button" onClick={() => generateOfferingMemorandum("html")} disabled={omGenerating} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
                     Preview OM HTML
+                  </button>
+                </div>
+                <div data-testid="om-revision-request" className="mt-3 rounded-xl border border-zinc-200 bg-white px-4 py-3">
+                  <label className="space-y-2 block">
+                    {requiredLabel("OM revision request", false)}
+                    <textarea value={omRevisionInstructions} onChange={(event) => setOmRevisionInstructions(event.target.value)} className={`${textareaClass} min-h-24`} placeholder="Example: Update Suite A to $18/SF NNN, remove Suite B, then regenerate the OM." />
+                  </label>
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">OM revisions update ListingStream through the broker review draft first; after approval, regenerate the OM so the PDF matches the saved listing data.</p>
+                  <button type="button" onClick={requestOfferingMemorandumRevision} disabled={modificationSubmitting || !selectedPropertyId || !omRevisionInstructions.trim()} className="mt-3 w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-wait disabled:opacity-60 sm:w-auto">
+                    Send OM Revision to Review Draft
                   </button>
                 </div>
                 {omError ? <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{omError}</p> : null}
@@ -1423,7 +1481,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         </form>
 
         {selectedListing && !listingPickerOpen ? (
-          <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit`}>
+          <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit min-w-0 overflow-hidden`}>
             <div data-testid="revision-email-blast-divider" className="mb-5 rounded-2xl border border-[#CB521E]/25 bg-[#CB521E]/5 px-4 py-3 text-sm font-semibold text-[#7a2f12]">
               Separate tool: Email Blast drafts use Mailchimp audience validation and cannot block listing revisions.
             </div>
@@ -1432,9 +1490,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
             <p className="mt-1 text-sm leading-6 text-zinc-600">Direct API route to Mailchimp: Audience Selector, dynamic inline HTML, and draft campaign creation. Mission Control creates a Mailchimp campaign draft but never sends it.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
-                {requiredLabel("Audience Selector — Mailchimp List / Audience")}
-                <select value={mailchimpAudienceId} onChange={(event) => setMailchimpAudienceId(event.target.value)} className={inputClass} required>
-                  <option value="">Select list</option>
+                <span className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span>{requiredLabel("Audience Selector — Mailchimp List / Audience")}</span>
+                  <button type="button" onClick={() => loadMailchimpAudiences()} disabled={mailchimpLoading} className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-[#CB521E]/40 hover:text-[#CB521E] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
+                    {mailchimpLoading ? "Refreshing…" : "Refresh Audiences"}
+                  </button>
+                </span>
+                <select data-testid="mailchimp-audience-select" value={mailchimpAudienceId} onChange={(event) => setMailchimpAudienceId(event.target.value)} className={`${inputClass} w-full min-w-0`} required>
+                  <option value="">{mailchimpLoading ? "Loading lists…" : "Select list"}</option>
                   {mailchimpAudiences.map((audience) => <option key={audience.id} value={audience.id}>{audience.name} — {formatAudienceCount(audience.memberCount)}</option>)}
                 </select>
               </label>
@@ -1455,12 +1518,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                 <input type="checkbox" checked={includeFinancials} onChange={(event) => setIncludeFinancials(event.target.checked)} className="mt-1 h-5 w-5 accent-[#CB521E]" />
               </label>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button type="submit" disabled={mailchimpGenerating || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+            <div data-testid="mailchimp-action-buttons" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <button type="submit" disabled={mailchimpGenerating || mailchimpLoading || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
                 {mailchimpGenerating ? "Creating Draft…" : "Create Draft Blast"}
               </button>
               {mailchimpPreviewHtml ? (
-                <button type="button" onClick={previewMailchimpHtml} className="rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5">Preview Email HTML</button>
+                <button type="button" onClick={previewMailchimpHtml} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">Preview Email HTML</button>
               ) : null}
             </div>
             <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>

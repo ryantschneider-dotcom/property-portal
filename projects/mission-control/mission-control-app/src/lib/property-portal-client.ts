@@ -359,6 +359,36 @@ function getApprovedPayloadStatus(updates: Record<string, unknown>, mode?: Prope
   return ["leased", "sold", "under_contract"].includes(status) ? status : "active";
 }
 
+function resolvePropertyUseFields(merged: Record<string, unknown>, existing: Record<string, unknown>, updates: Record<string, unknown>) {
+  const mergedProperty = isRecord(merged.property) ? merged.property : {};
+  const existingProperty = isRecord(existing.property) ? existing.property : {};
+  const updateProperty = isRecord(updates.property) ? updates.property : {};
+  const propertyType = clean(updates.propertyType as string | undefined)
+    || clean(updateProperty.propertyType as string | undefined)
+    || clean(updateProperty.type as string | undefined)
+    || clean(merged.propertyType as string | undefined)
+    || clean(mergedProperty.propertyType as string | undefined)
+    || clean(mergedProperty.type as string | undefined)
+    || clean(existing.propertyType as string | undefined)
+    || clean(existingProperty.propertyType as string | undefined)
+    || clean(existingProperty.type as string | undefined)
+    || undefined;
+  const category = clean(updates.category as string | undefined)
+    || clean(updateProperty.category as string | undefined)
+    || clean(merged.category as string | undefined)
+    || clean(mergedProperty.category as string | undefined)
+    || clean(existing.category as string | undefined)
+    || clean(existingProperty.category as string | undefined)
+    || propertyType;
+  return {
+    propertyType,
+    category,
+    type: propertyType || clean(merged.type as string | undefined),
+    listingType: propertyType || clean(merged.listingType as string | undefined),
+    property: deepMergeRecords(mergedProperty, propertyType ? { propertyType, type: propertyType } : {}, category ? { category } : {}),
+  };
+}
+
 export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPortalReviewDraftForApproval; mode?: PropertyPortalPublishMode; slug?: string }) {
   const rawUpdates = isRecord(input.draft.structuredUpdates) ? input.draft.structuredUpdates : {};
   const existing = isRecord(input.draft.currentListing) ? input.draft.currentListing : {};
@@ -419,9 +449,11 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     sourcePricing.visibility,
     isRecord(updates.visibility) ? updates.visibility : {},
   );
+  const propertyUseFields = resolvePropertyUseFields(merged, existing, updates);
 
   return {
     ...merged,
+    ...propertyUseFields,
     slug: input.slug || clean(merged.slug as string | undefined) || clean(existing.slug as string | undefined) || undefined,
     title: finalTitle,
     leadBroker: brokerProfile?.name || clean(merged.leadBroker as string | undefined) || clean(existing.leadBroker as string | undefined) || undefined,
