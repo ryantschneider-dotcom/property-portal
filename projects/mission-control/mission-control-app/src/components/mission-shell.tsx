@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { ReactNode } from "react";
 import { ActivityStream } from "@/components/activity-stream";
+import { HermesCopilotDrawer } from "@/components/hermes-copilot-drawer";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ViewAsBrokerControl } from "@/components/view-as-broker-control";
 import { AUTH_COOKIE, getAuthSession } from "@/lib/auth";
@@ -264,6 +265,7 @@ export async function MissionShell({
           </div>
         </aside>
         )}
+        {!isBroker && <HermesCopilotDrawer />}
       </div>
     </div>
   );
