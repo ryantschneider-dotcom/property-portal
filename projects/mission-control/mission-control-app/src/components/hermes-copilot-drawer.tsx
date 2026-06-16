@@ -13,6 +13,14 @@ type CopilotState = {
   backend?: { ok: boolean; status: string; url?: string; error?: string };
 };
 
+type SignedCopilotUpload = CopilotAttachment & {
+  storagePath?: string;
+  uploadUrl: string;
+  method: "PUT";
+  headers: Record<string, string>;
+  expiresAt: string;
+};
+
 type PendingAttachment = {
   id: string;
   file: File;
@@ -177,16 +185,46 @@ export function HermesCopilotDrawer({ variant = "floating" }: HermesCopilotDrawe
     event.target.value = "";
   }
 
+  async function prepareDirectUpload(): Promise<SignedCopilotUpload[]> {
+    const response = await fetch("/api/hermes-copilot/attachments", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        files: pendingAttachments.map((attachment) => ({
+          name: attachment.file.name || "copilot-attachment",
+          type: attachment.file.type || "application/octet-stream",
+          size: attachment.file.size,
+        })),
+      }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { attachments?: SignedCopilotUpload[]; error?: string };
+    if (!response.ok) throw new Error(data.error || "Attachment upload preparation failed");
+    return Array.isArray(data.attachments) ? data.attachments : [];
+  }
+
   async function uploadPendingAttachments(): Promise<CopilotAttachment[]> {
     if (!pendingAttachments.length) return [];
     setUploading(true);
-    const formData = new FormData();
-    pendingAttachments.forEach((attachment) => formData.append("files", attachment.file, attachment.file.name || "copilot-attachment"));
-    const response = await fetch("/api/hermes-copilot/attachments", { method: "POST", body: formData });
-    const data = (await response.json().catch(() => ({}))) as { attachments?: CopilotAttachment[]; error?: string };
-    setUploading(false);
-    if (!response.ok) throw new Error(data.error || "Attachment upload failed");
-    return Array.isArray(data.attachments) ? data.attachments : [];
+    try {
+      const signedUploads = await prepareDirectUpload();
+      const pendingByIndex = pendingAttachments.slice(0, signedUploads.length);
+      await Promise.all(signedUploads.map(async (signedUpload, index) => {
+        const attachment = pendingByIndex[index];
+        if (!attachment) throw new Error("Attachment signing mismatch");
+        const uploadResponse = await fetch(signedUpload.uploadUrl, {
+          method: "PUT",
+          headers: signedUpload.headers,
+          body: attachment.file,
+        });
+        if (!uploadResponse.ok) {
+          const detail = await uploadResponse.text().catch(() => "");
+          throw new Error(`Attachment direct upload failed with status ${uploadResponse.status}${detail ? `: ${detail.slice(0, 180)}` : ""}`);
+        }
+      }));
+      return signedUploads.map(({ uploadUrl: _uploadUrl, method: _method, headers: _headers, expiresAt: _expiresAt, ...attachment }) => attachment);
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function send(message = draft) {

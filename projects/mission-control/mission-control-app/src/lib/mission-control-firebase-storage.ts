@@ -1,4 +1,4 @@
-import { createSign, randomUUID } from "crypto";
+import { createHash, createSign, randomUUID } from "crypto";
 import path from "path";
 
 export type MissionControlFirebaseUpload = {
@@ -7,6 +7,14 @@ export type MissionControlFirebaseUpload = {
   contentType: string;
   size: number;
   originalName: string;
+};
+
+export type MissionControlFirebaseSignedUpload = MissionControlFirebaseUpload & {
+  id: string;
+  uploadUrl: string;
+  method: "PUT";
+  headers: Record<string, string>;
+  expiresAt: string;
 };
 
 type FirebaseServiceAccount = {
@@ -74,6 +82,113 @@ export function safeFirebaseObjectSegment(name: string) {
 
 export function isPdfUploadFile(file: File) {
   return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name);
+}
+
+function getUploadObjectName(originalName: string, options: { slug?: string; index: number; folder?: string[]; fallbackBaseName?: string }) {
+  const extension = path.extname(originalName) || ".bin";
+  const base = path.basename(originalName, path.extname(originalName)) || options.fallbackBaseName || "upload";
+  const folder = options.folder?.length ? options.folder : ["property-intake", safeFirebaseObjectSegment(options.slug || "listing"), "suite-media"];
+  return [
+    ...folder.map(safeFirebaseObjectSegment),
+    `${Date.now()}-${options.index}-${safeFirebaseObjectSegment(base)}${extension}`,
+  ].join("/");
+}
+
+function encodeGcsPathSegment(segment: string) {
+  return encodeURIComponent(segment).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function encodeCanonicalUri(bucket: string, objectName: string) {
+  return `/${encodeGcsPathSegment(bucket)}/${objectName.split("/").map(encodeGcsPathSegment).join("/")}`;
+}
+
+function getV4Timestamp(date: Date) {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function getV4Date(date: Date) {
+  return getV4Timestamp(date).slice(0, 8);
+}
+
+function encodeCanonicalQuery(params: Record<string, string>) {
+  return Object.entries(params)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join("&");
+}
+
+export function createMissionControlFirebaseSignedUpload(input: {
+  originalName?: string;
+  contentType?: string;
+  size: number;
+  index: number;
+  folder?: string[];
+  fallbackBaseName?: string;
+  expiresInSeconds?: number;
+}): MissionControlFirebaseSignedUpload {
+  const bucket = getFirebaseStorageBucket();
+  const serviceAccount = getFirebaseServiceAccount();
+  const token = randomUUID();
+  const originalName = input.originalName || input.fallbackBaseName || "copilot-attachment";
+  const objectName = getUploadObjectName(originalName, {
+    index: input.index,
+    folder: input.folder,
+    fallbackBaseName: input.fallbackBaseName,
+  });
+  const contentType = input.contentType || "application/octet-stream";
+  const now = new Date();
+  const expiresInSeconds = Math.min(Math.max(input.expiresInSeconds || 15 * 60, 60), 60 * 60);
+  const timestamp = getV4Timestamp(now);
+  const date = getV4Date(now);
+  const credentialScope = `${date}/auto/storage/goog4_request`;
+  const signedHeaders = "content-type;host;x-goog-meta-firebasestoragedownloadtokens";
+  const canonicalUri = encodeCanonicalUri(bucket, objectName);
+  const canonicalHeaders = [
+    `content-type:${contentType}`,
+    "host:storage.googleapis.com",
+    `x-goog-meta-firebasestoragedownloadtokens:${token}`,
+    "",
+  ].join("\n");
+  const queryParams = {
+    "X-Goog-Algorithm": "GOOG4-RSA-SHA256",
+    "X-Goog-Credential": `${serviceAccount.client_email}/${credentialScope}`,
+    "X-Goog-Date": timestamp,
+    "X-Goog-Expires": String(expiresInSeconds),
+    "X-Goog-SignedHeaders": signedHeaders,
+  };
+  const canonicalQuery = encodeCanonicalQuery(queryParams);
+  const canonicalRequest = [
+    "PUT",
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaders,
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const canonicalRequestHash = createHash("sha256").update(canonicalRequest).digest("hex");
+  const stringToSign = ["GOOG4-RSA-SHA256", timestamp, credentialScope, canonicalRequestHash].join("\n");
+  const signer = createSign("RSA-SHA256");
+  signer.update(stringToSign);
+  signer.end();
+  const signature = signer.sign(serviceAccount.private_key.replace(/\\n/g, "\n")).toString("hex");
+  const uploadUrl = `https://storage.googleapis.com${canonicalUri}?${canonicalQuery}&X-Goog-Signature=${signature}`;
+  const url = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(objectName)}?${new URLSearchParams({ alt: "media", token })}`;
+
+  return {
+    id: randomUUID(),
+    uploadUrl,
+    method: "PUT",
+    headers: {
+      "Content-Type": contentType,
+      "x-goog-meta-firebasestoragedownloadtokens": token,
+    },
+    expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+    url,
+    path: objectName,
+    contentType,
+    size: input.size,
+    originalName,
+  };
 }
 
 export async function uploadMissionControlFirebaseFile(file: File, options: { slug?: string; index: number; folder?: string[]; fallbackBaseName?: string }): Promise<MissionControlFirebaseUpload> {

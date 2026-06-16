@@ -22,24 +22,29 @@ test("Hermes Co-Pilot composer captures pasted screenshots, dropped files, and m
   assert.match(source, /min-h-\[44px\]/);
 });
 
-test("Hermes Co-Pilot uploads attachments before send and forwards URLs into the chat request", () => {
+test("Hermes Co-Pilot uploads attachments directly before send and forwards URLs into the chat request", () => {
   const source = drawerSource();
 
   assert.match(source, /fetch\("\/api\/hermes-copilot\/attachments"/);
-  assert.match(source, /FormData/);
+  assert.match(source, /prepareDirectUpload/);
+  assert.match(source, /signedUpload\.uploadUrl/);
+  assert.match(source, /method:\s*"PUT"/);
+  assert.match(source, /body:\s*attachment\.file/);
+  assert.doesNotMatch(source, /new FormData\(\)/);
   assert.match(source, /attachments: uploadedAttachments/);
   assert.match(source, /copilotMessages: requestHistory/);
   assert.match(source, /pendingAttachments/);
 });
 
-test("Hermes Co-Pilot attachment route uses authenticated Firebase storage with file limits", () => {
+test("Hermes Co-Pilot attachment route uses authenticated signed Firebase storage URLs with file limits", () => {
   const source = attachmentRouteSource();
 
   assert.match(source, /requireAuth\(\)/);
-  assert.match(source, /uploadMissionControlFirebaseFile/);
+  assert.match(source, /createMissionControlFirebaseSignedUpload/);
   assert.match(source, /MAX_COPILOT_ATTACHMENT_BYTES/);
   assert.match(source, /ALLOWED_COPILOT_ATTACHMENT_TYPES/);
   assert.match(source, /hermes-copilot/);
+  assert.doesNotMatch(source, /request\.formData\(\)/);
 });
 
 test("Hermes Co-Pilot prompt carries uploaded file URLs into the execution context", () => {
