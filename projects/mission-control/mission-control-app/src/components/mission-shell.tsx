@@ -90,6 +90,7 @@ export async function MissionShell({
   const activeBrokerId = session?.brokerId ?? "ryan";
   const activeBrokerName = getBrokerDisplayName(activeBrokerId);
   const visibleActions = isBroker ? [] : actions;
+  const showFloatingCopilot = !isBroker && currentPath !== "/hermes-co-pilot";
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -265,7 +266,7 @@ export async function MissionShell({
           </div>
         </aside>
         )}
-        {!isBroker && <HermesCopilotDrawer />}
+        {showFloatingCopilot && <HermesCopilotDrawer />}
       </div>
     </div>
   );

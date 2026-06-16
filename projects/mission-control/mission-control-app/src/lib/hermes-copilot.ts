@@ -161,7 +161,10 @@ export function createCopilotAssistantFallback(input: {
 
 export function stripReasoningTags(text: string) {
   return text
-    .replace(/(?:[ \t]*\n)*[ \t]*<(?:think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)\b[^>]*>[\s\S]*?<\/(?:think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)>[ \t]*(?:\n[ \t]*)*/gi, "\n")
+    .replace(/(?:[ \t]*\n)*[ \t]*<(?:thought|think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)\b[^>]*>[\s\S]*?<\/(?:thought|think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)>[ \t]*(?:\n[ \t]*)*/gi, "\n")
+    .replace(/^\s*(?:my\s+)?plan\s+is\s*:?\s*\n(?:\s*\d+[.)]\s+.*(?:\n|$))+/gim, "")
+    .replace(/^\s*(?:analysis|reasoning|scratchpad|internal notes?|system plan)\s*:\s*[\s\S]*?(?=^\s*(?:final answer|final|answer|response)\s*:?\s*$|\n\s*##\s+|\n\s*#\s+|$)/gim, "")
+    .replace(/^\s*(?:final answer|final|answer|response)\s*:?\s*$/gim, "")
     .replace(/<\/?(?:final|answer|response|message|assistant|output)\b[^>]*>/gi, "")
     .replace(/<\/?[a-zA-Z_][\w:.-]*\b[^>]*>/g, "")
     .replace(/\n{2,}/g, "\n")

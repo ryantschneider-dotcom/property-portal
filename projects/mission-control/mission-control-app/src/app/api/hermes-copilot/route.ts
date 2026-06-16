@@ -105,14 +105,16 @@ export async function POST(request: Request) {
       sendOpenClawChat(prompt, { sessionKey: "main", timeoutMs: 55000, history }),
     ]);
 
+    const sanitizedOpenClawText = openClaw.ok ? stripReasoningTags(openClaw.text || "") : "";
+    const sanitizedOpenClaw = openClaw.ok ? { ...openClaw, text: sanitizedOpenClawText } : openClaw;
     const assistantContent = openClaw.ok
-      ? stripReasoningTags(openClaw.text)
+      ? sanitizedOpenClawText
       : stripReasoningTags(createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action }));
     const assistantMessage = makeMessage("assistant", assistantContent, parsed.command, openClaw.ok || action?.ok ? "ok" : "error");
 
     const messages = [...history, userMessage, assistantMessage].slice(-80);
 
-    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, openClaw });
+    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, openClaw: sanitizedOpenClaw });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to send Co-Pilot message" }, { status: 500 });

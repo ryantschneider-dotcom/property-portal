@@ -66,8 +66,13 @@ function attachmentLabel(attachments: CopilotAttachment[]) {
   return `\n\nAttachments:\n${attachments.map((item) => `- ${item.name}: ${item.url}`).join("\n")}`;
 }
 
-export function HermesCopilotDrawer() {
-  const [open, setOpen] = useState(false);
+type HermesCopilotDrawerProps = {
+  variant?: "floating" | "page";
+};
+
+export function HermesCopilotDrawer({ variant = "floating" }: HermesCopilotDrawerProps = {}) {
+  const isPage = variant === "page";
+  const [open, setOpen] = useState(isPage);
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -79,6 +84,10 @@ export function HermesCopilotDrawer() {
   const [backend, setBackend] = useState<CopilotState["backend"]>(undefined);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isPage) setOpen(true);
+  }, [isPage]);
 
   useEffect(() => {
     const localMessages = readLocalCopilotMessages();
@@ -234,12 +243,11 @@ export function HermesCopilotDrawer() {
     void send();
   }
 
-  return (
-    <div className="fixed inset-x-3 bottom-3 z-50 sm:inset-auto sm:bottom-5 sm:right-5">
-      {open ? (
+  const visibleMessages = isPage ? messages : messages.slice(-20);
+  const surface = (
         <section
-          className={`ml-auto flex h-[min(720px,calc(100vh-2rem))] w-full max-w-[460px] flex-col overflow-hidden rounded-[1.75rem] border bg-white shadow-2xl shadow-zinc-950/25 ${dragActive ? "border-[#CB521E] ring-4 ring-[#CB521E]/20" : "border-zinc-200"}`}
-          aria-label="Hermes Co-Pilot chat drawer"
+          className={`${isPage ? "flex min-h-[calc(100vh-190px)] w-full flex-col overflow-hidden rounded-[2rem] border bg-white shadow-sm" : "ml-auto flex h-[min(720px,calc(100vh-2rem))] w-full max-w-[460px] flex-col overflow-hidden rounded-[1.75rem] border bg-white shadow-2xl shadow-zinc-950/25"} ${dragActive ? "border-[#CB521E] ring-4 ring-[#CB521E]/20" : "border-zinc-200"}`}
+          aria-label={isPage ? "Hermes Co-Pilot master console" : "Hermes Co-Pilot chat drawer"}
           onDragOver={handleDragOver}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
@@ -251,7 +259,7 @@ export function HermesCopilotDrawer() {
                 <h2 className="mt-1 text-lg font-semibold">Mission Control Chat</h2>
                 <p className="mt-1 text-xs leading-5 text-zinc-300">Out-of-band backup: Telegram channel remains the permanent out-of-band backup.</p>
               </div>
-              <button type="button" aria-label="Close Hermes Co-Pilot chat" onClick={() => setOpen(false)} className="min-h-[44px] min-w-[44px] rounded-full border border-white/15 px-3 py-1 text-sm text-zinc-200 transition hover:bg-white/10">×</button>
+              {!isPage ? <button type="button" aria-label="Close Hermes Co-Pilot chat" onClick={() => setOpen(false)} className="min-h-[44px] min-w-[44px] rounded-full border border-white/15 px-3 py-1 text-sm text-zinc-200 transition hover:bg-white/10">×</button> : null}
             </div>
             <div className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] ${backend?.ok ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-amber-400/30 bg-amber-400/10 text-amber-100"}`}>
               {loading ? "Checking Hermes bridge…" : backend?.ok ? `Hermes bridge ${backend.status}` : "Hermes bridge fallback ready"}
@@ -264,7 +272,7 @@ export function HermesCopilotDrawer() {
                 <strong className="text-[#CB521E]">Ready.</strong> Paste screenshots, drag files, or tap the attachment icon. Telegram stays available if the web UI or Vercel is unreachable.
               </div>
             ) : null}
-            {messages.slice(-20).map((message) => (
+            {visibleMessages.map((message) => (
               <article key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[88%] rounded-3xl border px-3 py-2 text-sm shadow-sm ${message.role === "user" ? "border-[#CB521E]/20 bg-[#CB521E] text-white" : "border-zinc-200 bg-white text-zinc-800"}`}>
                   <div className="mb-1 flex items-center justify-between gap-3 text-[9px] uppercase tracking-[0.18em] opacity-70">
@@ -332,7 +340,13 @@ export function HermesCopilotDrawer() {
             </div>
           </form>
         </section>
-      ) : (
+  );
+
+  if (isPage) return surface;
+
+  return (
+    <div className="fixed inset-x-3 bottom-3 z-50 sm:inset-auto sm:bottom-5 sm:right-5">
+      {open ? surface : (
         <button type="button" aria-label="Open Hermes Co-Pilot chat" onClick={() => setOpen(true)} className="ml-auto flex min-h-[56px] items-center gap-3 rounded-full border border-[#CB521E]/30 bg-zinc-950 px-4 py-3 text-left text-white shadow-2xl shadow-zinc-950/25 transition hover:-translate-y-0.5 hover:bg-zinc-900">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#CB521E] text-sm font-bold">H</span>
           <span className="hidden sm:block">
@@ -343,4 +357,8 @@ export function HermesCopilotDrawer() {
       )}
     </div>
   );
+}
+
+export function HermesCopilotMasterConsole() {
+  return <HermesCopilotDrawer variant="page" />;
 }

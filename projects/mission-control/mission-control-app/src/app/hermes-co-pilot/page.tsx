@@ -1,4 +1,4 @@
-import { HermesCopilotConsole } from "@/components/hermes-copilot-console";
+import { HermesCopilotMasterConsole } from "@/components/hermes-copilot-drawer";
 import { MissionShell } from "@/components/mission-shell";
 
 export default function HermesCopilotPage() {
@@ -9,7 +9,7 @@ export default function HermesCopilotPage() {
       currentPath="/hermes-co-pilot"
       actions={[{ href: "/pier-manager", label: "PIER Manager", tone: "secondary" }]}
     >
-      <HermesCopilotConsole />
+      <HermesCopilotMasterConsole />
     </MissionShell>
   );
 }
