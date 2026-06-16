@@ -17,6 +17,14 @@ test("Offering Site Command Center exposes a clean single-click launch interface
   assert.match(component, /data-testid="offering-site-simple-status"/);
 });
 
+test("PIER Manager OM Revision loop surfaces backend/no-change failures instead of returning to Idle", () => {
+  assert.match(component, /AI failed to apply changes\. Try rephrasing/);
+  assert.match(component, /data-testid="om-revision-error"/);
+  assert.match(component, /role="alert"/);
+  assert.match(component, /!omDraftPreviewHtml && !omRevisionBusy && !omError/);
+  assert.match(component, /if \(!data\.draftId \|\| !data\.previewHtml\)/);
+});
+
 test("Offering Site Command Center hides internal Gate pipeline cards from brokers", () => {
   assert.doesNotMatch(component, /offeringSiteTimelineSteps/);
   assert.doesNotMatch(component, />\{step\.gate\}<|Gate 1|Gate 2|Gate 3|Gate 5/);

@@ -953,9 +953,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instruction: cleanInstructions, draftId: omDraftId || undefined }),
-      }, 180_000)) as { draftId?: string; previewHtml?: string; parsedSummary?: string[] };
-      setOmDraftId(data.draftId || "");
-      setOmDraftPreviewHtml(data.previewHtml || "");
+      }, 180_000)) as { draftId?: string; previewHtml?: string; parsedSummary?: string[]; error?: string };
+      if (!data.draftId || !data.previewHtml) {
+        throw new Error(data.error || "AI failed to apply changes. Try rephrasing with the exact suite, size, pricing, or lease-type change.");
+      }
+      setOmDraftId(data.draftId);
+      setOmDraftPreviewHtml(data.previewHtml);
       setOmRevisionSummary(Array.isArray(data.parsedSummary) ? data.parsedSummary.map((item) => String(item)).filter(Boolean) : []);
       setModificationStatus("AI OM preview ready. Review it below on mobile, then approve + publish or send another vibe-code refinement.");
     } catch (error) {
@@ -1650,7 +1653,8 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                       {omRevisionApproving ? "Publishing OM…" : "Approve + Publish OM"}
                     </button>
                   </div>
-                  {!omDraftPreviewHtml && !omRevisionBusy ? (
+                  {omError ? <p data-testid="om-revision-error" role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{omError}</p> : null}
+                  {!omDraftPreviewHtml && !omRevisionBusy && !omError ? (
                     <p data-testid="om-revision-idle-state" className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
                       Idle: enter a vibe-code instruction, then tap Generate AI OM Preview. No preview rendering starts automatically.
                     </p>
@@ -1670,7 +1674,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
                     </div>
                   ) : null}
                 </div>
-                {omError ? <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{omError}</p> : null}
               </div>
             ) : null}
             {selectedListing?.publishStatus === "draft" ? (
