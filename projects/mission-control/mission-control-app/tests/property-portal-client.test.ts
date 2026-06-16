@@ -724,7 +724,7 @@ test("pier-manager successful final submission scrolls top, shows dismissible su
 test("pier-manager keeps revision and Email Blast tools in separate form/card boundaries", async () => {
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(source, /data-testid="listing-revision-tool"/);
-  assert.match(source, /data-testid="revision-email-blast-divider"/);
+  assert.match(source, /data-testid="mailchimp-broker-context"/);
   assert.match(source, /data-testid="mailchimp-email-blast"/);
   assert.match(source, /<form[^>]*id="listing-revision-form"[^>]*onSubmit=\{submitModification\}[^>]*data-testid="listing-revision-tool"[\s\S]*<\/form>/);
   assert.match(source, /<form[^>]*id="email-blast-form"[^>]*onSubmit=\{submitMailchimpEmailBlast\}[^>]*data-testid="mailchimp-email-blast"[\s\S]*<\/form>/);

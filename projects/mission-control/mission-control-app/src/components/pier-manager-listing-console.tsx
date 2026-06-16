@@ -209,6 +209,13 @@ function formatAudienceCount(value: number | null | undefined) {
   return typeof value === "number" ? `${value.toLocaleString()} contacts` : "contact count unavailable";
 }
 
+const defaultMailchimpBrokerContext = { name: "Ryan T. Schneider", email: "ryan@piercommercial.com", source: "fallback" };
+type MailchimpBrokerContext = typeof defaultMailchimpBrokerContext;
+
+function getMailchimpCampaignTitle(listing: PropertyPortalActiveListing, subjectLine: string) {
+  return `${listing.title || listing.address || listing.slug || "PIER Listing"} — ${subjectLine || "Email Blast Draft"}`;
+}
+
 function requiredLabel(label: string, required = true) {
   return (
     <span className="text-sm font-semibold text-zinc-800">
@@ -475,12 +482,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [mailchimpAudiences, setMailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([]);
   const [mailchimpAudienceId, setMailchimpAudienceId] = useState("");
   const [mailchimpSubjectLine, setMailchimpSubjectLine] = useState("");
-  const [mailchimpFromName, setMailchimpFromName] = useState("PIER Commercial Real Estate");
-  const [mailchimpFromEmail, setMailchimpFromEmail] = useState("ryan@piercommercial.com");
+  const [mailchimpFromName, setMailchimpFromName] = useState(defaultMailchimpBrokerContext.name);
+  const [mailchimpFromEmail, setMailchimpFromEmail] = useState(defaultMailchimpBrokerContext.email);
+  const [mailchimpBrokerContext, setMailchimpBrokerContext] = useState<MailchimpBrokerContext>(defaultMailchimpBrokerContext);
   const [includeFinancials, setIncludeFinancials] = useState(false);
   const [mailchimpLoading, setMailchimpLoading] = useState(false);
   const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
-  const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
   const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
   const [omRevisionInstructions, setOmRevisionInstructions] = useState("");
   const [omDraftId, setOmDraftId] = useState("");
@@ -591,23 +598,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   }
 
 
-  function getOfferingSiteTimelineSteps(job: OfferingSiteGenerationJob | null) {
-    const missingFields = job?.baseline?.validation?.missingRequiredFields ?? job?.baseline?.validation?.missingFields ?? [];
-    const isGatheringRecords = job?.status === "gathering-public-records" || job?.status === "scraping-gis-data" || Boolean(job?.logs?.some((log) => /Gathering Public Records|Scraping GIS Data|county-gis|tax-assessor|AlphaMap/i.test(log.message || "")));
-    const hasGate1 = Boolean(job && job.status !== "queued" && !isGatheringRecords);
-    const hasGate2 = Boolean(job?.siteText?.framework === "golden-isles-prestige-v1" || job?.enrichment);
-    const hasGate3 = Boolean(job?.siteText?.framework === "golden-isles-prestige-v1");
-    const hasGate5 = Boolean(job?.status === "deployed" || job?.deployment?.publicUrl || job?.deployment?.routed);
-    const isBlocked = job?.status === "blocked";
-    const isFailed = job?.status === "failed";
-    return [
-      { label: isGatheringRecords ? "Gathering Public Records..." : "Source Pulled & Scrubbed", gate: "Gate 1", complete: hasGate1 && !isBlocked && !isFailed, current: isGatheringRecords || job?.status === "ready-for-generation", issue: isBlocked ? `Blocked data state${missingFields.length ? `: ${missingFields.join(", ")}` : ""}` : "" },
-      { label: isGatheringRecords ? "Scraping GIS Data..." : "Market Context & Copy Enriched", gate: "Gate 2", complete: hasGate2 && !isFailed, current: Boolean(job && !hasGate2 && !isBlocked && !isFailed), issue: isFailed ? job?.error || job?.logs?.find((log) => log.level === "error")?.message || "Enrichment failed." : "" },
-      { label: "Responsive Layout Compiled", gate: "Gate 3", complete: hasGate3 && !isFailed, current: Boolean(hasGate2 && !hasGate3 && !isFailed), issue: "" },
-      { label: "Site Live & Routed", gate: "Gate 5", complete: hasGate5, current: Boolean(hasGate3 && !hasGate5), issue: hasGate3 && !hasGate5 ? "Waiting for final routing gate." : "" },
-    ];
-  }
-
   async function launchOfferingSiteBuild(listingId?: string, retryJob?: OfferingSiteGenerationJob | null) {
     const targetListingId = listingId || offeringSiteSelectedListingId;
     if (!targetListingId) {
@@ -632,7 +622,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
           setOfferingSiteStatus("Offering site build is blocked. Fix the source data gaps and retry from your phone.");
         } else {
-          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Offering site is live and routed. Copy the public URL below and send it from your phone." : "Gate 1–5 build cycle completed or advanced. Timeline updated below.");
+          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Offering site is live and routed. Copy the public URL below and send it from your phone." : "Offering site build is underway. Refresh status for the latest result.");
         }
       } else {
         setOfferingSiteError(payload.error || "ListingStream did not return an offering site job.");
@@ -706,13 +696,13 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIncludeProforma(false);
     setMailchimpAudienceId("");
     setMailchimpSubjectLine("");
-    setMailchimpFromName("PIER Commercial Real Estate");
-    setMailchimpFromEmail("ryan@piercommercial.com");
+    setMailchimpFromName(defaultMailchimpBrokerContext.name);
+    setMailchimpFromEmail(defaultMailchimpBrokerContext.email);
+    setMailchimpBrokerContext(defaultMailchimpBrokerContext);
     setIncludeFinancials(false);
     setMailchimpStatus("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
     setMailchimpLoading(false);
     setMailchimpGenerating(false);
-    setMailchimpPreviewHtml("");
     setOmRevisionInstructions("");
     setOmDraftId("");
     setOmDraftPreviewHtml("");
@@ -752,6 +742,30 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
       setIncludeProforma(false);
     }
   }, [showFinancialToggles]);
+
+
+  useEffect(() => {
+    if (!hasActivePropertyContext || !selectedListing) return;
+    const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
+    let cancelled = false;
+    async function loadBrokerContext() {
+      try {
+        const data = await parseJsonResponse(await fetch(`/api/listingstream/broker-context/${slug}`, { cache: "no-store" })) as { broker?: MailchimpBrokerContext };
+        if (cancelled || !data.broker) return;
+        setMailchimpBrokerContext(data.broker);
+        setMailchimpFromName(data.broker.name);
+        setMailchimpFromEmail(data.broker.email);
+      } catch (error) {
+        if (cancelled) return;
+        setMailchimpBrokerContext(defaultMailchimpBrokerContext);
+        setMailchimpFromName(defaultMailchimpBrokerContext.name);
+        setMailchimpFromEmail(defaultMailchimpBrokerContext.email);
+        setMailchimpStatus(error instanceof Error ? `Broker sender lookup fell back to Ryan: ${error.message}` : "Broker sender lookup fell back to Ryan.");
+      }
+    }
+    void loadBrokerContext();
+    return () => { cancelled = true; };
+  }, [hasActivePropertyContext, selectedListing]);
 
 
   async function refreshActiveListingsAfterPublish(preferredPropertyId: string) {
@@ -1027,11 +1041,24 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   async function createMailchimpEmailDraft() {
     if (!selectedListing || !mailchimpAudienceId || !mailchimpSubjectLine.trim()) return;
     setMailchimpGenerating(true);
-    setMailchimpStatus("Creating Mailchimp draft only — no campaign will be sent automatically.");
+    setMailchimpStatus("Creating a Mailchimp draft campaign for broker review. Nothing will be sent automatically.");
     try {
-      const preview = `<h1>${selectedListing.title || selectedListing.address || "PIER Listing"}</h1><p>${mailchimpSubjectLine}</p>`;
-      setMailchimpPreviewHtml(preview);
-      setMailchimpStatus(`Draft request prepared for ${mailchimpFromName} <${mailchimpFromEmail}>${includeFinancials ? " with financials included" : ""}. Review in Mailchimp before sending.`);
+      const data = await parseJsonResponse(await fetch("/api/listingstream/mailchimp/campaigns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          audienceId: mailchimpAudienceId,
+          subjectLine: mailchimpSubjectLine.trim(),
+          fromName: mailchimpFromName.trim(),
+          fromEmail: mailchimpFromEmail.trim(),
+          title: getMailchimpCampaignTitle(selectedListing, mailchimpSubjectLine.trim()),
+          previewText: selectedListing.address || selectedListing.title || "PIER Commercial listing update",
+          listing: selectedListing,
+          includeFinancials,
+        }),
+      })) as { campaign?: { id?: string; archiveUrl?: string | null } };
+      const campaignLabel = data.campaign?.id ? ` Campaign ${data.campaign.id} is saved in Mailchimp.` : " Campaign is saved in Mailchimp.";
+      setMailchimpStatus(`Draft blast created for ${mailchimpFromName} <${mailchimpFromEmail}>.${campaignLabel} Review inside Mailchimp before sending.`);
     } catch (error) {
       setMailchimpStatus(error instanceof Error ? error.message : "Could not create Mailchimp draft.");
     } finally {
@@ -1042,13 +1069,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   async function submitMailchimpEmailBlast(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await createMailchimpEmailDraft();
-  }
-
-  function previewMailchimpHtml() {
-    const blob = new Blob([mailchimpPreviewHtml], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener,noreferrer");
-    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
   }
 
   async function reviseDraft() {
@@ -1175,7 +1195,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const syndicationReadiness = syndicationPayload?.readiness ?? [];
 
   const offeringSiteSelectedListing = useMemo(() => activeListings.find((item) => item.id === offeringSiteSelectedListingId || item.slug === offeringSiteSelectedListingId), [activeListings, offeringSiteSelectedListingId]);
-  const offeringSiteTimelineSteps = getOfferingSiteTimelineSteps(offeringSiteJob);
   const offeringSiteCanRetry = Boolean(offeringSiteJob && ["blocked", "failed"].includes(String(offeringSiteJob.status)));
 
   return (
@@ -1289,10 +1308,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Offering Site Command Center</p>
             <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">PIER Commercial website builds</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Select an active ListingStream property, launch the autonomous Gate 1 → Gate 5 compiler, and watch public-record gathering, GIS scraping, blocked, failed, retry-ready, and live-routed states without leaving PIER Manager.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Launch or refresh the live PIER offering site for the selected property. Internal build stages stay behind the scenes; brokers see a simple status and live URL.</p>
           </div>
           <button type="button" onClick={() => void refreshOfferingSiteJob()} disabled={offeringSiteBusy || !offeringSiteLastJobId} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">
-            {offeringSiteBusy ? "Refreshing…" : "Refresh Timeline"}
+            {offeringSiteBusy ? "Refreshing…" : "Refresh Status"}
           </button>
         </div>
 
@@ -1323,23 +1342,16 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
           </div>
         ) : null}
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {offeringSiteTimelineSteps.map((step) => (
-            <div key={step.label} className={`rounded-3xl border p-4 shadow-sm ${step.complete ? "border-emerald-200 bg-emerald-50" : step.issue ? "border-amber-300 bg-amber-50" : step.current ? "border-[#CB521E]/40 bg-[#CB521E]/10" : "border-zinc-200 bg-white"}`}>
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-zinc-500">{step.gate}</p>
-                <span className={`grid h-7 w-7 place-items-center rounded-full text-sm font-black ${step.complete ? "bg-emerald-600 text-white" : step.issue ? "bg-amber-500 text-white" : "bg-zinc-200 text-zinc-600"}`}>{step.complete ? "✓" : step.current ? "…" : ""}</span>
-              </div>
-              <h4 className="mt-3 text-sm font-extrabold text-zinc-950">{step.label}</h4>
-              <p className="mt-2 text-xs leading-5 text-zinc-600">{step.issue || (step.complete ? "Complete" : step.current ? "In progress / awaiting next engine stage" : "Pending")}</p>
-            </div>
-          ))}
-        </div>
+        {offeringSiteJob ? (
+          <div data-testid="offering-site-simple-status" className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+            {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.routed ? "Offering site is live." : offeringSiteJob.status === "failed" ? "Offering site needs attention." : offeringSiteJob.status === "blocked" ? "Offering site needs listing data before launch." : "Offering site build is in progress."}
+          </div>
+        ) : null}
 
         {offeringSiteJob ? (
           <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 text-xs leading-5 text-zinc-500">
-            <p><span className="font-bold text-zinc-900">Latest job:</span> {offeringSiteJob.id} • {offeringSiteJob.status} • {offeringSiteJob.updatedAt || "timestamp pending"}</p>
-            {(offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.customDomain) ? <a data-testid="offering-site-live-url" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-4 py-2 font-extrabold text-white" href={(offeringSiteJob.deployment.publicUrl || offeringSiteJob.deployment.customDomain) as string} target="_blank" rel="noopener noreferrer">Open / copy live offering site</a> : null}
+            <p><span className="font-bold text-zinc-900">Status:</span> {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl ? "Live" : offeringSiteJob.status === "failed" ? "Needs attention" : offeringSiteJob.status === "blocked" ? "Needs listing data" : "Working"}</p>
+            {(offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.customDomain) ? <a data-testid="offering-site-live-url" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-4 py-2 font-extrabold text-white" href={(offeringSiteJob.deployment.publicUrl || offeringSiteJob.deployment.customDomain) as string} target="_blank" rel="noopener noreferrer">Open live offering site</a> : null}
           </div>
         ) : null}
       </section>
@@ -1683,14 +1695,12 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         </form>
         ) : null}
 
-        {selectedListing && !listingPickerOpen ? (
+        {hasActivePropertyContext ? (
           <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit min-w-0 overflow-hidden`}>
-            <div data-testid="revision-email-blast-divider" className="mb-5 rounded-2xl border border-[#CB521E]/25 bg-[#CB521E]/5 px-4 py-3 text-sm font-semibold text-[#7a2f12]">
-              Separate tool: Email Blast drafts use Mailchimp audience validation and cannot block listing revisions.
-            </div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Email Blast</p>
             <h4 className="mt-1 text-base font-semibold text-zinc-950">Generate a responsive listing blast from this selected property</h4>
-            <p className="mt-1 text-sm leading-6 text-zinc-600">Direct API route to Mailchimp: Audience Selector, dynamic inline HTML, and draft campaign creation. Mission Control creates a Mailchimp campaign draft but never sends it.</p>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">Create a Mailchimp draft campaign for this listing. Sender details follow the assigned lead broker automatically; nothing sends until reviewed in Mailchimp.</p>
+            <p data-testid="mailchimp-broker-context" className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-semibold text-zinc-600">Sender: {mailchimpBrokerContext.name} &lt;{mailchimpBrokerContext.email}&gt;</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
                 <span className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1725,9 +1735,6 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
               <button type="submit" disabled={mailchimpGenerating || mailchimpLoading || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
                 {mailchimpGenerating ? "Creating Draft…" : "Create Draft Blast"}
               </button>
-              {mailchimpPreviewHtml ? (
-                <button type="button" onClick={previewMailchimpHtml} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">Preview Email HTML</button>
-              ) : null}
             </div>
             <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>
           </form>

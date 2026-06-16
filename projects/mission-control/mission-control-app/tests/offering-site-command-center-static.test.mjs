@@ -5,36 +5,26 @@ import test from "node:test";
 const component = readFileSync("src/components/pier-manager-listing-console.tsx", "utf8");
 const route = readFileSync("src/app/api/listingstream/offering-sites/route.ts", "utf8");
 
-test("Gate 4 exposes mobile offering-site launch command center in PIER Manager", () => {
+test("Offering Site Command Center exposes a clean single-click launch interface", () => {
   assert.match(component, /data-testid="offering-site-command-center"/);
   assert.match(component, /Offering Site Command Center/);
   assert.match(component, /Launch PIER Offering Site Build/);
   assert.match(component, /activeListings\.map/);
   assert.match(component, /offeringSiteSelectedListingId/);
   assert.match(component, /\/api\/listingstream\/offering-sites/);
-  assert.match(component, /Gathering Public Records/);
-  assert.match(component, /Scraping GIS Data/);
-  assert.match(component, /public-record backfill/);
-  assert.match(component, /gate:\s*"5"/);
   assert.match(component, /data-testid="offering-site-live-url"/);
-  assert.match(component, /Open \/ copy live offering site/);
+  assert.match(component, /Open live offering site/);
+  assert.match(component, /data-testid="offering-site-simple-status"/);
 });
 
-test("Gate 4 renders mobile step timeline for Gates 1, 2, 3, and future Gate 5", () => {
-  for (const label of [
-    "Source Pulled & Scrubbed",
-    "Market Context & Copy Enriched",
-    "Responsive Layout Compiled",
-    "Site Live & Routed",
-  ]) {
-    assert.match(component, new RegExp(label.replace(/[&]/g, "\\&")));
-  }
-  assert.match(component, /offeringSiteTimelineSteps/);
-  assert.match(component, /rounded-3xl/);
-  assert.match(component, /sm:grid-cols/);
+test("Offering Site Command Center hides internal Gate pipeline cards from brokers", () => {
+  assert.doesNotMatch(component, /offeringSiteTimelineSteps/);
+  assert.doesNotMatch(component, />\{step\.gate\}<|Gate 1|Gate 2|Gate 3|Gate 5/);
+  assert.doesNotMatch(component, /Source Pulled & Scrubbed|Market Context & Copy Enriched|Responsive Layout Compiled|Site Live & Routed/);
+  assert.match(component, /Internal build stages stay behind the scenes/);
 });
 
-test("Gate 4 surfaces blocked and failed states with retry controls", () => {
+test("Offering Site Command Center surfaces simple blocked and failed states with retry controls", () => {
   assert.match(component, /blocked/i);
   assert.match(component, /failed/i);
   assert.match(component, /Retry Build/);
@@ -43,7 +33,7 @@ test("Gate 4 surfaces blocked and failed states with retry controls", () => {
   assert.match(component, /offeringSiteError/);
 });
 
-test("Gate 4 Mission Control proxy protects and forwards ListingStream offering-site jobs", () => {
+test("Mission Control proxy protects and forwards ListingStream offering-site jobs", () => {
   assert.match(route, /requirePierManagerAuth/);
   assert.match(route, /buildPropertyPortalUrl\("\/api\/admin\/offering-sites"\)/);
   assert.match(route, /getPropertyPortalInternalHeaders/);
@@ -52,11 +42,9 @@ test("Gate 4 Mission Control proxy protects and forwards ListingStream offering-
   assert.match(route, /offering site/);
 });
 
-
-test("Gate 5 dashboard finalizes live routed URL for mobile sharing", () => {
+test("Offering Site dashboard finalizes live routed URL for sharing", () => {
   assert.match(component, /deployment\?\.publicUrl/);
   assert.match(component, /deployment\?\.customDomain/);
   assert.match(component, /Offering site is live and routed/);
   assert.match(component, /Copy the public URL below and send it from your phone/);
-  assert.match(component, /Site Live & Routed/);
 });

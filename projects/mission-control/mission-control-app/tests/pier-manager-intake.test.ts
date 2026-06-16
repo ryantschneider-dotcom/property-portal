@@ -199,15 +199,25 @@ test("Mission Control OM draft proxy routes forward broker-authenticated revisio
   assert.match(propagationLib, /mode: \"auto-propagation\"/);
 });
 
-test("PIER Manager Email Blast controls are refreshable and mobile-safe", () => {
+test("PIER Manager Email Blast controls use Mailchimp API routes and broker sender context", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  const listsRoute = readFileSync(new URL("../src/app/api/listingstream/mailchimp/lists/route.ts", import.meta.url), "utf8");
+  const campaignsRoute = readFileSync(new URL("../src/app/api/listingstream/mailchimp/campaigns/route.ts", import.meta.url), "utf8");
+  const brokerContextRoute = readFileSync(new URL("../src/app/api/listingstream/broker-context/[slug]/route.ts", import.meta.url), "utf8");
   assert.match(source, /function loadMailchimpAudiences/);
-  assert.match(source, /Refresh Audiences/);
+  assert.match(source, /\/api\/listingstream\/mailchimp\/lists/);
+  assert.match(source, /\/api\/listingstream\/mailchimp\/campaigns/);
+  assert.match(source, /\/api\/listingstream\/broker-context\/\$\{slug\}/);
+  assert.match(source, /data-testid=\"mailchimp-broker-context\"/);
   assert.match(source, /data-testid=\"mailchimp-audience-select\"/);
   assert.match(source, /data-testid=\"mailchimp-action-buttons\"[\s\S]*flex flex-col gap-2 sm:flex-row/);
   assert.match(source, /data-testid=\"mailchimp-email-blast\"[\s\S]*min-w-0 overflow-hidden/);
   assert.match(source, /mailchimpGenerating \|\| mailchimpLoading/);
-  assert.match(source, /w-full rounded-xl bg-\[#CB521E\]/);
+  assert.doesNotMatch(source, /Preview Email HTML|window\.open\(url|Direct API route to Mailchimp/);
+  assert.match(listsRoute, /listMailchimpAudiences/);
+  assert.match(campaignsRoute, /createMailchimpDraftCampaign/);
+  assert.match(brokerContextRoute, /brokerProfile/);
+  assert.match(brokerContextRoute, /joel@piercommercial\.com/);
 });
 
 test("PIER Manager OM generation forwards manual financial page flags to the proxy route", () => {
