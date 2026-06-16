@@ -4,6 +4,7 @@ export type CopilotAttachment = {
   url: string;
   contentType: string;
   size: number;
+  storagePath?: string;
   width?: number;
   height?: number;
 };
@@ -73,7 +74,8 @@ export function normalizeCopilotAttachments(input: unknown): CopilotAttachment[]
     if (!id || !name || !url || size === null) continue;
     const width = typeof candidate.width === "number" && Number.isFinite(candidate.width) && candidate.width > 0 ? candidate.width : undefined;
     const height = typeof candidate.height === "number" && Number.isFinite(candidate.height) && candidate.height > 0 ? candidate.height : undefined;
-    attachments.push({ id, name, url, contentType, size, width, height });
+    const storagePath = typeof candidate.storagePath === "string" && candidate.storagePath.trim() ? candidate.storagePath.trim().slice(0, 500) : undefined;
+    attachments.push({ id, name, url, contentType, size, ...(storagePath ? { storagePath } : {}), width, height });
   }
   return attachments.slice(0, 8);
 }

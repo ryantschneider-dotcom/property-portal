@@ -43,7 +43,7 @@ export function getFirebaseStorageBucket() {
   return bucket;
 }
 
-async function getFirebaseAccessToken() {
+export async function getFirebaseAccessToken() {
   const now = Math.floor(Date.now() / 1000);
   if (cachedFirebaseAccessToken && cachedFirebaseAccessToken.expiresAt - 60 > now) return cachedFirebaseAccessToken.token;
   const serviceAccount = getFirebaseServiceAccount();

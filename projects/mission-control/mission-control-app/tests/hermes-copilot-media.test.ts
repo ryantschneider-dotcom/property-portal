@@ -68,3 +68,31 @@ test("Hermes Co-Pilot POST route accepts attachments and passes them into buildC
   assert.match(source, /normalizeCopilotAttachments\(body\.attachments\)/);
   assert.match(source, /buildCopilotPrompt\(parsed\.command, parsed\.args, history, attachments\)/);
 });
+
+test("Hermes Co-Pilot preserves Firebase storage paths for server-side vision reads", () => {
+  const attachments = normalizeCopilotAttachments([
+    {
+      id: "a1",
+      name: "photo.jpg",
+      url: "https://firebasestorage.example/photo.jpg?token=missing",
+      contentType: "image/jpeg",
+      size: 6_340_864,
+      storagePath: "mission-control/hermes-copilot/2026-06-16/photo.jpg",
+    },
+  ]);
+
+  assert.equal(attachments[0]?.storagePath, "mission-control/hermes-copilot/2026-06-16/photo.jpg");
+});
+
+test("Hermes Co-Pilot route invokes the multimodal vision layer and falls back to vision text if OpenClaw stalls", () => {
+  const source = routeSource();
+  const visionSource = readFileSync("src/lib/copilot-vision.ts", "utf8");
+
+  assert.match(source, /analyzeCopilotImageAttachments/);
+  assert.match(source, /Multimodal vision analysis already performed/);
+  assert.match(source, /visionFallbackText/);
+  assert.match(source, /timeoutMs:\s*vision\?\.ok \? 22000 : 55000/);
+  assert.match(visionSource, /gemini-2\.5-flash/);
+  assert.match(visionSource, /inlineData/);
+  assert.match(visionSource, /fetchFirebaseStorageObject/);
+});

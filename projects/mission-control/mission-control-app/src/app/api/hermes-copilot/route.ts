@@ -11,6 +11,7 @@ import {
   parseCopilotCommand,
   stripReasoningTags,
 } from "@/lib/hermes-copilot";
+import { analyzeCopilotImageAttachments } from "@/lib/copilot-vision";
 import { getOpenClawHealth, sendOpenClawChat } from "@/lib/openclaw-client";
 import { buildPropertyPortalUrl, getPropertyPortalInternalHeaders, safePropertyPortalFetch } from "@/lib/property-portal-client";
 
@@ -98,23 +99,32 @@ export async function POST(request: Request) {
     const attachments = normalizeCopilotAttachments(body.attachments);
     const userMessage = makeMessage("user", rawMessage, parsed.command, "sent");
     if (attachments.length) userMessage.attachments = attachments;
-    const prompt = buildCopilotPrompt(parsed.command, parsed.args, history, attachments);
+    const basePrompt = buildCopilotPrompt(parsed.command, parsed.args, history, attachments);
+    const vision = await analyzeCopilotImageAttachments({
+      message: rawMessage,
+      history,
+      attachments,
+      timeoutMs: 32000,
+    });
+    const prompt = vision?.ok
+      ? `${basePrompt}\n\nMultimodal vision analysis already performed on the attached image(s):\n${vision.text}\n\nUse this visual analysis as verified evidence when answering. Return a complete final response now; do not merely acknowledge receipt.`
+      : basePrompt;
     const [backend, action, openClaw] = await Promise.all([
       getOpenClawHealth(3000),
       runCopilotAction(parsed.command, parsed.args),
-      sendOpenClawChat(prompt, { sessionKey: "main", timeoutMs: 55000, history }),
+      sendOpenClawChat(prompt, { sessionKey: "main", timeoutMs: vision?.ok ? 22000 : 55000, history }),
     ]);
 
     const sanitizedOpenClawText = openClaw.ok ? stripReasoningTags(openClaw.text || "") : "";
     const sanitizedOpenClaw = openClaw.ok ? { ...openClaw, text: sanitizedOpenClawText } : openClaw;
-    const assistantContent = openClaw.ok
-      ? sanitizedOpenClawText
-      : stripReasoningTags(createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action }));
-    const assistantMessage = makeMessage("assistant", assistantContent, parsed.command, openClaw.ok || action?.ok ? "ok" : "error");
+    const visionFallbackText = vision?.ok ? stripReasoningTags(vision.text) : "";
+    const assistantContent = sanitizedOpenClawText || visionFallbackText || stripReasoningTags(createCopilotAssistantFallback({ message: rawMessage, command: parsed.command, args: parsed.args, backend, action }));
+    const assistantStatus = sanitizedOpenClawText || visionFallbackText || action?.ok ? "ok" : "error";
+    const assistantMessage = makeMessage("assistant", assistantContent, parsed.command, assistantStatus);
 
     const messages = [...history, userMessage, assistantMessage].slice(-80);
 
-    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, openClaw: sanitizedOpenClaw });
+    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, vision, openClaw: sanitizedOpenClaw });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to send Co-Pilot message" }, { status: 500 });
