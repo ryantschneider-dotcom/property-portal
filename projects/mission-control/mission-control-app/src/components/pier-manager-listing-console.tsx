@@ -1720,11 +1720,11 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
               </label>
               <label className="space-y-2">
                 {requiredLabel("From Name")}
-                <input value={mailchimpFromName} onChange={(event) => setMailchimpFromName(event.target.value)} className={inputClass} />
+                <input name="mailchimpFromName" value={mailchimpFromName} onChange={(event) => setMailchimpFromName(event.target.value)} className={inputClass} />
               </label>
               <label className="space-y-2">
                 {requiredLabel("From Email")}
-                <input type="email" value={mailchimpFromEmail} onChange={(event) => setMailchimpFromEmail(event.target.value)} className={inputClass} />
+                <input name="mailchimpFromEmail" type="email" value={mailchimpFromEmail} onChange={(event) => setMailchimpFromEmail(event.target.value)} className={inputClass} />
               </label>
               <label className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700 md:col-span-2">
                 <span><strong className="block text-zinc-900">Include high-level financials</strong><span className="text-xs text-zinc-500">For Building For Sale blasts only; adds available NOI/cap rate/occupancy fields when ListingStream has them.</span></span>
