@@ -7,6 +7,7 @@ import {
   CopilotMessage,
   createCopilotAssistantFallback,
   getCopilotHistoryFromRequestBody,
+  normalizeCopilotAttachments,
   parseCopilotCommand,
   stripReasoningTags,
 } from "@/lib/hermes-copilot";
@@ -88,14 +89,16 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await requireAuth();
-    const body = (await request.json().catch(() => ({}))) as { message?: unknown; history?: unknown; copilotMessages?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { message?: unknown; history?: unknown; copilotMessages?: unknown; attachments?: unknown };
     const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
     if (!rawMessage) return NextResponse.json({ error: "message is required" }, { status: 400 });
 
     const parsed = parseCopilotCommand(rawMessage);
     const history = getCopilotHistoryFromRequestBody(body);
+    const attachments = normalizeCopilotAttachments(body.attachments);
     const userMessage = makeMessage("user", rawMessage, parsed.command, "sent");
-    const prompt = buildCopilotPrompt(parsed.command, parsed.args, history);
+    if (attachments.length) userMessage.attachments = attachments;
+    const prompt = buildCopilotPrompt(parsed.command, parsed.args, history, attachments);
     const [backend, action, openClaw] = await Promise.all([
       getOpenClawHealth(3000),
       runCopilotAction(parsed.command, parsed.args),

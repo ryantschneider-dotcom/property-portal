@@ -1,3 +1,13 @@
+export type CopilotAttachment = {
+  id: string;
+  name: string;
+  url: string;
+  contentType: string;
+  size: number;
+  width?: number;
+  height?: number;
+};
+
 export type CopilotMessage = {
   id: string;
   role: "user" | "assistant";
@@ -5,6 +15,7 @@ export type CopilotMessage = {
   createdAt: string;
   command?: string | null;
   status?: "sent" | "ok" | "error";
+  attachments?: CopilotAttachment[];
 };
 
 export type ParsedCopilotCommand =
@@ -48,6 +59,25 @@ export function parseCopilotCommand(input: string): ParsedCopilotCommand {
   return { type: "chat", command: null, args: trimmed };
 }
 
+export function normalizeCopilotAttachments(input: unknown): CopilotAttachment[] {
+  if (!Array.isArray(input)) return [];
+  const attachments: CopilotAttachment[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const candidate = item as Record<string, unknown>;
+    const id = typeof candidate.id === "string" && candidate.id.trim() ? candidate.id.trim() : null;
+    const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim().slice(0, 180) : null;
+    const url = typeof candidate.url === "string" && /^https?:\/\//i.test(candidate.url) ? candidate.url.trim() : null;
+    const contentType = typeof candidate.contentType === "string" && candidate.contentType.trim() ? candidate.contentType.trim().slice(0, 120) : "application/octet-stream";
+    const size = typeof candidate.size === "number" && Number.isFinite(candidate.size) && candidate.size >= 0 ? candidate.size : null;
+    if (!id || !name || !url || size === null) continue;
+    const width = typeof candidate.width === "number" && Number.isFinite(candidate.width) && candidate.width > 0 ? candidate.width : undefined;
+    const height = typeof candidate.height === "number" && Number.isFinite(candidate.height) && candidate.height > 0 ? candidate.height : undefined;
+    attachments.push({ id, name, url, contentType, size, width, height });
+  }
+  return attachments.slice(0, 8);
+}
+
 export function normalizeCopilotMessages(input: unknown): CopilotMessage[] {
   if (!Array.isArray(input)) return [];
   const messages: CopilotMessage[] = [];
@@ -61,7 +91,8 @@ export function normalizeCopilotMessages(input: unknown): CopilotMessage[] {
     if (!role || !id || !content || !createdAt) continue;
     const command = typeof candidate.command === "string" ? candidate.command : null;
     const status = candidate.status === "sent" || candidate.status === "ok" || candidate.status === "error" ? candidate.status : undefined;
-    messages.push({ id, role, content, createdAt, command, status });
+    const attachments = normalizeCopilotAttachments(candidate.attachments);
+    messages.push({ id, role, content, createdAt, command, status, ...(attachments.length ? { attachments } : {}) });
   }
   return messages.slice(-80);
 }
@@ -72,31 +103,42 @@ export function getCopilotHistoryFromRequestBody(body: unknown): CopilotMessage[
   return normalizeCopilotMessages(candidate.copilotMessages ?? candidate.history);
 }
 
-export function buildCopilotPrompt(command: CopilotCommandName | null, args: string, history: CopilotMessage[]) {
+function formatCopilotAttachmentContext(attachments: CopilotAttachment[]) {
+  if (!attachments.length) return "";
+  const lines = attachments.map((attachment, index) => {
+    const imageHint = attachment.contentType.startsWith("image/") ? " Image/screenshot attachment; inspect visual details from this URL when answering." : "";
+    return `${index + 1}. ${attachment.name} (${attachment.contentType}, ${attachment.size} bytes): ${attachment.url}.${imageHint}`;
+  });
+  return `\n\nAttached Mission Control files:\n${lines.join("\n")}\nUse these active URLs/data as first-class context. If an attachment is an image or screenshot, analyze the visual evidence before asking Ryan to describe it manually.`;
+}
+
+export function buildCopilotPrompt(command: CopilotCommandName | null, args: string, history: CopilotMessage[], attachments: CopilotAttachment[] = []) {
   const recentContext = history.slice(-12).map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n");
   const target = args.trim() || "the current context";
   const defaultMarketContext = "Default market context: Assume all properties are located in Savannah, Chatham County, GA unless explicitly stated otherwise.";
   const contextBlock = recentContext ? `\n\nActive Mission Control conversation context:\n${recentContext}` : "";
+  const attachmentContext = formatCopilotAttachmentContext(attachments);
+  const executionContext = `${contextBlock}${attachmentContext}`;
   const executorMandate =
     "You are the executor. Execute the required tools immediately to fulfill this slash command. Do not acknowledge a queue, do not say the task is processing, and do not wait for another system. Return only the execution results, source URLs, and any blockers after you have actually run the tools.";
 
   switch (command) {
     case "/intel":
-      return `${executorMandate}\n${defaultMarketContext}\n\nRun /intel for: ${target}. Use web/research tools now: scrape official reporting, agency documents, primary sources, and alternative viewpoints. Return two clearly separated sections: OFFICIAL REPORTING and ALTERNATIVE VIEWPOINTS, then a PIER broker bottom line.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nRun /intel for: ${target}. Use web/research tools now: scrape official reporting, agency documents, primary sources, and alternative viewpoints. Return two clearly separated sections: OFFICIAL REPORTING and ALTERNATIVE VIEWPOINTS, then a PIER broker bottom line.${executionContext}`;
     case "/spin":
-      return `${executorMandate}\n${defaultMarketContext}\n\nRun /spin with tone/angle: ${target}. Use the most recent /intel data in context when available; if source facts are missing, use tools to gather them before drafting. Draft a persuasive piece from that angle without fabricating facts. Include headline, thesis, argument, counterargument, and close.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nRun /spin with tone/angle: ${target}. Use the most recent /intel data in context when available; if source facts are missing, use tools to gather them before drafting. Draft a persuasive piece from that angle without fabricating facts. Include headline, thesis, argument, counterargument, and close.${executionContext}`;
     case "/ig_cre":
-      return `${executorMandate}\n${defaultMarketContext}\n\nDraft a PIER Commercial Instagram post about: ${target}. Use tools for any factual/current claims before writing. Tone: corporate, institutional, CCIM-level, understated, no hype. Include caption, visual direction, and hashtags.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nDraft a PIER Commercial Instagram post about: ${target}. Use tools for any factual/current claims before writing. Tone: corporate, institutional, CCIM-level, understated, no hype. Include caption, visual direction, and hashtags.${executionContext}`;
     case "/ig_life":
-      return `${executorMandate}\n${defaultMarketContext}\n\nDraft a lifestyle Instagram post about: ${target}. Use tools if factual/current verification is needed before writing. Tone: authentic, hands-on, grounded Ryan voice for woodworking, goat milk soap, beekeeping, family projects, or land stewardship. Include caption, visual direction, and hashtags.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nDraft a lifestyle Instagram post about: ${target}. Use tools if factual/current verification is needed before writing. Tone: authentic, hands-on, grounded Ryan voice for woodworking, goat milk soap, beekeeping, family projects, or land stewardship. Include caption, visual direction, and hashtags.${executionContext}`;
     case "/site":
-      return `${executorMandate}\n${defaultMarketContext}\n\nTrigger and supervise the Gate 1-5 Offering Site Generator for listing: ${target}. To execute this request, use your terminal tool to run the native TypeScript pipeline located in /Users/macclaw/listingstream-portal/src/lib/offering-site-generation.ts via npx tsx. You must invoke createOfferingSiteGenerationJob, runOfferingSiteGate2, and runOfferingSiteGate5. Do NOT run '/site' as a shell command. Report Gate 1 baseline, Gate 2 enrichment, Gate 5 deployment URL, and blockers. Use ListingStream/Mission Control safe public-only rules.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nTrigger and supervise the Gate 1-5 Offering Site Generator for listing: ${target}. To execute this request, use your terminal tool to run the native TypeScript pipeline located in /Users/macclaw/listingstream-portal/src/lib/offering-site-generation.ts via npx tsx. You must invoke createOfferingSiteGenerationJob, runOfferingSiteGate2, and runOfferingSiteGate5. Do NOT run '/site' as a shell command. Report Gate 1 baseline, Gate 2 enrichment, Gate 5 deployment URL, and blockers. Use ListingStream/Mission Control safe public-only rules.${executionContext}`;
     case "/scrape":
-      return `${executorMandate}\n${defaultMarketContext}\n\nRun the county GIS/qPublic playbook for address/listing: ${target}. Use tools now: address variants, qPublic/direct lookup, geocoding, county property-search endpoints, and ArcGIS REST spatial queries. Return the raw data, source URLs, PARID, acreage, zoning, assessed values, owner/public-record facts, and any missing fields.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nRun the county GIS/qPublic playbook for address/listing: ${target}. Use tools now: address variants, qPublic/direct lookup, geocoding, county property-search endpoints, and ArcGIS REST spatial queries. Return the raw data, source URLs, PARID, acreage, zoning, assessed values, owner/public-record facts, and any missing fields.${executionContext}`;
     case "/status":
-      return `${executorMandate}\n${defaultMarketContext}\n\nReport uptime and queue health for Vercel, Mission Control, ListingStream, and OpenClaw. Use available system/status tools immediately. Include gateway health, queue posture, recent errors, and whether the secure tunnel is configured.${contextBlock}`;
+      return `${executorMandate}\n${defaultMarketContext}\n\nReport uptime and queue health for Vercel, Mission Control, ListingStream, and OpenClaw. Use available system/status tools immediately. Include gateway health, queue posture, recent errors, and whether the secure tunnel is configured.${executionContext}`;
     default:
-      return `${defaultMarketContext}\n\n${args.trim()}${contextBlock}`;
+      return `${defaultMarketContext}\n\n${args.trim()}${executionContext}`;
   }
 }
 
