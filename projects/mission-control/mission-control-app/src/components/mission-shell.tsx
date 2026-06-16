@@ -1,8 +1,11 @@
+import { cookies } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
 import { ReactNode } from "react";
 import { ActivityStream } from "@/components/activity-stream";
 import { SignOutButton } from "@/components/sign-out-button";
+import { ViewAsBrokerControl } from "@/components/view-as-broker-control";
+import { AUTH_COOKIE, getAuthSession } from "@/lib/auth";
 
 type NavItem = {
   href: string;
@@ -25,6 +28,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: "/offering-summaries", label: "Offering Summaries", match: "prefix" },
       { href: "/listing-agreements", label: "Listing Agreements", match: "prefix" },
       { href: "/sales-contracts", label: "Sales Contracts", match: "prefix" },
+      { href: "/offering-websites", label: "Offering Websites", match: "prefix" },
       { href: "/daily-control", label: "Daily Task Control", match: "prefix" },
     ],
   },
@@ -34,7 +38,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: "/tools", label: "AI Tools", match: "prefix" },
       { href: "/workflows", label: "Workflows", match: "prefix" },
       { href: "/uploads", label: "Uploads", match: "prefix" },
-      { href: "/hermes-co-pilot", label: "Hermes Co-Pilot", match: "prefix" },
+      { href: "/chat", label: "Hermes Co-Pilot", match: "prefix" },
     ],
   },
   {
@@ -54,7 +58,19 @@ const postureItems = [
   "No client-facing access",
 ];
 
-export function MissionShell({
+
+function getBrokerDisplayName(brokerId?: string | null) {
+  if (brokerId === "joel") return "Joel Boblasky";
+  if (brokerId === "anthony") return "Anthony Wagner";
+  return "Ryan T. Schneider, CCIM";
+}
+
+async function getCurrentAuthSession() {
+  const cookieStore = await cookies();
+  return getAuthSession(cookieStore.get(AUTH_COOKIE)?.value);
+}
+
+export async function MissionShell({
   title,
   subtitle,
   currentPath,
@@ -67,6 +83,12 @@ export function MissionShell({
   actions?: PageAction[];
   children: ReactNode;
 }) {
+  const session = await getCurrentAuthSession();
+  const isBroker = session?.role === "broker";
+  const isMaster = session?.role === "master";
+  const activeBrokerId = session?.brokerId ?? "ryan";
+  const activeBrokerName = getBrokerDisplayName(activeBrokerId);
+  const visibleActions = isBroker ? [] : actions;
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -76,8 +98,10 @@ export function MissionShell({
 
   return (
     <div className="min-h-screen bg-[#f6f4f1] text-zinc-950">
-      <div className="grid min-h-screen lg:grid-cols-[258px_1fr] 2xl:grid-cols-[258px_minmax(0,1fr)_300px]">
-        <aside className="border-r border-white/10 bg-zinc-950 text-white lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
+      <div className={`grid min-h-screen ${isBroker ? "grid-cols-1" : "lg:grid-cols-[258px_1fr] 2xl:grid-cols-[258px_minmax(0,1fr)_300px]"}`}>
+        {!isBroker && (
+          <>
+          <aside className="border-r border-white/10 bg-zinc-950 text-white lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
           <div className="p-4">
             <Link href="/" className="block rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-sm backdrop-blur transition hover:bg-white/[0.06]">
               <div className="rounded-2xl bg-[#1a1a1a] p-3 ring-1 ring-white/10">
@@ -146,7 +170,9 @@ export function MissionShell({
               </ul>
             </div>
           </div>
-        </aside>
+          </aside>
+          </>
+        )}
 
         <main className="flex min-w-0 flex-col">
           <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/85 px-5 py-4 shadow-sm backdrop-blur-xl lg:px-7">
@@ -161,10 +187,12 @@ export function MissionShell({
 
               <div className="flex flex-col gap-3 xl:items-end">
                 <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                  <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 lg:block">
-                    Search listings, tasks, files…
-                  </div>
-                  {actions.map((action) => (
+                  {!isBroker && (
+                    <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 lg:block">
+                      Search listings, tasks, files…
+                    </div>
+                  )}
+                  {visibleActions.map((action) => (
                     <Link
                       key={`${action.href}-${action.label}`}
                       href={action.href}
@@ -173,6 +201,7 @@ export function MissionShell({
                       {action.label}
                     </Link>
                   ))}
+                  {isMaster ? <ViewAsBrokerControl activeBrokerId={activeBrokerId} /> : null}
                   <SignOutButton />
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
@@ -180,8 +209,13 @@ export function MissionShell({
                     {today}
                   </span>
                   <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-emerald-700">
-                    private system online
+                    {isBroker ? "Broker Listing Console" : "private system online"}
                   </span>
+                  {isMaster ? (
+                    <span className="rounded-full border border-[#CB521E]/30 bg-[#CB521E]/10 px-3 py-1 text-[#CB521E]">
+                      Impersonation Mode: Viewing as {activeBrokerName}
+                    </span>
+                  ) : null}
                   <span className="rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1">
                     local-first records
                   </span>
@@ -193,6 +227,7 @@ export function MissionShell({
           <div className="flex-1 overflow-auto p-5 lg:p-7 xl:p-8">{children}</div>
         </main>
 
+        {!isBroker && (
         <aside className="hidden border-l border-zinc-200/80 bg-white/80 p-4 backdrop-blur 2xl:block">
           <div className="sticky top-4 space-y-4">
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -228,6 +263,7 @@ export function MissionShell({
             </div>
           </div>
         </aside>
+        )}
       </div>
     </div>
   );

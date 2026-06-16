@@ -169,10 +169,12 @@ test("suite floor plan file-only instructions produce high-confidence structured
 
   const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
   const suiteP = suites.find((suite) => suite.suiteNumber === "P");
-  assert.equal(draft.review.interpreter.confidence, "high");
+  const interpreter = draft.review.interpreter;
+  assert.ok(interpreter);
+  assert.equal(interpreter.confidence, "high");
   assert.deepEqual(suiteP?.suiteFloorPlans, []);
-  assert.match(draft.review.interpreter.summary.join(" "), /Suite P floor plan upload/i);
-  assert.equal(draft.review.interpreter.flags.length, 0);
+  assert.match(interpreter.summary.join(" "), /Suite P floor plan upload/i);
+  assert.equal(interpreter.flags.length, 0);
 });
 
 test("suite PDF uploads are converted to image URLs but still routed to suiteFloorPlans", () => {

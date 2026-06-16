@@ -1,11 +1,38 @@
 export const AUTH_COOKIE = "mission_control_auth";
 
 export type AuthRole = "master" | "broker";
-export type AuthSession = { role: AuthRole; brokerId?: string };
+export type BrokerId = "ryan" | "anthony" | "joel";
+export type AuthSession = { role: AuthRole; brokerId?: BrokerId };
 
 const AUTH_TOKEN_VERSION = "v2";
 const AUTH_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const encoder = new TextEncoder();
+
+const BROKER_ID_ALIASES: Record<string, BrokerId> = {
+  ryan: "ryan",
+  "ryan schneider": "ryan",
+  "ryan t schneider": "ryan",
+  "ryan t schneider ccim": "ryan",
+  "ryan@piercommercial.com": "ryan",
+  anthony: "anthony",
+  "anthony wagner": "anthony",
+  "anthony@piercommercial.com": "anthony",
+  joel: "joel",
+  "joel boblasky": "joel",
+  "joel@piercommercial.com": "joel",
+};
+
+function brokerKey(value: unknown) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").trim().replace(/\s+/g, " ");
+}
+
+export function normalizeBrokerId(value: unknown): BrokerId {
+  return BROKER_ID_ALIASES[brokerKey(value)] ?? "ryan";
+}
+
+export function canImpersonateBroker(session: AuthSession | null | undefined) {
+  return session?.role === "master";
+}
 
 export function getMissionControlPassword() {
   const configured = process.env.MISSION_CONTROL_PASSWORD?.trim();
@@ -25,7 +52,7 @@ export function getBrokerPassword() {
   const configured = process.env.BROKER_PASSWORD?.trim();
 
   if (!configured) {
-    throw new Error("BROKER_PASSWORD is not configured.");
+    return "";
   }
 
   if (process.env.NODE_ENV === "production" && configured === "change-me") {
@@ -47,7 +74,7 @@ export function getLoginRole(password: string): AuthRole | null {
   const { masterPassword, brokerPassword } = getAuthConfig();
 
   if (candidate === masterPassword) return "master";
-  if (candidate === brokerPassword && brokerPassword !== masterPassword) return "broker";
+  if (brokerPassword && candidate === brokerPassword && brokerPassword !== masterPassword) return "broker";
   return null;
 }
 
@@ -92,7 +119,7 @@ export async function createAuthToken(role?: AuthRole, now = Date.now(), brokerI
   const sessionRole = arguments.length === 0 ? "master" : role;
   const expiresAt = now + AUTH_TOKEN_MAX_AGE_SECONDS * 1000;
   const nonce = crypto.randomUUID();
-  const safeBrokerId = brokerId.toLowerCase().replace(/[^a-z0-9_-]+/g, "");
+  const safeBrokerId = brokerId ? normalizeBrokerId(brokerId) : "";
   const payload = `${AUTH_TOKEN_VERSION}.${expiresAt}.${sessionRole ?? ""}.${safeBrokerId}.${nonce}`;
   const key = await getSigningKey();
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
@@ -121,7 +148,7 @@ export async function getAuthSession(token?: string | null, now = Date.now()): P
 
   try {
     const verified = await crypto.subtle.verify("HMAC", key, fromBase64Url(signatureValue), encoder.encode(payload));
-    return verified ? { role, ...(brokerId ? { brokerId } : {}) } : null;
+    return verified ? { role, ...(brokerId ? { brokerId: normalizeBrokerId(brokerId) } : {}) } : null;
   } catch {
     return null;
   }

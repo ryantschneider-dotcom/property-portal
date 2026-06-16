@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
+import { AUTH_COOKIE, getAuthSession, isValidAuthToken, normalizeBrokerId } from "@/lib/auth";
 import { buildPropertyPortalUrl, createPropertyPortalProxyError, getPropertyPortalInternalHeaders, normalizePropertyPortalDraftPreviewUrl, safePropertyPortalFetch } from "@/lib/property-portal-client";
 
 export const runtime = "nodejs";
@@ -9,14 +9,19 @@ export const dynamic = "force-dynamic";
 
 async function requirePierManagerAuth() {
   const cookieStore = await cookies();
-  const ok = await isValidAuthToken(cookieStore.get(AUTH_COOKIE)?.value);
+  const token = cookieStore.get(AUTH_COOKIE)?.value;
+  const ok = await isValidAuthToken(token);
   if (!ok) throw new Error("Unauthorized");
+  return getAuthSession(token);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    await requirePierManagerAuth();
-    const response = await safePropertyPortalFetch(fetch, buildPropertyPortalUrl("/api/broker/active-listings"), {
+    const session = await requirePierManagerAuth();
+    const requestedBrokerId = new URL(request.url).searchParams.get("brokerId");
+    const brokerId = normalizeBrokerId(requestedBrokerId || session?.brokerId || "ryan");
+    const params = new URLSearchParams({ brokerId });
+    const response = await safePropertyPortalFetch(fetch, buildPropertyPortalUrl(`/api/broker/active-listings?${params.toString()}`), {
       cache: "no-store",
       headers: {
         accept: "application/json",

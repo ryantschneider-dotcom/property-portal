@@ -18,6 +18,23 @@ const counties = ["Chatham", "Bryan", "Effingham", "Liberty", "Jasper", "Beaufor
 const propertyTypes = ["Retail", "Industrial", "Office", "Flex", "Land", "Multifamily", "Mixed-Use", "Hospitality", "Special Purpose"];
 const brokers = ["Ryan T. Schneider", "Anthony", "Joel", "Other PIER Broker"];
 const rentTypes = ["NNN", "Modified Gross", "Full Service", "Gross", "Monthly", "Call for details"];
+type MailchimpBrokerContext = { name: string; email: string; source?: string };
+
+const brokerSenderProfiles: Record<string, { name: string; email: string }> = {
+  ryan: { name: "Ryan T. Schneider, CCIM", email: "ryan@piercommercial.com" },
+  joel: { name: "Joel Boblasky", email: "joel@piercommercial.com" },
+  anthony: { name: "Anthony Wagner", email: "anthony@piercommercial.com" },
+};
+
+function getBrokerSenderProfile(brokerId: string) {
+  return brokerSenderProfiles[brokerId] ?? brokerSenderProfiles.ryan;
+}
+
+function getMailchimpFallbackBrokerContext(activeBrokerId: string): MailchimpBrokerContext {
+  const sender = getBrokerSenderProfile(activeBrokerId);
+  return { ...sender, source: `impersonation-fallback:${activeBrokerId}` };
+}
+
 const MAX_DRAFT_PREVIEW_UPLOAD_BYTES = 850_000;
 const PDFJS_WORKER_VERSION = "6.0.227";
 
@@ -208,9 +225,6 @@ function createSuite(): BrokerHubSuiteInput {
 function formatAudienceCount(value: number | null | undefined) {
   return typeof value === "number" ? `${value.toLocaleString()} contacts` : "contact count unavailable";
 }
-
-const defaultMailchimpBrokerContext = { name: "Ryan T. Schneider", email: "ryan@piercommercial.com", source: "fallback" };
-type MailchimpBrokerContext = typeof defaultMailchimpBrokerContext;
 
 function getMailchimpCampaignTitle(listing: PropertyPortalActiveListing, subjectLine: string) {
   return `${listing.title || listing.address || listing.slug || "PIER Listing"} — ${subjectLine || "Email Blast Draft"}`;
@@ -459,7 +473,7 @@ type OfferingSiteCommandPayload = {
 };
 
 
-export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) {
+export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }: { userRole: AuthRole; activeBrokerId?: string }) {
   const [intakeForm, setIntakeForm] = useState<IntakeFormState>(initialIntakeState);
   const [suites, setSuites] = useState<BrokerHubSuiteInput[]>([createSuite()]);
   const [heroPhoto, setHeroPhoto] = useState<File | null>(null);
@@ -482,9 +496,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const [mailchimpAudiences, setMailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([]);
   const [mailchimpAudienceId, setMailchimpAudienceId] = useState("");
   const [mailchimpSubjectLine, setMailchimpSubjectLine] = useState("");
-  const [mailchimpFromName, setMailchimpFromName] = useState(defaultMailchimpBrokerContext.name);
-  const [mailchimpFromEmail, setMailchimpFromEmail] = useState(defaultMailchimpBrokerContext.email);
-  const [mailchimpBrokerContext, setMailchimpBrokerContext] = useState<MailchimpBrokerContext>(defaultMailchimpBrokerContext);
+  const mailchimpFallbackBrokerContext = useMemo(() => getMailchimpFallbackBrokerContext(activeBrokerId), [activeBrokerId]);
+  const [mailchimpFromName, setMailchimpFromName] = useState(mailchimpFallbackBrokerContext.name);
+  const [mailchimpFromEmail, setMailchimpFromEmail] = useState(mailchimpFallbackBrokerContext.email);
+  const [mailchimpBrokerContext, setMailchimpBrokerContext] = useState<MailchimpBrokerContext>(mailchimpFallbackBrokerContext);
   const [includeFinancials, setIncludeFinancials] = useState(false);
   const [mailchimpLoading, setMailchimpLoading] = useState(false);
   const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
@@ -526,7 +541,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/listingstream/active-listings", { cache: "no-store" })
+    fetch(`/api/listingstream/active-listings?brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" })
       .then(parseJsonResponse)
       .then((data) => {
         if (cancelled) return;
@@ -540,7 +555,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeBrokerId]);
 
   async function loadMailchimpAudiences(options: { silent?: boolean } = {}) {
     setMailchimpLoading(true);
@@ -696,9 +711,10 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
     setIncludeProforma(false);
     setMailchimpAudienceId("");
     setMailchimpSubjectLine("");
-    setMailchimpFromName(defaultMailchimpBrokerContext.name);
-    setMailchimpFromEmail(defaultMailchimpBrokerContext.email);
-    setMailchimpBrokerContext(defaultMailchimpBrokerContext);
+    const fallbackBrokerContext = getMailchimpFallbackBrokerContext(activeBrokerId);
+    setMailchimpFromName(fallbackBrokerContext.name);
+    setMailchimpFromEmail(fallbackBrokerContext.email);
+    setMailchimpBrokerContext(fallbackBrokerContext);
     setIncludeFinancials(false);
     setMailchimpStatus("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
     setMailchimpLoading(false);
@@ -729,6 +745,14 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
   const hasActivePropertyContext = Boolean(selectedListing && !listingPickerOpen) && pierManagerMode === "existing";
+
+  useEffect(() => {
+    if (hasActivePropertyContext) return;
+    setMailchimpBrokerContext(mailchimpFallbackBrokerContext);
+    setMailchimpFromName(mailchimpFallbackBrokerContext.name);
+    setMailchimpFromEmail(mailchimpFallbackBrokerContext.email);
+  }, [hasActivePropertyContext, mailchimpFallbackBrokerContext]);
+
   const showFinancialToggles = Boolean(selectedListing && isForSaleListing(selectedListing) && !isLandListing(selectedListing));
   const filteredAddressListings = useMemo(() => {
     const query = listingSearchText.trim().toLowerCase();
@@ -747,30 +771,39 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
   useEffect(() => {
     if (!hasActivePropertyContext || !selectedListing) return;
     const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
+    setMailchimpBrokerContext(mailchimpFallbackBrokerContext);
+    setMailchimpFromName(mailchimpFallbackBrokerContext.name);
+    setMailchimpFromEmail(mailchimpFallbackBrokerContext.email);
     let cancelled = false;
     async function loadBrokerContext() {
       try {
         const data = await parseJsonResponse(await fetch(`/api/listingstream/broker-context/${slug}`, { cache: "no-store" })) as { broker?: MailchimpBrokerContext };
-        if (cancelled || !data.broker) return;
+        if (cancelled) return;
+        if (!data.broker) {
+          setMailchimpBrokerContext(mailchimpFallbackBrokerContext);
+          setMailchimpFromName(mailchimpFallbackBrokerContext.name);
+          setMailchimpFromEmail(mailchimpFallbackBrokerContext.email);
+          return;
+        }
         setMailchimpBrokerContext(data.broker);
         setMailchimpFromName(data.broker.name);
         setMailchimpFromEmail(data.broker.email);
       } catch (error) {
         if (cancelled) return;
-        setMailchimpBrokerContext(defaultMailchimpBrokerContext);
-        setMailchimpFromName(defaultMailchimpBrokerContext.name);
-        setMailchimpFromEmail(defaultMailchimpBrokerContext.email);
-        setMailchimpStatus(error instanceof Error ? `Broker sender lookup fell back to Ryan: ${error.message}` : "Broker sender lookup fell back to Ryan.");
+        setMailchimpBrokerContext(mailchimpFallbackBrokerContext);
+        setMailchimpFromName(mailchimpFallbackBrokerContext.name);
+        setMailchimpFromEmail(mailchimpFallbackBrokerContext.email);
+        setMailchimpStatus(error instanceof Error ? `Broker sender lookup fell back to active View As broker: ${error.message}` : "Broker sender lookup fell back to active View As broker.");
       }
     }
     void loadBrokerContext();
     return () => { cancelled = true; };
-  }, [hasActivePropertyContext, selectedListing]);
+  }, [hasActivePropertyContext, selectedListing, mailchimpFallbackBrokerContext]);
 
 
   async function refreshActiveListingsAfterPublish(preferredPropertyId: string) {
     const cacheBust = Date.now();
-    const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?fresh=${cacheBust}`, {
+    const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?fresh=${cacheBust}&brokerId=${encodeURIComponent(activeBrokerId)}`, {
       cache: "no-store",
       headers: {
         "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
@@ -1171,7 +1204,7 @@ export function PierManagerListingConsole({ userRole }: { userRole: AuthRole }) 
         body: JSON.stringify({ action, propertyIdOrSlug: selectedPropertyId }),
       });
       await parseJsonResponse(response);
-      const data = await parseJsonResponse(await fetch("/api/listingstream/active-listings", { cache: "no-store" }));
+      const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" }));
       const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
       setActiveListings(items);
       setSelectedPropertyId(items[0]?.slug || items[0]?.id || "");

@@ -501,7 +501,7 @@ test("modification prompt prohibits Call fallback and requires suite preservatio
       confidence: "high",
       updatePayload: { admin: { suites: [{ suiteNumber: "M", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly" }] } },
     },
-  });
+  } as Parameters<typeof buildModificationDeltaPrompt>[0] & { deterministicResult: unknown });
 
   assert.match(prompt, /Call\" fallback is strictly prohibited/i);
   assert.match(prompt, /preserve every existing suite not explicitly mentioned/i);
@@ -911,7 +911,7 @@ test("all roles hide raw JSON payload preview and see clean delta summaries", as
   const source = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   assert.match(pageSource, /getAuthSession/);
   assert.match(pageSource, /userRole=\{session\?\.role \?\? "broker"\}/);
-  assert.match(source, /export function PierManagerListingConsole\(\{ userRole \}: \{ userRole: AuthRole \}\)/);
+  assert.match(source, /export function PierManagerListingConsole\(\{ userRole, activeBrokerId = "ryan" \}: \{ userRole: AuthRole; activeBrokerId\?: string \}\)/);
   assert.match(source, /data-testid="delta-summary-list"/);
   assert.doesNotMatch(source, /data-testid="delta-raw-json"/);
   assert.doesNotMatch(source, /data-testid="payload-preview"/);
