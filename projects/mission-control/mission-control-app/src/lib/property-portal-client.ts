@@ -36,6 +36,7 @@ export type PropertyPortalActiveListing = {
   workflowStatus?: string;
   publishStatus?: string;
   previewUrl?: string;
+  publicUrl?: string;
 };
 
 export type PropertyPortalRequestOptions = {

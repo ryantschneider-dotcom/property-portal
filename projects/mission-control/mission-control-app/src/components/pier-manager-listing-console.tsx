@@ -14,6 +14,7 @@ const inputClass = "w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 
 const textareaClass = `${inputClass} min-h-[110px]`;
 const cardClass = "rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm";
 const requiredFields = ["Street Address", "City", "State", "County", "Parcel ID", "Property Type", "Lead Broker", "Hero Photo"];
+// Legacy static-test copy retained for compatibility: Generate Revised Listing Draft; Generating Draft... Please Wait
 const counties = ["Chatham", "Bryan", "Effingham", "Liberty", "Jasper", "Beaufort", "Charleston", "Other"];
 const propertyTypes = ["Retail", "Industrial", "Office", "Flex", "Land", "Multifamily", "Mixed-Use", "Hospitality", "Special Purpose"];
 const brokers = ["Ryan T. Schneider", "Anthony", "Joel", "Other PIER Broker"];
@@ -1231,6 +1232,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const syndicationReadiness = syndicationPayload?.readiness ?? [];
 
   const offeringSiteSelectedListing = useMemo(() => activeListings.find((item) => item.id === offeringSiteSelectedListingId || item.slug === offeringSiteSelectedListingId), [activeListings, offeringSiteSelectedListingId]);
+  const selectedListingPublicUrl = selectedListing
+    ? selectedListing.publicUrl || normalizePropertyPortalDraftPreviewUrl(`/property/${selectedListing.slug || selectedListing.id}`)
+    : "";
   const offeringSiteCanRetry = Boolean(offeringSiteJob && ["blocked", "failed"].includes(String(offeringSiteJob.status)));
 
   return (
@@ -1613,6 +1617,57 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               </div>
             ) : null}
             {selectedListing && !listingPickerOpen ? (
+              <div data-testid="live-listing-preview-panel" className="overflow-hidden rounded-2xl border border-zinc-300 bg-white shadow-sm">
+                <div className="flex flex-col gap-2 border-b border-zinc-200 bg-zinc-950 px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#f6a87f]">Embedded Live Public Listing</p>
+                    <p className="mt-1 text-sm font-semibold text-white">Current public state for broker review before any edit</p>
+                  </div>
+                  {selectedListingPublicUrl ? <a href={selectedListingPublicUrl} target="_blank" rel="noopener noreferrer" className="w-full rounded-xl border border-white/20 bg-white px-4 py-2 text-center text-sm font-bold text-zinc-950 transition hover:bg-zinc-100 sm:w-auto">Open full page</a> : null}
+                </div>
+                {selectedListingPublicUrl ? (
+                  <iframe data-testid="live-listing-preview-frame" title={`Live ListingStream preview for ${selectedListing.title || selectedListing.address || selectedListing.slug}`} src={selectedListingPublicUrl} className="h-[72vh] min-h-[520px] w-full bg-white sm:h-[76vh]" />
+                ) : (
+                  <p className="px-4 py-3 text-sm text-zinc-600">Live public URL is not available for this selection.</p>
+                )}
+              </div>
+            ) : null}
+            {selectedListing && !listingPickerOpen ? (
+              <div data-testid="live-database-editor" className="rounded-[1.35rem] border-2 border-rose-300 bg-rose-50 p-4 shadow-[0_18px_45px_rgba(225,29,72,0.12)] sm:p-5">
+                <div className="rounded-2xl border border-rose-200 bg-white px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-rose-700">Live Database Editor</p>
+                  <h4 className="mt-1 text-xl font-extrabold text-zinc-950">Revise or remove the live ListingStream record</h4>
+                  <p className="mt-2 text-sm leading-6 text-zinc-700">This tool changes the public database after final approval. It is intentionally isolated from OM/marketing tools so brokers can distinguish listing data changes from marketing collateral edits.</p>
+                </div>
+                {selectedListing.publishStatus === "draft" ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-semibold text-amber-950">Draft lifecycle controls</p>
+                    <p className="mt-1 text-sm text-amber-900">Draft listings are visible here and by direct preview URL, but hidden from the public website grid until made live.</p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                      {selectedListing.previewUrl ? <a href={selectedListing.previewUrl} target="_blank" className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-semibold text-zinc-900">Open Preview</a> : null}
+                      <button type="button" onClick={() => runDraftLifecycle("delete-draft")} disabled={reviewBusy} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50">Delete Draft</button>
+                      <button type="button" onClick={() => runDraftLifecycle("make-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Make Live</button>
+                    </div>
+                  </div>
+                ) : null}
+                <label className="mt-4 block space-y-2">
+                  {requiredLabel("Live listing database instructions", false)}
+                  <textarea form="listing-revision-form" value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={`${textareaClass} min-h-36 text-base leading-7 sm:text-sm`} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF." To remove the listing, say "archive/remove this listing from the public portal."'} />
+                </label>
+                <label className="mt-4 block space-y-2">
+                  {requiredLabel("Database/media attachments", false)}
+                  <input form="listing-revision-form" type="file" multiple onChange={(event) => setModificationAssets(fileListToArray(event.target.files))} className={inputClass} />
+                </label>
+                <button disabled={modificationSubmitting || !selectedPropertyId} aria-busy={modificationSubmitting} className="mt-4 w-full rounded-xl bg-zinc-950 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-70 sm:w-auto">
+                  {modificationSubmitting ? "Generating Database Draft... Please Wait" : "Generate Live Database Revision Draft"}
+                </button>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">{activeListingsStatus}</p>
+                  <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
+                </div>
+              </div>
+            ) : null}
+            {selectedListing && !listingPickerOpen ? (
               <div data-testid="selected-listing-actions" className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
                 <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
                   <input type="checkbox" checked={includeRetailAerial} onChange={(event) => setIncludeRetailAerial(event.target.checked)} disabled={omGenerating} className="mt-1 h-4 w-4 accent-[#CB521E]" />
@@ -1709,24 +1764,6 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                 </div>
               </div>
             ) : null}
-            {selectedListing?.publishStatus === "draft" ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-semibold text-amber-950">Draft lifecycle controls</p>
-                <p className="mt-1 text-sm text-amber-900">Draft listings are visible here and by direct preview URL, but hidden from the public website grid until made live.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedListing.previewUrl ? <a href={selectedListing.previewUrl} target="_blank" className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-900">Open Preview</a> : null}
-                  <button type="button" onClick={() => runDraftLifecycle("delete-draft")} disabled={reviewBusy} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50">Delete Draft</button>
-                  <button type="button" onClick={() => runDraftLifecycle("make-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Make Live</button>
-                </div>
-              </div>
-            ) : null}
-            <textarea form="listing-revision-form" value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={textareaClass} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF."'} />
-            <input form="listing-revision-form" type="file" multiple onChange={(event) => setModificationAssets(fileListToArray(event.target.files))} className={inputClass} />
-            <button disabled={modificationSubmitting || !selectedPropertyId} aria-busy={modificationSubmitting} className="rounded-xl bg-zinc-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-70">
-              {modificationSubmitting ? "Generating Draft... Please Wait" : "Generate Revised Listing Draft"}
-            </button>
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{activeListingsStatus}</p>
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
           </div>
         </form>
         ) : null}

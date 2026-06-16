@@ -32,9 +32,12 @@ export async function GET(request: Request) {
     if (data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)) {
       const items = ((data as { items: Array<Record<string, unknown>> }).items).map((item) => {
         const previewUrl = typeof item.previewUrl === "string" ? normalizePropertyPortalDraftPreviewUrl(item.previewUrl) : null;
+        const rawPublicUrl = typeof item.publicUrl === "string" ? item.publicUrl : (typeof item.slug === "string" ? `/property/${encodeURIComponent(item.slug)}` : "");
+        const publicUrl = rawPublicUrl ? buildPropertyPortalUrl(rawPublicUrl) : null;
         return {
           ...item,
           previewUrl: previewUrl ?? undefined,
+          publicUrl: publicUrl ?? undefined,
         };
       });
       return NextResponse.json({ ...data, items }, { status: response.status });
