@@ -1,0 +1,100 @@
+{
+  "generatedAt": "2026-06-01T23:56:22.157Z",
+  "sourcePack": {
+    "id": "pier-pulse-brunswick-st-simons-camden-glynn-mcintosh-2026-06-01",
+    "generatedAt": "2026-06-01T23:56:22.157Z",
+    "corridor": {
+      "id": "brunswick-st-simons-camden-glynn-mcintosh",
+      "name": "Brunswick / St. Simons / Camden / Glynn / McIntosh",
+      "keywords": [
+        "brunswick",
+        "st. simons",
+        "saint simons",
+        "camden",
+        "glynn",
+        "mcintosh",
+        "golden isles"
+      ]
+    },
+    "sources": [
+      {
+        "title": "Pooler infrastructure funding targets commercial access corridor",
+        "url": "https://example.com/pooler-infrastructure-access",
+        "sourceName": "Sample County Notice",
+        "publishedAt": "2026-06-01T13:00:00.000Z",
+        "summary": "Infrastructure funding is expected to improve access for commercial and industrial sites along a Pooler-area corridor.",
+        "topics": [
+          "infrastructure",
+          "industrial",
+          "development"
+        ],
+        "facts": [
+          "Infrastructure funding targets a commercial access corridor",
+          "Access improvements may support industrial and logistics sites"
+        ],
+        "corridorHint": "Pooler / Bloomingdale / Port Wentworth / Garden City",
+        "relevanceScore": 10
+      },
+      {
+        "title": "Savannah port-adjacent industrial project advances through local review",
+        "url": "https://example.com/savannah-industrial-review",
+        "sourceName": "Sample Development Feed",
+        "publishedAt": "2026-06-01T14:00:00.000Z",
+        "summary": "A port-adjacent industrial project moved through local review, highlighting continued logistics demand and site-access considerations around Savannah.",
+        "topics": [
+          "industrial",
+          "development",
+          "port",
+          "logistics"
+        ],
+        "facts": [
+          "Industrial project advanced through local review",
+          "Project is tied to port-adjacent logistics demand"
+        ],
+        "corridorHint": "Savannah / Chatham",
+        "relevanceScore": 10
+      }
+    ],
+    "sourceCountReviewed": 2,
+    "editorialAngle": "Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "writerOutput": {
+    "title": "Brunswick / St. Simons / Camden / Glynn / McIntosh Market Intel: 2 Signals to Watch",
+    "html": "<p>Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>The Signal</h2><blockquote><p>Infrastructure funding targets a commercial access corridor</p><cite>PIER Staff</cite></blockquote><h2>What's Happening</h2><p>Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>Why It Matters</h2><p>This signal is worth watching for owners, tenants, investors, and operators across Coastal Georgia commercial real estate.</p><h2>How To Play It</h2><p>Use the signal to pressure-test leasing, acquisition, disposition, and property strategy before the broader market catches up.</p><h2>What To Watch</h2><p>Watch adjacent activity, public approvals, tenant movement, capital selectivity, and pricing pressure.</p><h2>THAT'S THE BOTTOM LINE</h2><p>PIER is tracking the shift so clients can act before the market narrative becomes obvious.</p><p>That’s the signal.</p><p>— Ryan</p>",
+    "excerpt": "Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.",
+    "heroImagePrompt": "Clean high-quality infographic-style hero image for Brunswick / St. Simons / Camden / Glynn / McIntosh commercial real estate market intelligence, showing Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators, premium PIER brand feel with subtle orange #CB521E accents, realistic data-forward market visual, not cheap stock art or cartoon imagery.",
+    "middleImagePrompts": [
+      "Clean realistic supporting visual for Brunswick / St. Simons / Camden / Glynn / McIntosh showing the primary market signal in context, premium editorial style.",
+      "High-quality infographic-style in-body image showing commercial real estate drivers behind Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators, PIER orange accent palette.",
+      "Clean market-visual image showing owner, tenant, investor, and operator implications for Brunswick / St. Simons / Camden / Glynn / McIntosh, polished and not canned."
+    ]
+  },
+  "wordpressPayload": {
+    "title": "Brunswick / St. Simons / Camden / Glynn / McIntosh Market Intel: 2 Signals to Watch",
+    "content": "<p>Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>The Signal</h2><blockquote><p>Infrastructure funding targets a commercial access corridor</p><cite>PIER Staff</cite></blockquote><h2>What's Happening</h2><p>Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>Why It Matters</h2><p>This signal is worth watching for owners, tenants, investors, and operators across Coastal Georgia commercial real estate.</p><h2>How To Play It</h2><p>Use the signal to pressure-test leasing, acquisition, disposition, and property strategy before the broader market catches up.</p><h2>What To Watch</h2><p>Watch adjacent activity, public approvals, tenant movement, capital selectivity, and pricing pressure.</p><h2>THAT'S THE BOTTOM LINE</h2><p>PIER is tracking the shift so clients can act before the market narrative becomes obvious.</p><p>That’s the signal.</p><p>— Ryan</p>\n<!-- PIER Pulse Image Prompts\nHero: Clean high-quality infographic-style hero image for Brunswick / St. Simons / Camden / Glynn / McIntosh commercial real estate market intelligence, showing Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators, premium PIER brand feel with subtle orange #CB521E accents, realistic data-forward market visual, not cheap stock art or cartoon imagery.\nMiddle 1: Clean realistic supporting visual for Brunswick / St. Simons / Camden / Glynn / McIntosh showing the primary market signal in context, premium editorial style.\nMiddle 2: High-quality infographic-style in-body image showing commercial real estate drivers behind Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators, PIER orange accent palette.\nMiddle 3: Clean market-visual image showing owner, tenant, investor, and operator implications for Brunswick / St. Simons / Camden / Glynn / McIntosh, polished and not canned.\n-->\n<hr><h2>Source Pack</h2><ul>\n<li><a href=\"https://example.com/pooler-infrastructure-access\">Pooler infrastructure funding targets commercial access corridor</a> — Sample County Notice</li>\n<li><a href=\"https://example.com/savannah-industrial-review\">Savannah port-adjacent industrial project advances through local review</a> — Sample Development Feed</li>\n</ul>",
+    "excerpt": "Current industrial signals in Brunswick / St. Simons / Camden / Glynn / McIntosh, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.",
+    "status": "draft",
+    "categories": [
+      99
+    ],
+    "tags": [
+      126,
+      127,
+      128,
+      129,
+      130
+    ],
+    "featured_media": 20240,
+    "meta": {
+      "pier_pulse_corridor": "Brunswick / St. Simons / Camden / Glynn / McIntosh",
+      "pier_pulse_source_count": 2,
+      "pier_pulse_generated_at": "2026-06-01T23:56:22.157Z"
+    }
+  },
+  "providerModes": {
+    "extractor": "fallback",
+    "writer": "fallback"
+  },
+  "published": false,
+  "wordpressDraftUrl": null
+}

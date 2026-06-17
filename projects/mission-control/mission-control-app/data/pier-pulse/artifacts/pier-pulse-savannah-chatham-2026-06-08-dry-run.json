@@ -1,0 +1,185 @@
+{
+  "generatedAt": "2026-06-08T12:01:09.650Z",
+  "sourcePack": {
+    "id": "pier-pulse-savannah-chatham-2026-06-08",
+    "generatedAt": "2026-06-08T12:01:09.650Z",
+    "corridor": {
+      "id": "savannah-chatham",
+      "name": "Savannah / Chatham",
+      "keywords": [
+        "savannah",
+        "chatham",
+        "downtown",
+        "garden city",
+        "port",
+        "pooler parkway"
+      ]
+    },
+    "sources": [
+      {
+        "title": "Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 East Bay St. in Council Chambers.",
+        "url": "https://www.savannahga.gov/AgendaCenter/PreviousVersions/696",
+        "sourceName": "City of Savannah Agenda Center",
+        "publishedAt": "2026-05-26T14:51:25Z",
+        "summary": "Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 East Bay St. in Council Chambers.",
+        "topics": [
+          "agenda"
+        ],
+        "facts": [
+          "Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E"
+        ],
+        "corridorHint": "Savannah / Chatham",
+        "relevanceScore": 6
+      }
+    ],
+    "sourceCountReviewed": 3,
+    "editorialAngle": "Current agenda signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "writerOutput": {
+    "title": "Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+    "html": "<p>The City of Savannah’s recent council workshop on May 28, 2026, offers a window into emerging commercial real estate dynamics in the Savannah / Chatham corridor. While no headline projects were announced, the agenda items suggest foundational steps toward future development activity.</p>\n\n<h2>The Signal</h2>\n<blockquote>\"Early-stage municipal discussions often presage shifts in entitlement risk and infrastructure prioritization that savvy CRE stakeholders can leverage.\" – PIER Staff</blockquote>\n\n<h3>What’s Happening</h3>\n<ul>\n<li><strong>Council Workshop Focus:</strong> The May 28 workshop covered various planning and zoning topics, setting the stage for upcoming decisions impacting land use and development approvals.</li>\n<li><strong>Permitting & Infrastructure:</strong> Preliminary conversations around utility capacity and road access improvements surfaced, particularly relevant for industrial and logistics properties near Pooler Parkway and port-adjacent areas.</li>\n<li><strong>Site Plan Reviews:</strong> Early reviews hint at new commercial projects entering the pipeline, though details remain under wraps.</li>\n</ul>\n\n<h3>Why It Matters</h3>\n<p>These agenda signals reflect the city’s methodical approach to managing growth amid ongoing port expansion and regional logistics demand. For owners and investors, understanding the timing and nature of these municipal discussions can clarify entitlement risk and infrastructure readiness, critical factors in site selection and acquisition strategy.</p>\n\n<h3>How To Play It</h3>\n<ul>\n<li>Monitor upcoming council meetings for zoning changes or special-use permits that could unlock off-market opportunities.</li>\n<li>Engage early with local authorities or PIER’s site selection consultants to gauge infrastructure capacity and development timelines.</li>\n<li>Consider submarket spillover effects from port-driven industrial growth when evaluating lease rates and tenant demand.</li>\n</ul>\n\n<h3>What To Watch</h3>\n<ul>\n<li>Follow announcements related to utility upgrades and road access improvements near Garden City and Pooler Parkway corridors.</li>\n<li>Track site plan approvals for new commercial and industrial developments that may impact local market supply.</li>\n<li>Watch for rezoning requests or development agreements that signal shifts in land use policy.</li>\n</ul>\n\n<h2>THE BOTTOM LINE</h2>\n<div class=\"pier-pulse-bottom-line\" style=\"background:#f9f9f9; border:1px solid #e5e5e5; padding:25px; margin-top:30px; border-radius:6px;\">\n<p>Early municipal agenda signals in Savannah highlight foundational steps toward new commercial development and infrastructure upgrades.</p>\n<p>Understanding these signals can help owners and investors anticipate entitlement risk and timing in key submarkets like Pooler Parkway and Garden City.</p>\n<p>PIER’s market analytics and site selection expertise provide a strategic edge for uncovering off-market opportunities tied to these emerging trends.</p>\n<p>Contact PIER Commercial Real Estate today.</p>\n<p>Phone: <strong>912.353.7707</strong> | Website: <strong>piercommercial.com</strong> | Instagram: <strong>@piercommercial</strong></p>\n<p><a href=\"https://www.piercommercial.com/contact-us/\">Click here to contact us</a></p>\n</div>",
+    "excerpt": "Recent City of Savannah council workshop agendas reveal subtle yet important signals for commercial real estate stakeholders. Early-stage discussions around zoning, infrastructure, and permitting point to potential shifts in development momentum across key submarkets.",
+    "heroImagePrompt": "A high-end, cinematic aerial view of Savannah's port area at dusk, showcasing active container terminals, gantry cranes, and adjacent industrial warehouses with the Savannah River and Coastal Georgia landscape in the background, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+    "middleImagePrompts": [
+      "A premium, stylized 3D architectural rendering of a commercial site plan under review in the Garden City submarket, highlighting parcel boundaries and proposed building footprints with Coastal Georgia vegetation, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "A realistic, high-end photograph of Pooler Parkway corridor showing a mix of logistics warehouses and light industrial buildings with visible road access and utility infrastructure under a clear sky, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham site-review context, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium planning desk aesthetic, no readable markings. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos."
+    ]
+  },
+  "wordpressPayload": {
+    "title": "Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+    "content": "<div class=\"pier-pulse-report\">\n<div class=\"pier-pulse-opening\"><p class=\"pier-pulse-eyebrow\">PIER Pulse Drop • Savannah / Chatham</p><p>The City of Savannah’s recent council workshop on May 28, 2026, offers a window into emerging commercial real estate dynamics in the Savannah / Chatham corridor. While no headline projects were announced, the agenda items suggest foundational steps toward future development activity.</p></div>\n<div class=\"pier-pulse-article-body\">\n<h2>The Signal</h2>\n<blockquote>\"Early-stage municipal discussions often presage shifts in entitlement risk and infrastructure prioritization that savvy CRE stakeholders can leverage.\" – PIER Staff</blockquote>\n\n<div class=\"pier-pulse-image-gallery\" style=\"display: flex; flex-direction: row; gap: 15px; justify-content: center; align-items: stretch; flex-wrap: nowrap; margin: 24px 0;\">\n<figure class=\"wp-block-image size-large pier-pulse-image\" style=\"flex: 1 1 0; margin: 0;\"><img src=\"https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-1.jpg\" alt=\"PIER Pulse supporting market visual 1 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement\" class=\"wp-image-21056\" style=\"width: 100%; height: auto; display: block;\" /></figure>\n<figure class=\"wp-block-image size-large pier-pulse-image\" style=\"flex: 1 1 0; margin: 0;\"><img src=\"https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-2.jpg\" alt=\"PIER Pulse supporting market visual 2 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement\" class=\"wp-image-21057\" style=\"width: 100%; height: auto; display: block;\" /></figure>\n<figure class=\"wp-block-image size-large pier-pulse-image\" style=\"flex: 1 1 0; margin: 0;\"><img src=\"https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-3.jpg\" alt=\"PIER Pulse supporting market visual 3 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement\" class=\"wp-image-21058\" style=\"width: 100%; height: auto; display: block;\" /></figure>\n</div><h3>What’s Happening</h3>\n<ul>\n<li><strong>Council Workshop Focus:</strong> The May 28 workshop covered various planning and zoning topics, setting the stage for upcoming decisions impacting land use and development approvals.</li>\n<li><strong>Permitting & Infrastructure:</strong> Preliminary conversations around utility capacity and road access improvements surfaced, particularly relevant for industrial and logistics properties near Pooler Parkway and port-adjacent areas.</li>\n<li><strong>Site Plan Reviews:</strong> Early reviews hint at new commercial projects entering the pipeline, though details remain under wraps.</li>\n</ul>\n\n<h3>Why It Matters</h3>\n<p>These agenda signals reflect the city’s methodical approach to managing growth amid ongoing port expansion and regional logistics demand. For owners and investors, understanding the timing and nature of these municipal discussions can clarify entitlement risk and infrastructure readiness, critical factors in site selection and acquisition strategy.</p>\n\n<h3>How To Play It</h3>\n<ul>\n<li>Monitor upcoming council meetings for zoning changes or special-use permits that could unlock off-market opportunities.</li>\n<li>Engage early with local authorities or PIER’s site selection consultants to gauge infrastructure capacity and development timelines.</li>\n<li>Consider submarket spillover effects from port-driven industrial growth when evaluating lease rates and tenant demand.</li>\n</ul>\n\n<h3>What To Watch</h3>\n<ul>\n<li>Follow announcements related to utility upgrades and road access improvements near Garden City and Pooler Parkway corridors.</li>\n<li>Track site plan approvals for new commercial and industrial developments that may impact local market supply.</li>\n<li>Watch for rezoning requests or development agreements that signal shifts in land use policy.</li>\n</ul>\n\n<h2>THE BOTTOM LINE</h2>\n<div class=\"pier-pulse-bottom-line\" style=\"background:#f9f9f9; border:1px solid #e5e5e5; padding:25px; margin-top:30px; border-radius:6px;\">\n<p>Early municipal agenda signals in Savannah highlight foundational steps toward new commercial development and infrastructure upgrades.</p>\n<p>Understanding these signals can help owners and investors anticipate entitlement risk and timing in key submarkets like Pooler Parkway and Garden City.</p>\n<p>PIER’s market analytics and site selection expertise provide a strategic edge for uncovering off-market opportunities tied to these emerging trends.</p>\n<p>Contact PIER Commercial Real Estate today.</p>\n<p>Phone: <strong>912.353.7707</strong> | Website: <strong>piercommercial.com</strong> | Instagram: <strong>@piercommercial</strong></p>\n<p><a href=\"https://www.piercommercial.com/contact-us/\">Click here to contact us</a></p>\n</div>\n</div>\n<!-- PIER Pulse backend note: Editor review should verify local facts, links, image fit, and author attribution before publishing. This note is intentionally hidden from the rendered post body. -->\n</div>\n<!-- PIER Pulse Image Prompts\nHero: A high-end, cinematic aerial view of Savannah's port area at dusk, showcasing active container terminals, gantry cranes, and adjacent industrial warehouses with the Savannah River and Coastal Georgia landscape in the background, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.\nMiddle 1: A premium, stylized 3D architectural rendering of a commercial site plan under review in the Garden City submarket, highlighting parcel boundaries and proposed building footprints with Coastal Georgia vegetation, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.\nMiddle 2: A realistic, high-end photograph of Pooler Parkway corridor showing a mix of logistics warehouses and light industrial buildings with visible road access and utility infrastructure under a clear sky, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.\nMiddle 3: A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham site-review context, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium planning desk aesthetic, no readable markings. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.\n-->\n<!-- PIER Pulse Social Drafts\nLinkedIn: Savannah / Chatham’s recent council workshop agendas reveal early-stage signals that could reshape commercial real estate dynamics. From zoning tweaks to infrastructure planning, these discussions hint at evolving momentum in key submarkets. For owners, tenants, investors, and operators, understanding these subtle shifts is crucial for strategic positioning. Dive deeper into how these agenda items could impact your CRE decisions and explore PIER Commercial Real Estate’s market analytics, off-market opportunities, and site selection guidance. Read the full story at piercommercial.com. Read the full story: https://www.piercommercial.com/\nLinkedIn hashtags: #CommercialRealEstate #SavannahCRE #ChathamCounty #CREInsights #MarketIntelligence #PIERCommercial\nFacebook: Savannah / Chatham council workshops are quietly shaping the future of commercial real estate. Early talks on zoning and infrastructure could mean new opportunities ahead. Stay informed with PIER Commercial Real Estate’s market insights and off-market listings to stay ahead in this evolving market. Get the full story at piercommercial.com. Contact PIER Commercial Real Estate for market analytics and off-market opportunities. Read the full story: https://www.piercommercial.com/\nFacebook hashtags: #SavannahCRE #ChathamCounty #CommercialRealEstate #MarketUpdate #PIERCommercial\nInstagram: Savannah / Chatham council workshops hint at early CRE shifts—zoning, infrastructure, and permitting are on the move. Stay sharp with PIER’s market analytics and off-market opportunities. Full story at piercommercial.com. Read the full story: https://www.piercommercial.com/\nInstagram hashtags: #SavannahCRE #ChathamCounty #CommercialRealEstate #CREUpdates #PIERCommercial\n-->\n<!-- PIER Pulse Source Pack\nCorridor: Savannah / Chatham\nGenerated: 2026-06-08T12:01:09.650Z\nSources reviewed: 3\nSources used: 1\n- Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 East Bay St. in Council Chambers. (City of Savannah Agenda Center): https://www.savannahga.gov/AgendaCenter/PreviousVersions/696\n-->\n",
+    "excerpt": "Recent City of Savannah council workshop agendas reveal subtle yet important signals for commercial real estate stakeholders. Early-stage discussions around zoning, infrastructure, and permitting point to potential shifts in development momentum across key submarkets.",
+    "status": "draft",
+    "categories": [
+      99
+    ],
+    "tags": [
+      126,
+      127,
+      128,
+      129,
+      130
+    ],
+    "featured_media": 21055,
+    "meta": {
+      "pier_pulse_corridor": "Savannah / Chatham",
+      "pier_pulse_source_count": 1,
+      "pier_pulse_generated_at": "2026-06-08T12:01:09.650Z",
+      "pier_pulse_social_drafts": "{\"linkedin\":{\"platform\":\"linkedin\",\"copy\":\"Savannah / Chatham’s recent council workshop agendas reveal early-stage signals that could reshape commercial real estate dynamics. From zoning tweaks to infrastructure planning, these discussions hint at evolving momentum in key submarkets. For owners, tenants, investors, and operators, understanding these subtle shifts is crucial for strategic positioning. Dive deeper into how these agenda items could impact your CRE decisions and explore PIER Commercial Real Estate’s market analytics, off-market opportunities, and site selection guidance. Read the full story at piercommercial.com. Read the full story: https://www.piercommercial.com/\",\"hashtags\":[\"#CommercialRealEstate\",\"#SavannahCRE\",\"#ChathamCounty\",\"#CREInsights\",\"#MarketIntelligence\",\"#PIERCommercial\"],\"characterCount\":643},\"facebook\":{\"platform\":\"facebook\",\"copy\":\"Savannah / Chatham council workshops are quietly shaping the future of commercial real estate. Early talks on zoning and infrastructure could mean new opportunities ahead. Stay informed with PIER Commercial Real Estate’s market insights and off-market listings to stay ahead in this evolving market. Get the full story at piercommercial.com. Contact PIER Commercial Real Estate for market analytics and off-market opportunities. Read the full story: https://www.piercommercial.com/\",\"hashtags\":[\"#SavannahCRE\",\"#ChathamCounty\",\"#CommercialRealEstate\",\"#MarketUpdate\",\"#PIERCommercial\"],\"characterCount\":481},\"instagram\":{\"platform\":\"instagram\",\"copy\":\"Savannah / Chatham council workshops hint at early CRE shifts—zoning, infrastructure, and permitting are on the move. Stay sharp with PIER’s market analytics and off-market opportunities. Full story at piercommercial.com. Read the full story: https://www.piercommercial.com/\",\"hashtags\":[\"#SavannahCRE\",\"#ChathamCounty\",\"#CommercialRealEstate\",\"#CREUpdates\",\"#PIERCommercial\"],\"characterCount\":274}}"
+    }
+  },
+  "generatedImages": [
+    {
+      "role": "hero",
+      "prompt": "A high-end, cinematic aerial view of Savannah's port area at dusk, showcasing active container terminals, gantry cranes, and adjacent industrial warehouses with the Savannah River and Coastal Georgia landscape in the background, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "altText": "PIER Pulse market intelligence hero image for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "filename": "2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-hero.png",
+      "mimeType": "image/png",
+      "byteLength": 2202212
+    },
+    {
+      "role": "body",
+      "prompt": "A premium, stylized 3D architectural rendering of a commercial site plan under review in the Garden City submarket, highlighting parcel boundaries and proposed building footprints with Coastal Georgia vegetation, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "altText": "PIER Pulse supporting market visual 1 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "filename": "2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-1.png",
+      "mimeType": "image/png",
+      "byteLength": 2473465
+    },
+    {
+      "role": "body",
+      "prompt": "A realistic, high-end photograph of Pooler Parkway corridor showing a mix of logistics warehouses and light industrial buildings with visible road access and utility infrastructure under a clear sky, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "altText": "PIER Pulse supporting market visual 2 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "filename": "2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-2.png",
+      "mimeType": "image/png",
+      "byteLength": 2688703
+    },
+    {
+      "role": "body",
+      "prompt": "A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham site-review context, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium planning desk aesthetic, no readable markings. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse supporting market visual 3 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "filename": "2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-3.png",
+      "mimeType": "image/png",
+      "byteLength": 2680291
+    }
+  ],
+  "uploadedImages": [
+    {
+      "role": "hero",
+      "prompt": "A high-end, cinematic aerial view of Savannah's port area at dusk, showcasing active container terminals, gantry cranes, and adjacent industrial warehouses with the Savannah River and Coastal Georgia landscape in the background, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "altText": "PIER Pulse market intelligence hero image for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "mediaId": 21055,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-hero.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-hero.jpg"
+    },
+    {
+      "role": "body",
+      "prompt": "A premium, stylized 3D architectural rendering of a commercial site plan under review in the Garden City submarket, highlighting parcel boundaries and proposed building footprints with Coastal Georgia vegetation, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "altText": "PIER Pulse supporting market visual 1 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "mediaId": 21056,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-1.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-1.jpg"
+    },
+    {
+      "role": "body",
+      "prompt": "A realistic, high-end photograph of Pooler Parkway corridor showing a mix of logistics warehouses and light industrial buildings with visible road access and utility infrastructure under a clear sky, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Corridor: Savannah / Chatham. Grounded in Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E.",
+      "altText": "PIER Pulse supporting market visual 2 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "mediaId": 21057,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-2.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-2.jpg"
+    },
+    {
+      "role": "body",
+      "prompt": "A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham site-review context, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium planning desk aesthetic, no readable markings. Source Pack fact grounding: Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse supporting market visual 3 for Savannah / Chatham: Savannah / Chatham Council Workshop Signals Early-Stage CRE Movement",
+      "mediaId": 21058,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-3.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-08-pier-pulse-savannah-chatham-council-workshop-signals-early-stage-cre-movement-body-3.jpg"
+    }
+  ],
+  "socialDrafts": {
+    "linkedin": {
+      "platform": "linkedin",
+      "copy": "Savannah / Chatham’s recent council workshop agendas reveal early-stage signals that could reshape commercial real estate dynamics. From zoning tweaks to infrastructure planning, these discussions hint at evolving momentum in key submarkets. For owners, tenants, investors, and operators, understanding these subtle shifts is crucial for strategic positioning. Dive deeper into how these agenda items could impact your CRE decisions and explore PIER Commercial Real Estate’s market analytics, off-market opportunities, and site selection guidance. Read the full story at piercommercial.com. Read the full story: https://www.piercommercial.com/",
+      "hashtags": [
+        "#CommercialRealEstate",
+        "#SavannahCRE",
+        "#ChathamCounty",
+        "#CREInsights",
+        "#MarketIntelligence",
+        "#PIERCommercial"
+      ],
+      "characterCount": 643
+    },
+    "facebook": {
+      "platform": "facebook",
+      "copy": "Savannah / Chatham council workshops are quietly shaping the future of commercial real estate. Early talks on zoning and infrastructure could mean new opportunities ahead. Stay informed with PIER Commercial Real Estate’s market insights and off-market listings to stay ahead in this evolving market. Get the full story at piercommercial.com. Contact PIER Commercial Real Estate for market analytics and off-market opportunities. Read the full story: https://www.piercommercial.com/",
+      "hashtags": [
+        "#SavannahCRE",
+        "#ChathamCounty",
+        "#CommercialRealEstate",
+        "#MarketUpdate",
+        "#PIERCommercial"
+      ],
+      "characterCount": 481
+    },
+    "instagram": {
+      "platform": "instagram",
+      "copy": "Savannah / Chatham council workshops hint at early CRE shifts—zoning, infrastructure, and permitting are on the move. Stay sharp with PIER’s market analytics and off-market opportunities. Full story at piercommercial.com. Read the full story: https://www.piercommercial.com/",
+      "hashtags": [
+        "#SavannahCRE",
+        "#ChathamCounty",
+        "#CommercialRealEstate",
+        "#CREUpdates",
+        "#PIERCommercial"
+      ],
+      "characterCount": 274
+    }
+  },
+  "providerModes": {
+    "extractor": "ollama",
+    "writer": "cloud"
+  },
+  "published": false,
+  "wordpressDraftUrl": null
+}

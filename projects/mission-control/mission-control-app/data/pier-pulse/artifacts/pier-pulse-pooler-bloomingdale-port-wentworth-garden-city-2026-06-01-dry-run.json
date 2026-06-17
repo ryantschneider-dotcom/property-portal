@@ -1,0 +1,93 @@
+{
+  "generatedAt": "2026-06-01T21:47:56.076Z",
+  "sourcePack": {
+    "id": "pier-pulse-pooler-bloomingdale-port-wentworth-garden-city-2026-06-01",
+    "generatedAt": "2026-06-01T21:47:56.076Z",
+    "corridor": {
+      "id": "pooler-bloomingdale-port-wentworth-garden-city",
+      "name": "Pooler / Bloomingdale / Port Wentworth / Garden City",
+      "keywords": [
+        "pooler",
+        "bloomingdale",
+        "port wentworth",
+        "garden city",
+        "i-16",
+        "i-95"
+      ]
+    },
+    "sources": [
+      {
+        "title": "Pooler infrastructure funding targets commercial access corridor",
+        "url": "https://example.com/pooler-infrastructure-access",
+        "sourceName": "Sample County Notice",
+        "publishedAt": "2026-06-01T13:00:00.000Z",
+        "summary": "Infrastructure funding is expected to improve access for commercial and industrial sites along a Pooler-area corridor.",
+        "topics": [
+          "infrastructure",
+          "industrial",
+          "development"
+        ],
+        "facts": [
+          "Infrastructure funding targets a commercial access corridor",
+          "Access improvements may support industrial and logistics sites"
+        ],
+        "corridorHint": "Pooler / Bloomingdale / Port Wentworth / Garden City",
+        "relevanceScore": 10
+      },
+      {
+        "title": "Savannah port-adjacent industrial project advances through local review",
+        "url": "https://example.com/savannah-industrial-review",
+        "sourceName": "Sample Development Feed",
+        "publishedAt": "2026-06-01T14:00:00.000Z",
+        "summary": "A port-adjacent industrial project moved through local review, highlighting continued logistics demand and site-access considerations around Savannah.",
+        "topics": [
+          "industrial",
+          "development",
+          "port",
+          "logistics"
+        ],
+        "facts": [
+          "Industrial project advanced through local review",
+          "Project is tied to port-adjacent logistics demand"
+        ],
+        "corridorHint": "Savannah / Chatham",
+        "relevanceScore": 10
+      }
+    ],
+    "sourceCountReviewed": 2,
+    "editorialAngle": "Current industrial signals in Pooler / Bloomingdale / Port Wentworth / Garden City, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "writerOutput": {
+    "title": "Pooler / Bloomingdale / Port Wentworth / Garden City Market Intel: 2 Signals to Watch",
+    "html": "<h2>Market Signal</h2><p><strong>Infrastructure funding targets a commercial access corridor</strong></p><h2>Why It Matters for Coastal Georgia CRE</h2><p>Current industrial signals in Pooler / Bloomingdale / Port Wentworth / Garden City, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>PIER Perspective</h2><p>This is draft-first market intelligence for review before publication.</p>",
+    "excerpt": "Current industrial signals in Pooler / Bloomingdale / Port Wentworth / Garden City, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "wordpressPayload": {
+    "title": "Pooler / Bloomingdale / Port Wentworth / Garden City Market Intel: 2 Signals to Watch",
+    "content": "<h2>Market Signal</h2><p><strong>Infrastructure funding targets a commercial access corridor</strong></p><h2>Why It Matters for Coastal Georgia CRE</h2><p>Current industrial signals in Pooler / Bloomingdale / Port Wentworth / Garden City, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>PIER Perspective</h2><p>This is draft-first market intelligence for review before publication.</p>\n<hr><h2>Source Pack</h2><ul>\n<li><a href=\"https://example.com/pooler-infrastructure-access\">Pooler infrastructure funding targets commercial access corridor</a> — Sample County Notice</li>\n<li><a href=\"https://example.com/savannah-industrial-review\">Savannah port-adjacent industrial project advances through local review</a> — Sample Development Feed</li>\n</ul>",
+    "excerpt": "Current industrial signals in Pooler / Bloomingdale / Port Wentworth / Garden City, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.",
+    "status": "draft",
+    "categories": [
+      99
+    ],
+    "tags": [
+      126,
+      127,
+      128,
+      129,
+      130
+    ],
+    "featured_media": 20240,
+    "meta": {
+      "pier_pulse_corridor": "Pooler / Bloomingdale / Port Wentworth / Garden City",
+      "pier_pulse_source_count": 2,
+      "pier_pulse_generated_at": "2026-06-01T21:47:56.076Z"
+    }
+  },
+  "providerModes": {
+    "extractor": "fallback",
+    "writer": "fallback"
+  },
+  "published": false,
+  "wordpressDraftUrl": null
+}

@@ -1,0 +1,101 @@
+{
+  "generatedAt": "2026-06-01T21:53:31.026Z",
+  "sourcePack": {
+    "id": "pier-pulse-savannah-chatham-2026-06-01",
+    "generatedAt": "2026-06-01T21:53:31.026Z",
+    "corridor": {
+      "id": "savannah-chatham",
+      "name": "Savannah / Chatham",
+      "keywords": [
+        "savannah",
+        "chatham",
+        "downtown",
+        "garden city",
+        "port",
+        "pooler parkway"
+      ]
+    },
+    "sources": [
+      {
+        "title": "Pooler infrastructure funding targets commercial access corridor",
+        "url": "https://example.com/pooler-infrastructure-access",
+        "sourceName": "Sample County Notice",
+        "publishedAt": "2026-06-01T13:00:00.000Z",
+        "summary": "Infrastructure funding aims to enhance access for commercial and industrial sites in the Pooler-area corridor.",
+        "topics": [
+          "development",
+          "leasing",
+          "infrastructure",
+          "retail",
+          "industrial",
+          "office",
+          "other"
+        ],
+        "facts": [
+          "Infrastructure funding is expected to improve access for commercial and industrial sites.",
+          "The Pooler-area corridor is targeted for this funding."
+        ],
+        "corridorHint": "Pooler-area corridor",
+        "relevanceScore": 10
+      },
+      {
+        "title": "Savannah port-adjacent industrial project advances through local review",
+        "url": "https://example.com/savannah-industrial-review",
+        "sourceName": "Sample Development Feed",
+        "publishedAt": "2026-06-01T14:00:00.000Z",
+        "summary": "Savannah port-adjacent industrial project advances through local review",
+        "topics": [
+          "development",
+          "leasing",
+          "infrastructure",
+          "retail",
+          "industrial",
+          "office",
+          "other"
+        ],
+        "facts": [
+          "project moved through local review",
+          "logistics demand highlighted",
+          "site-access considerations around Savannah"
+        ],
+        "corridorHint": "Coastal Georgia corridor",
+        "relevanceScore": 10
+      }
+    ],
+    "sourceCountReviewed": 2,
+    "editorialAngle": "Current development signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "writerOutput": {
+    "title": "Savannah / Chatham Market Intel: 2 Signals to Watch",
+    "html": "<h2>Market Signal</h2><p><strong>Infrastructure funding is expected to improve access for commercial and industrial sites.</strong></p><h2>Why It Matters for Coastal Georgia CRE</h2><p>Current development signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>PIER Perspective</h2><p>This is draft-first market intelligence for review before publication.</p>",
+    "excerpt": "Current development signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "wordpressPayload": {
+    "title": "Savannah / Chatham Market Intel: 2 Signals to Watch",
+    "content": "<h2>Market Signal</h2><p><strong>Infrastructure funding is expected to improve access for commercial and industrial sites.</strong></p><h2>Why It Matters for Coastal Georgia CRE</h2><p>Current development signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.</p><h2>PIER Perspective</h2><p>This is draft-first market intelligence for review before publication.</p>\n<hr><h2>Source Pack</h2><ul>\n<li><a href=\"https://example.com/pooler-infrastructure-access\">Pooler infrastructure funding targets commercial access corridor</a> — Sample County Notice</li>\n<li><a href=\"https://example.com/savannah-industrial-review\">Savannah port-adjacent industrial project advances through local review</a> — Sample Development Feed</li>\n</ul>",
+    "excerpt": "Current development signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators.",
+    "status": "draft",
+    "categories": [
+      99
+    ],
+    "tags": [
+      126,
+      127,
+      128,
+      129,
+      130
+    ],
+    "featured_media": 20240,
+    "meta": {
+      "pier_pulse_corridor": "Savannah / Chatham",
+      "pier_pulse_source_count": 2,
+      "pier_pulse_generated_at": "2026-06-01T21:53:31.026Z"
+    }
+  },
+  "providerModes": {
+    "extractor": "ollama",
+    "writer": "fallback"
+  },
+  "published": false,
+  "wordpressDraftUrl": null
+}

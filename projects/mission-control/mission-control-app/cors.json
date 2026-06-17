@@ -1,0 +1,26 @@
+[
+  {
+    "origin": [
+      "https://listingportal.piercommercial.com",
+      "https://hermes-mac-mini.vercel.app",
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost:8080"
+    ],
+    "method": ["GET", "POST", "PUT", "OPTIONS"],
+    "responseHeader": [
+      "Authorization",
+      "Content-Type",
+      "Content-Length",
+      "Content-MD5",
+      "Cache-Control",
+      "x-goog-acl",
+      "x-goog-content-length-range",
+      "x-goog-meta-firebasestoragedownloadtokens",
+      "x-goog-resumable"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

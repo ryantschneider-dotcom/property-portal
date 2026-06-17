@@ -1,0 +1,202 @@
+{
+  "generatedAt": "2026-06-02T18:53:33.139Z",
+  "sourcePack": {
+    "id": "pier-pulse-savannah-chatham-2026-06-02",
+    "generatedAt": "2026-06-02T18:53:33.139Z",
+    "corridor": {
+      "id": "savannah-chatham",
+      "name": "Savannah / Chatham",
+      "keywords": [
+        "savannah",
+        "chatham",
+        "downtown",
+        "garden city",
+        "port",
+        "pooler parkway"
+      ]
+    },
+    "sources": [
+      {
+        "title": "Minor Sanitary Sewer Spill Reported, Resolved",
+        "url": "https://www.savannahga.gov/CivicAlerts.aspx?aid=3315",
+        "sourceName": "City of Savannah News Flash",
+        "publishedAt": "2026-05-08T21:17:00Z",
+        "summary": "Minor Sanitary Sewer Spill Reported, Resolved",
+        "topics": [
+          "industrial",
+          "infrastructure"
+        ],
+        "facts": [
+          "Minor Sanitary Sewer Spill Reported, Resolved"
+        ],
+        "corridorHint": "Savannah / Chatham",
+        "relevanceScore": 7
+      },
+      {
+        "title": "Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 East Bay St. in Council Chambers.",
+        "url": "https://www.savannahga.gov/AgendaCenter/PreviousVersions/696",
+        "sourceName": "City of Savannah Agenda Center",
+        "publishedAt": "2026-05-26T14:51:25Z",
+        "summary": "Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 East Bay St. in Council Chambers.",
+        "topics": [
+          "agenda"
+        ],
+        "facts": [
+          "Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 E"
+        ],
+        "corridorHint": "Savannah / Chatham",
+        "relevanceScore": 6
+      }
+    ],
+    "sourceCountReviewed": 2,
+    "editorialAngle": "Current industrial signals in Savannah / Chatham, interpreted through a commercial real estate lens for owners, tenants, investors, and operators."
+  },
+  "writerOutput": {
+    "title": "Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+    "html": "<p>Industrial stakeholders in Savannah / Chatham are navigating a landscape marked by infrastructure maintenance and active municipal governance. Recent events provide insight into operational conditions and regulatory focus affecting industrial real estate.</p>\n\n<h2>The Signal</h2>\n<blockquote>\"The swift resolution of a minor sanitary sewer spill demonstrates the city's commitment to infrastructure reliability, a critical factor for industrial operations.\" – PIER Staff</blockquote>\n\n<h3>What's Happening</h3>\n<ul>\n<li><strong>Infrastructure update:</strong> A minor sanitary sewer spill was reported and promptly resolved in early May, signaling effective municipal response and infrastructure oversight.</li>\n<li><strong>Governance activity:</strong> The City of Savannah scheduled a council workshop and regular meeting in late May, reflecting ongoing attention to city planning and policy impacting commercial corridors.</li>\n</ul>\n\n<h3>Why It Matters</h3>\n<p>Reliable infrastructure is foundational for industrial tenants and investors, particularly in port-adjacent markets like Savannah / Chatham where logistics operations depend on uninterrupted utilities. The city’s proactive governance signals potential for responsive zoning, permitting, and infrastructure decisions that can affect industrial site viability and expansion.</p>\n\n<h3>How To Play It</h3>\n<ul>\n<li>Owners and operators should monitor municipal communications for updates on infrastructure projects and regulatory changes.</li>\n<li>Tenants can leverage PIER’s market analytics to identify industrial spaces with stable utility services and minimal operational disruptions.</li>\n<li>Investors may consider the corridor’s demonstrated infrastructure responsiveness as a positive risk factor in due diligence.</li>\n</ul>\n\n<h3>What To Watch</h3>\n<ul>\n<li>Upcoming city council workshops and meetings for agenda items related to industrial zoning, permits, and infrastructure investments.</li>\n<li>Any announcements regarding site plans or project approvals that could impact industrial land supply or logistics capabilities.</li>\n</ul>\n\n<div class=\"pier-pulse-bottom-line\" style=\"background:#f9f9f9; border:1px solid #e5e5e5; padding:25px; margin-top:30px; border-radius:6px;\">\n<h2>THE BOTTOM LINE</h2>\n<p>Industrial operations in Savannah / Chatham benefit from demonstrated municipal responsiveness to infrastructure issues, supporting operational continuity.</p>\n<p>PIER’s market analytics provide early visibility into regulatory and infrastructure developments critical to industrial real estate decisions.</p>\n<p>Leverage PIER’s off-market insights and site selection expertise to navigate this evolving industrial corridor with confidence.</p>\n<p>Contact PIER Commercial Real Estate today.</p>\n<p>Phone: <strong>912.353.7707</strong> | Website: <strong>piercommercial.com</strong> | Instagram: <strong>@piercommercial</strong></p>\n<p><a href=\"https://www.piercommercial.com/contact-us/\">Click here to contact us</a></p>\n</div>",
+    "excerpt": "Recent industrial signals in Savannah / Chatham highlight infrastructure resilience and municipal governance activity. Minor sewer spill resolution and upcoming city council workshops underscore operational stability and regulatory attentiveness for industrial stakeholders.",
+    "heroImagePrompt": "A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham commercial real estate, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium paper-and-linework aesthetic, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+    "middleImagePrompts": [
+      "An abstract vector layout representing regional logistics network paths for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium commercial real estate planning visual, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "A modern, text-free commercial real estate growth chart graphic for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, abstract shapes and clean PIER-orange accent forms only, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "An abstract vector layout representing regional logistics network paths centered on Savannah / Chatham industrial corridors with emphasis on port and highway connections, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved."
+    ]
+  },
+  "wordpressPayload": {
+    "title": "Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+    "content": "<div class=\"pier-pulse-report\">\n<div class=\"pier-pulse-opening\"><p class=\"pier-pulse-eyebrow\">PIER Pulse Drop • Savannah / Chatham</p><p>Industrial stakeholders in Savannah / Chatham are navigating a landscape marked by infrastructure maintenance and active municipal governance. Recent events provide insight into operational conditions and regulatory focus affecting industrial real estate.</p></div>\n<div class=\"pier-pulse-article-body\">\n<h2>The Signal</h2>\n<blockquote>\"The swift resolution of a minor sanitary sewer spill demonstrates the city's commitment to infrastructure reliability, a critical factor for industrial operations.\" – PIER Staff</blockquote>\n\n<div class=\"pier-pulse-image-gallery\" style=\"display: flex; flex-direction: row; gap: 15px; justify-content: center; align-items: stretch; flex-wrap: nowrap; margin: 24px 0;\">\n<figure class=\"wp-block-image size-large pier-pulse-image\" style=\"flex: 1 1 0; margin: 0;\"><img src=\"https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-1.jpg\" alt=\"PIER Pulse supporting market visual 1 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals\" class=\"wp-image-21036\" style=\"width: 100%; height: auto; display: block;\" /></figure>\n<figure class=\"wp-block-image size-large pier-pulse-image\" style=\"flex: 1 1 0; margin: 0;\"><img src=\"https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-2.jpg\" alt=\"PIER Pulse supporting market visual 2 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals\" class=\"wp-image-21037\" style=\"width: 100%; height: auto; display: block;\" /></figure>\n<figure class=\"wp-block-image size-large pier-pulse-image\" style=\"flex: 1 1 0; margin: 0;\"><img src=\"https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-3.jpg\" alt=\"PIER Pulse supporting market visual 3 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals\" class=\"wp-image-21038\" style=\"width: 100%; height: auto; display: block;\" /></figure>\n</div><h3>What's Happening</h3>\n<ul>\n<li><strong>Infrastructure update:</strong> A minor sanitary sewer spill was reported and promptly resolved in early May, signaling effective municipal response and infrastructure oversight.</li>\n<li><strong>Governance activity:</strong> The City of Savannah scheduled a council workshop and regular meeting in late May, reflecting ongoing attention to city planning and policy impacting commercial corridors.</li>\n</ul>\n\n<h3>Why It Matters</h3>\n<p>Reliable infrastructure is foundational for industrial tenants and investors, particularly in port-adjacent markets like Savannah / Chatham where logistics operations depend on uninterrupted utilities. The city’s proactive governance signals potential for responsive zoning, permitting, and infrastructure decisions that can affect industrial site viability and expansion.</p>\n\n<h3>How To Play It</h3>\n<ul>\n<li>Owners and operators should monitor municipal communications for updates on infrastructure projects and regulatory changes.</li>\n<li>Tenants can leverage PIER’s market analytics to identify industrial spaces with stable utility services and minimal operational disruptions.</li>\n<li>Investors may consider the corridor’s demonstrated infrastructure responsiveness as a positive risk factor in due diligence.</li>\n</ul>\n\n<h3>What To Watch</h3>\n<ul>\n<li>Upcoming city council workshops and meetings for agenda items related to industrial zoning, permits, and infrastructure investments.</li>\n<li>Any announcements regarding site plans or project approvals that could impact industrial land supply or logistics capabilities.</li>\n</ul>\n\n<div class=\"pier-pulse-bottom-line\" style=\"background:#f9f9f9; border:1px solid #e5e5e5; padding:25px; margin-top:30px; border-radius:6px;\">\n<h2>THE BOTTOM LINE</h2>\n<p>Industrial operations in Savannah / Chatham benefit from demonstrated municipal responsiveness to infrastructure issues, supporting operational continuity.</p>\n<p>PIER’s market analytics provide early visibility into regulatory and infrastructure developments critical to industrial real estate decisions.</p>\n<p>Leverage PIER’s off-market insights and site selection expertise to navigate this evolving industrial corridor with confidence.</p>\n<p>Contact PIER Commercial Real Estate today.</p>\n<p>Phone: <strong>912.353.7707</strong> | Website: <strong>piercommercial.com</strong> | Instagram: <strong>@piercommercial</strong></p>\n<p><a href=\"https://www.piercommercial.com/contact-us/\">Click here to contact us</a></p>\n</div>\n</div>\n<!-- PIER Pulse backend note: Editor review should verify local facts, links, image fit, and author attribution before publishing. This note is intentionally hidden from the rendered post body. -->\n</div>\n<!-- PIER Pulse Image Prompts\nHero: A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham commercial real estate, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium paper-and-linework aesthetic, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.\nMiddle 1: An abstract vector layout representing regional logistics network paths for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium commercial real estate planning visual, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.\nMiddle 2: A modern, text-free commercial real estate growth chart graphic for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, abstract shapes and clean PIER-orange accent forms only, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.\nMiddle 3: An abstract vector layout representing regional logistics network paths centered on Savannah / Chatham industrial corridors with emphasis on port and highway connections, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved.\n-->\n<!-- PIER Pulse Social Drafts\nLinkedIn: Savannah / Chatham's industrial landscape is showing signs of resilience with recent infrastructure updates and active municipal governance. From resolving minor sewer spills to upcoming city council workshops, these developments signal operational stability and regulatory attentiveness critical for owners, tenants, investors, and operators. Stay informed with PIER Commercial Real Estate’s market analytics and site selection insights tailored to this corridor. Dive deeper into these industrial signals and what they mean for your commercial real estate strategy at piercommercial.com. Read the full story: https://www.piercommercial.com/\nLinkedIn hashtags: #SavannahIndustrial #CommercialRealEstate #IndustrialMarket #CREInsights #PIERCommercial #Infrastructure #MunicipalGovernance\nFacebook: Savannah / Chatham’s industrial sector is steady with infrastructure fixes and city council activity keeping things on track. For owners, tenants, and investors, these signals mean a stable environment to watch. Get more market insights and off-market opportunities from PIER Commercial Real Estate at piercommercial.com. Read the full story: https://www.piercommercial.com/\nFacebook hashtags: #SavannahCRE #IndustrialRealEstate #MarketUpdate #PIERCommercial #SavannahChatham\nInstagram: Savannah / Chatham’s industrial pulse is strong: infrastructure fixes and city workshops highlight stability and smart governance. For CRE owners and investors, this means opportunity. Explore detailed market analytics and site selection guidance with PIER Commercial Real Estate. Full story at piercommercial.com. Read the full story: https://www.piercommercial.com/\nInstagram hashtags: #SavannahIndustrial #CRE #IndustrialRealEstate #MarketPulse #PIERCommercial\n-->\n<!-- PIER Pulse Source Pack\nCorridor: Savannah / Chatham\nGenerated: 2026-06-02T18:53:33.139Z\nSources reviewed: 2\nSources used: 2\n- Minor Sanitary Sewer Spill Reported, Resolved (City of Savannah News Flash): https://www.savannahga.gov/CivicAlerts.aspx?aid=3315\n- Mayor & Aldermen of the City of Savannah to conduct a Council Workshop, Thursday, May 28, 2026, at 11:00 a.m. at City Hall, 2nd floor Media Room. The regular scheduled City Council Meeting will be held at 2:00 p.m. - 2 East Bay St. in Council Chambers. (City of Savannah Agenda Center): https://www.savannahga.gov/AgendaCenter/PreviousVersions/696\n-->\n",
+    "excerpt": "Recent industrial signals in Savannah / Chatham highlight infrastructure resilience and municipal governance activity. Minor sewer spill resolution and upcoming city council workshops underscore operational stability and regulatory attentiveness for industrial stakeholders.",
+    "status": "draft",
+    "categories": [
+      99
+    ],
+    "tags": [
+      126,
+      127,
+      128,
+      129,
+      130
+    ],
+    "featured_media": 21035,
+    "meta": {
+      "pier_pulse_corridor": "Savannah / Chatham",
+      "pier_pulse_source_count": 2,
+      "pier_pulse_generated_at": "2026-06-02T18:53:33.139Z",
+      "pier_pulse_social_drafts": "{\"linkedin\":{\"platform\":\"linkedin\",\"copy\":\"Savannah / Chatham's industrial landscape is showing signs of resilience with recent infrastructure updates and active municipal governance. From resolving minor sewer spills to upcoming city council workshops, these developments signal operational stability and regulatory attentiveness critical for owners, tenants, investors, and operators. Stay informed with PIER Commercial Real Estate’s market analytics and site selection insights tailored to this corridor. Dive deeper into these industrial signals and what they mean for your commercial real estate strategy at piercommercial.com. Read the full story: https://www.piercommercial.com/\",\"hashtags\":[\"#SavannahIndustrial\",\"#CommercialRealEstate\",\"#IndustrialMarket\",\"#CREInsights\",\"#PIERCommercial\",\"#Infrastructure\",\"#MunicipalGovernance\"],\"characterCount\":642},\"facebook\":{\"platform\":\"facebook\",\"copy\":\"Savannah / Chatham’s industrial sector is steady with infrastructure fixes and city council activity keeping things on track. For owners, tenants, and investors, these signals mean a stable environment to watch. Get more market insights and off-market opportunities from PIER Commercial Real Estate at piercommercial.com. Read the full story: https://www.piercommercial.com/\",\"hashtags\":[\"#SavannahCRE\",\"#IndustrialRealEstate\",\"#MarketUpdate\",\"#PIERCommercial\",\"#SavannahChatham\"],\"characterCount\":374},\"instagram\":{\"platform\":\"instagram\",\"copy\":\"Savannah / Chatham’s industrial pulse is strong: infrastructure fixes and city workshops highlight stability and smart governance. For CRE owners and investors, this means opportunity. Explore detailed market analytics and site selection guidance with PIER Commercial Real Estate. Full story at piercommercial.com. Read the full story: https://www.piercommercial.com/\",\"hashtags\":[\"#SavannahIndustrial\",\"#CRE\",\"#IndustrialRealEstate\",\"#MarketPulse\",\"#PIERCommercial\"],\"characterCount\":367}}"
+    }
+  },
+  "generatedImages": [
+    {
+      "role": "hero",
+      "prompt": "A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham commercial real estate, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium paper-and-linework aesthetic, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse market intelligence hero image for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "filename": "2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-hero.png",
+      "mimeType": "image/png",
+      "byteLength": 2724763
+    },
+    {
+      "role": "body",
+      "prompt": "An abstract vector layout representing regional logistics network paths for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium commercial real estate planning visual, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse supporting market visual 1 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "filename": "2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-1.png",
+      "mimeType": "image/png",
+      "byteLength": 2217736
+    },
+    {
+      "role": "body",
+      "prompt": "A modern, text-free commercial real estate growth chart graphic for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, abstract shapes and clean PIER-orange accent forms only, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse supporting market visual 2 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "filename": "2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-2.png",
+      "mimeType": "image/png",
+      "byteLength": 2204874
+    },
+    {
+      "role": "body",
+      "prompt": "An abstract vector layout representing regional logistics network paths centered on Savannah / Chatham industrial corridors with emphasis on port and highway connections, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved.",
+      "altText": "PIER Pulse supporting market visual 3 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "filename": "2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-3.png",
+      "mimeType": "image/png",
+      "byteLength": 2058783
+    }
+  ],
+  "uploadedImages": [
+    {
+      "role": "hero",
+      "prompt": "A clean, minimalist, text-free architectural site plan blueprint for Savannah / Chatham commercial real estate, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium paper-and-linework aesthetic, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse market intelligence hero image for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "mediaId": 21035,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-hero.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-hero.jpg"
+    },
+    {
+      "role": "body",
+      "prompt": "An abstract vector layout representing regional logistics network paths for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, premium commercial real estate planning visual, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse supporting market visual 1 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "mediaId": 21036,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-1.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-1.jpg"
+    },
+    {
+      "role": "body",
+      "prompt": "A modern, text-free commercial real estate growth chart graphic for Savannah / Chatham, Coastal Georgia landscape, Savannah River maritime shipping logistics, Port-adjacent warehouse environment, abstract shapes and clean PIER-orange accent forms only, no readable markings. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved. no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos.",
+      "altText": "PIER Pulse supporting market visual 2 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "mediaId": 21037,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-2.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-2.jpg"
+    },
+    {
+      "role": "body",
+      "prompt": "An abstract vector layout representing regional logistics network paths centered on Savannah / Chatham industrial corridors with emphasis on port and highway connections, no alphabetic characters, no numbers, no text, no words, no labels, no captions, no typography, no logos. Source Pack fact grounding: Minor Sanitary Sewer Spill Reported, Resolved.",
+      "altText": "PIER Pulse supporting market visual 3 for Savannah / Chatham: Savannah / Chatham Industrial Pulse: Infrastructure and Governance Signals",
+      "mediaId": 21038,
+      "sourceUrl": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-3.jpg",
+      "link": "https://www.piercommercial.com/wp-content/uploads/2026-06-02-pier-pulse-savannah-chatham-industrial-pulse-infrastructure-and-governance-signals-body-3.jpg"
+    }
+  ],
+  "socialDrafts": {
+    "linkedin": {
+      "platform": "linkedin",
+      "copy": "Savannah / Chatham's industrial landscape is showing signs of resilience with recent infrastructure updates and active municipal governance. From resolving minor sewer spills to upcoming city council workshops, these developments signal operational stability and regulatory attentiveness critical for owners, tenants, investors, and operators. Stay informed with PIER Commercial Real Estate’s market analytics and site selection insights tailored to this corridor. Dive deeper into these industrial signals and what they mean for your commercial real estate strategy at piercommercial.com. Read the full story: https://www.piercommercial.com/",
+      "hashtags": [
+        "#SavannahIndustrial",
+        "#CommercialRealEstate",
+        "#IndustrialMarket",
+        "#CREInsights",
+        "#PIERCommercial",
+        "#Infrastructure",
+        "#MunicipalGovernance"
+      ],
+      "characterCount": 642
+    },
+    "facebook": {
+      "platform": "facebook",
+      "copy": "Savannah / Chatham’s industrial sector is steady with infrastructure fixes and city council activity keeping things on track. For owners, tenants, and investors, these signals mean a stable environment to watch. Get more market insights and off-market opportunities from PIER Commercial Real Estate at piercommercial.com. Read the full story: https://www.piercommercial.com/",
+      "hashtags": [
+        "#SavannahCRE",
+        "#IndustrialRealEstate",
+        "#MarketUpdate",
+        "#PIERCommercial",
+        "#SavannahChatham"
+      ],
+      "characterCount": 374
+    },
+    "instagram": {
+      "platform": "instagram",
+      "copy": "Savannah / Chatham’s industrial pulse is strong: infrastructure fixes and city workshops highlight stability and smart governance. For CRE owners and investors, this means opportunity. Explore detailed market analytics and site selection guidance with PIER Commercial Real Estate. Full story at piercommercial.com. Read the full story: https://www.piercommercial.com/",
+      "hashtags": [
+        "#SavannahIndustrial",
+        "#CRE",
+        "#IndustrialRealEstate",
+        "#MarketPulse",
+        "#PIERCommercial"
+      ],
+      "characterCount": 367
+    }
+  },
+  "providerModes": {
+    "extractor": "ollama",
+    "writer": "cloud"
+  },
+  "published": false,
+  "wordpressDraftUrl": null
+}
