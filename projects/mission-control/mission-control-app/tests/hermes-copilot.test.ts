@@ -147,6 +147,9 @@ test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued ac
   assert.match(clientSource, /agent\.wait/);
   assert.match(clientSource, /chat\.history/);
   assert.match(clientSource, /copilot-exec/);
+  assert.match(clientSource, /DEFAULT_PUBLIC_COPILOT_ORIGIN/);
+  assert.match(clientSource, /OPENCLAW_COPILOT_EXEC_URL/);
+  assert.match(clientSource, /process\.env\.VERCEL/);
   assert.match(routeSource, /getCopilotHistoryFromRequestBody/);
   assert.match(routeSource, /history/);
   assert.match(clientSource, /history/);

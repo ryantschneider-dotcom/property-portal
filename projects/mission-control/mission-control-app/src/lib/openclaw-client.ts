@@ -1,11 +1,29 @@
 import type { CopilotMessage } from "@/lib/hermes-copilot";
 
+const DEFAULT_PUBLIC_COPILOT_ORIGIN = "https://openclaw-copilot.ryans-ai-lab.com";
+
+function publicCopilotOrigin() {
+  return (process.env.OPENCLAW_GATEWAY_ORIGIN || DEFAULT_PUBLIC_COPILOT_ORIGIN).trim().replace(/\/$/, "");
+}
+
 function gatewayWsUrl() {
-  return (process.env.OPENCLAW_GATEWAY_WS_URL || process.env.OPENCLAW_GATEWAY_URL || "ws://127.0.0.1:18789").trim();
+  const configured = (process.env.OPENCLAW_GATEWAY_WS_URL || process.env.OPENCLAW_GATEWAY_URL || "").trim();
+  if (configured) return configured;
+  if (process.env.VERCEL) return `${publicCopilotOrigin().replace(/^http/i, "ws")}`;
+  return "ws://127.0.0.1:18789";
 }
 
 function gatewayHttpUrl() {
-  return (process.env.OPENCLAW_GATEWAY_HTTP_URL || process.env.OPENCLAW_GATEWAY_PUBLIC_URL || "http://127.0.0.1:18789").trim().replace(/\/$/, "");
+  const configured = (process.env.OPENCLAW_GATEWAY_HTTP_URL || process.env.OPENCLAW_GATEWAY_PUBLIC_URL || "").trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (process.env.VERCEL) return publicCopilotOrigin();
+  return "http://127.0.0.1:18789";
+}
+
+function copilotExecUrl() {
+  const configured = (process.env.OPENCLAW_COPILOT_EXEC_URL || "").trim();
+  if (configured) return configured.replace(/\/$/, "");
+  return `${gatewayHttpUrl()}/copilot-exec`;
 }
 
 export async function getOpenClawHealth(timeoutMs = 5000) {
@@ -115,7 +133,7 @@ async function sendViaMacMiniExecutor(message: string, options: OpenClawChatOpti
   const timeoutMs = options.timeoutMs ?? 55000;
   const timer = setTimeout(() => controller.abort(), timeoutMs + 5000);
   try {
-    const response = await fetch(`${gatewayHttpUrl()}/copilot-exec`, {
+    const response = await fetch(copilotExecUrl(), {
       method: "POST",
       cache: "no-store",
       signal: controller.signal,
