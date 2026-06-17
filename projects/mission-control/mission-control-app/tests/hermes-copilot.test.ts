@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import {
   buildCopilotPrompt,
+  buildMasterConsolePrompt,
   copilotSlashCommands,
   createCopilotAssistantFallback,
   getCopilotHistoryFromRequestBody,
@@ -79,6 +80,21 @@ test("Hermes Co-Pilot /site prompt hardcodes the native ListingStream TypeScript
   assert.match(prompt, /12 West State Street/);
 });
 
+test("Master Co-Pilot prompt uses concierge persona across life and operations domains", () => {
+  const prompt = buildMasterConsolePrompt("Plan a broad Shopify and PIER operations sprint", [
+    { id: "u1", role: "user", content: "I need a better week", createdAt: "2026-06-17T00:00:00.000Z" },
+  ]);
+
+  assert.match(prompt, /high-end hotel concierge/i);
+  assert.match(prompt, /PIER Commercial Real Estate/);
+  assert.match(prompt, /personal life logistics/);
+  assert.match(prompt, /Shopify management/);
+  assert.match(prompt, /independent app development/);
+  assert.match(prompt, /ask concise multi-turn clarifying questions/i);
+  assert.match(prompt, /execute autonomously/i);
+  assert.match(prompt, /Active Master Console conversation context/);
+});
+
 test("Hermes Co-Pilot strips internal reasoning tags before rendering", () => {
   const dirty = "Before\n<think>I should not be visible\nwith multiple lines</think>\n<tool>{\"secret\":true}</tool>\nAfter <final>parcel data</final> done";
   const clean = stripReasoningTags(dirty);
@@ -133,8 +149,11 @@ test("Hermes Co-Pilot API remains stateless on Vercel and never imports the disk
   assert.doesNotMatch(routeSource, /readStore|writeStore|pushActivityEvent/);
 });
 
-test("Hermes Co-Pilot browser console file is deleted with the stripped widget UI", () => {
-  assert.equal(readFileSync("src/app/hermes-co-pilot/page.tsx", "utf8").includes("redirect(\"/\")"), true);
+test("Master Co-Pilot Console route is active after the stripped widget UI", () => {
+  const page = readFileSync("src/app/master-console/page.tsx", "utf8");
+  const legacyPage = readFileSync("src/app/hermes-co-pilot/page.tsx", "utf8");
+  assert.match(page, /MasterCopilotConsole/);
+  assert.equal(legacyPage.includes("redirect(\"/\")"), true);
 });
 
 test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued acknowledgement", () => {

@@ -1,3 +1,5 @@
+export type CopilotConsoleMode = "mission" | "master";
+
 export type CopilotAttachment = {
   id: string;
   name: string;
@@ -112,6 +114,15 @@ function formatCopilotAttachmentContext(attachments: CopilotAttachment[]) {
     return `${index + 1}. ${attachment.name} (${attachment.contentType}, ${attachment.size} bytes): ${attachment.url}.${imageHint}`;
   });
   return `\n\nAttached Mission Control files:\n${lines.join("\n")}\nUse these active URLs/data as first-class context. If an attachment is an image or screenshot, analyze the visual evidence before asking Ryan to describe it manually.`;
+}
+
+export function buildMasterConsolePrompt(args: string, history: CopilotMessage[], attachments: CopilotAttachment[] = []) {
+  const recentContext = history.slice(-18).map((message) => `${message.role.toUpperCase()}: ${message.content}`).join("\n");
+  const contextBlock = recentContext ? `\n\nActive Master Console conversation context:\n${recentContext}` : "";
+  const attachmentContext = formatCopilotAttachmentContext(attachments);
+  const request = args.trim() || "Review the current command-center context and recommend the next best action.";
+
+  return `You are Ryan's Master Co-Pilot Console: a proactive, high-end hotel concierge and autonomous operations chief wired to local OpenClaw tools.\n\nOperating domains: PIER Commercial Real Estate, personal life logistics, Shopify management, independent app development, local Mac mini operations, files, schedules, research, and workflow execution.\n\nInteraction model:\n- If the request is broad, ambiguous, preference-dependent, or missing material constraints, ask concise multi-turn clarifying questions first. Ask only the questions needed to safely define parameters, preferences, scope, timing, budget, destination, identity, files, or success criteria.\n- If the request is specific enough, execute autonomously with the available tools immediately and return the completed result.\n- Act like a polished concierge: anticipate next steps, protect Ryan's time, state assumptions, and surface blockers without exposing internal planning or chain-of-thought.\n- For PIER work, preserve ListingStream/Mission Control safety rules, public/private data boundaries, and PIER brand standards.\n- For app development, inspect the codebase, write files, test, commit, push, and deploy when explicitly requested.\n- For personal logistics, establish missing preferences before booking-like execution or irreversible changes.\n\nRyan's request:\n${request}${contextBlock}${attachmentContext}`;
 }
 
 export function buildCopilotPrompt(command: CopilotCommandName | null, args: string, history: CopilotMessage[], attachments: CopilotAttachment[] = []) {

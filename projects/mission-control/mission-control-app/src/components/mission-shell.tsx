@@ -24,6 +24,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
     title: "Mission Control",
     items: [
       { href: "/", label: "Executive Dashboard", match: "exact" },
+      { href: "/master-console", label: "Master Co-Pilot Console", match: "prefix" },
       { href: "/pier-manager", label: "PIER Manager", match: "prefix" },
       { href: "/offering-summaries", label: "Offering Summaries", match: "prefix" },
       { href: "/listing-agreements", label: "Listing Agreements", match: "prefix" },

@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
 import {
   buildCopilotPrompt,
+  buildMasterConsolePrompt,
+  CopilotConsoleMode,
   CopilotMessage,
   createCopilotAssistantFallback,
   getCopilotHistoryFromRequestBody,
@@ -90,16 +92,17 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await requireAuth();
-    const body = (await request.json().catch(() => ({}))) as { message?: unknown; history?: unknown; copilotMessages?: unknown; attachments?: unknown };
+    const body = (await request.json().catch(() => ({}))) as { message?: unknown; history?: unknown; copilotMessages?: unknown; attachments?: unknown; consoleMode?: unknown };
     const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
     if (!rawMessage) return NextResponse.json({ error: "message is required" }, { status: 400 });
+    const consoleMode: CopilotConsoleMode = body.consoleMode === "master" ? "master" : "mission";
 
     const parsed = parseCopilotCommand(rawMessage);
     const history = getCopilotHistoryFromRequestBody(body);
     const attachments = normalizeCopilotAttachments(body.attachments);
     const userMessage = makeMessage("user", rawMessage, parsed.command, "sent");
     if (attachments.length) userMessage.attachments = attachments;
-    const basePrompt = buildCopilotPrompt(parsed.command, parsed.args, history, attachments);
+    const basePrompt = consoleMode === "master" ? buildMasterConsolePrompt(rawMessage, history, attachments) : buildCopilotPrompt(parsed.command, parsed.args, history, attachments);
     const vision = await analyzeCopilotImageAttachments({
       message: rawMessage,
       history,
