@@ -20,6 +20,15 @@ export type BrokerEditInterpreterResult = {
   lifecycleAction?: "archive" | "delete";
 };
 
+type BrokerEditInterpreterFetch = typeof fetch;
+
+export type BrokerEditInterpreterOptions = {
+  fetchImpl?: BrokerEditInterpreterFetch;
+  provider?: "openai" | "gemini";
+  model?: string;
+  timeoutMs?: number;
+};
+
 function asRecord(value: unknown): UnknownRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as UnknownRecord) : {};
 }
@@ -499,7 +508,7 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
   return { suites: nextSuites, changed: true, messages };
 }
 
-export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>, instructions: string): BrokerEditInterpreterResult {
+function interpretBrokerEditRequestDeterministic(rawProperty: Record<string, unknown>, instructions: string): BrokerEditInterpreterResult {
   const pricing = asRecord(rawProperty.pricing);
   const content = asRecord(rawProperty.content);
   const admin = asRecord(rawProperty.admin);
@@ -666,3 +675,218 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
 
   return { summary, flags, confidence, updatePayload, ...(lifecycleAction ? { lifecycleAction } : {}) };
 }
+
+
+function safeJson(value: unknown) {
+  return JSON.stringify(value, null, 2);
+}
+
+function parseBrokerEditInterpreterJson(content: string): BrokerEditInterpreterResult {
+  const text = asString(content);
+  if (!text) throw new Error("Frontier broker-edit-interpreter returned an empty response.");
+  const candidates = [text];
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  if (fenced) candidates.push(fenced);
+  const objectStart = text.indexOf("{");
+  const objectEnd = text.lastIndexOf("}");
+  if (objectStart >= 0 && objectEnd > objectStart) candidates.push(text.slice(objectStart, objectEnd + 1));
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = asRecord(JSON.parse(candidate));
+      return normalizeInterpreterResult(parsed);
+    } catch {
+      // Try the next JSON extraction strategy.
+    }
+  }
+  throw new Error("Frontier broker-edit-interpreter returned invalid JSON.");
+}
+
+function normalizeInterpreterResult(value: UnknownRecord): BrokerEditInterpreterResult {
+  const confidence = value.confidence === "high" || value.confidence === "medium" || value.confidence === "low" ? value.confidence : "low";
+  const lifecycle = value.lifecycleAction === "archive" || value.lifecycleAction === "delete" ? value.lifecycleAction : undefined;
+  return {
+    summary: Array.isArray(value.summary) ? value.summary.map(asString).filter(Boolean) : [],
+    flags: Array.isArray(value.flags) ? value.flags.map(asString).filter(Boolean) : [],
+    confidence,
+    updatePayload: asRecord(value.updatePayload),
+    ...(lifecycle ? { lifecycleAction: lifecycle } : {}),
+  };
+}
+
+function buildFrontierBrokerEditPrompt(rawProperty: Record<string, unknown>, instructions: string) {
+  return `You are the frontier reasoning engine for PIER Manager ListingStream revision drafts. Return STRICT JSON only in this exact TypeScript-compatible shape:
+{
+  "summary": ["broker-safe summary strings"],
+  "flags": [],
+  "confidence": "high" | "medium" | "low",
+  "updatePayload": { "pricing": {}, "property": {}, "content": {}, "admin": { "suites": [] } },
+  "lifecycleAction": "archive" | "delete" // omit unless explicitly requested for the whole listing
+}
+
+Critical rules:
+- Use high-reasoning semantic matching over brittle regex. Map fuzzy broker language to the exact current listing objects.
+- If the broker says to capitalize, rename, correct, or change suite h to H, update admin.suites so the resulting suiteNumber is exactly "H" (uppercase H), never "a" and never lowercase "h".
+- If the broker says to delete/remove the null-data/no-data/blank suite literally named "space", remove the suite row whose suiteNumber is exactly "space" even though "space" is also a generic real-estate noun.
+- Preserve every suite not explicitly removed. When updating admin.suites, return the full resulting suites array, not a partial array.
+- Recalculate pricing.availableSqFt as the sum of remaining numeric suite availableSqFt values and pricing.suiteNumbers as a comma-separated list of remaining suiteNumber values when suites change.
+- Whole-listing archive/delete is only for explicit listing/property removal, not suite row removal.
+- Do not invent facts. If the instruction cannot be safely mapped, return confidence "low" with flags and no unsafe mutation.
+
+Current ListingStream payload:
+${safeJson(rawProperty)}
+
+Broker instruction:
+${instructions}`;
+}
+
+function withInterpreterTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timer = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error("Frontier broker-edit-interpreter timed out while mapping the ListingStream revision.")), timeoutMs);
+  });
+  return Promise.race([promise, timer]).finally(() => {
+    if (timeout) clearTimeout(timeout);
+  });
+}
+
+function getOpenAiKey() {
+  return asString(process.env.PIER_MANAGER_INTERPRETER_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY);
+}
+
+function getGeminiKey() {
+  return asString(process.env.PIER_MANAGER_INTERPRETER_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+}
+
+function pickInterpreterProvider(options: BrokerEditInterpreterOptions) {
+  if (options.provider) return options.provider;
+  if (getOpenAiKey()) return "openai";
+  if (getGeminiKey()) return "gemini";
+  return "openai";
+}
+
+async function callOpenAiInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
+  const apiKey = getOpenAiKey();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is required for the frontier broker-edit-interpreter.");
+  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_MODEL || process.env.OPENAI_MODEL) || "gpt-4.1";
+  const normalizedModel = model.startsWith("openai/") ? model.slice("openai/".length) : model;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: normalizedModel,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, and self-verification before output." },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Frontier broker-edit-interpreter failed (${response.status}): ${text.slice(0, 600)}`);
+  const payload = JSON.parse(text) as Record<string, unknown>;
+  return parseBrokerEditInterpreterJson(asString((payload.choices as Array<{ message?: { content?: string } }> | undefined)?.[0]?.message?.content));
+}
+
+async function callGeminiInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
+  const apiKey = getGeminiKey();
+  if (!apiKey) throw new Error("GEMINI_API_KEY is required for the frontier broker-edit-interpreter.");
+  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_MODEL || process.env.GEMINI_MODEL) || "gemini-2.5-pro";
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      generationConfig: { temperature: 0, responseMimeType: "application/json" },
+      contents: [{ role: "user", parts: [{ text: `Return strict JSON only. ${prompt}` }] }],
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Frontier broker-edit-interpreter failed (${response.status}): ${text.slice(0, 600)}`);
+  const payload = JSON.parse(text) as Record<string, unknown>;
+  const candidate = (((payload.candidates as Array<{ content?: { parts?: Array<{ text?: string }> } }> | undefined)?.[0]?.content?.parts) ?? [])
+    .map((part) => asString(part.text))
+    .join("\n");
+  return parseBrokerEditInterpreterJson(candidate);
+}
+
+function deepMergeForVerification(...records: Record<string, unknown>[]) {
+  const output: Record<string, unknown> = {};
+  for (const record of records) {
+    for (const [key, value] of Object.entries(record)) {
+      const existing = output[key];
+      if (asRecord(existing) === existing && asRecord(value) === value) output[key] = deepMergeForVerification(existing as Record<string, unknown>, value as Record<string, unknown>);
+      else output[key] = value;
+    }
+  }
+  return output;
+}
+
+function suiteRowsForVerification(value: Record<string, unknown>) {
+  const admin = asRecord(value.admin);
+  return Array.isArray(admin.suites) ? admin.suites.map((suite) => asRecord(suite)) : [];
+}
+
+function suiteLabelForVerification(value: unknown) {
+  return asString(asRecord(value).suiteNumber || asRecord(value).suite || asRecord(value).name);
+}
+
+function suiteHasDataForVerification(value: UnknownRecord) {
+  return Boolean(
+    asString(value.availableSqFt)
+      || asString(value.baseRent)
+      || asString(value.rentType)
+      || asString(value.spaceType)
+      || asString(value.suiteNotes || value.notes || value.description)
+      || (Array.isArray(value.suitePhotos) && value.suitePhotos.length)
+      || (Array.isArray(value.suiteFloorPlans) && value.suiteFloorPlans.length),
+  );
+}
+
+function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, instructions: string, result: BrokerEditInterpreterResult) {
+  const after = deepMergeForVerification(rawProperty, result.updatePayload);
+  const afterSuites = suiteRowsForVerification(after);
+  const failures: string[] = [];
+
+  const rename = instructions.match(/\b(?:change|rename|update|correct|capitalize)\s+(?:the\s+)?(?:suite|space|unit)\s+([A-Za-z0-9-]+)\s+(?:to|as|into)\s+([A-Za-z0-9-]+)\b/i);
+  if (rename?.[1] && rename?.[2]) {
+    const from = rename[1].trim();
+    const to = rename[2].trim();
+    const hasExactTarget = afterSuites.some((suite) => suiteLabelForVerification(suite) === to);
+    const hasExactSource = from !== to && afterSuites.some((suite) => suiteLabelForVerification(suite) === from);
+    if (!hasExactTarget || hasExactSource) failures.push(`Frontier cross-check failed: expected Suite ${from} to become exact suiteNumber "${to}".`);
+  }
+
+  const namedRemoval = instructions.match(/\b(?:remove|delete|drop|clear)\s+(?:the\s+)?(?:null-data|no-data|empty|blank)?\s*(?:suite|space|unit|row|one)\s+(?:literally\s+)?(?:named\s+|called\s+)?["“']?([A-Za-z0-9-]+)["”']?\b/i)
+    || instructions.match(/\b(?:remove|delete|drop|clear)[\s\S]{0,120}?\b(?:named|called)\s+["“']?([A-Za-z0-9-]+)["”']?/i);
+  if (namedRemoval?.[1]) {
+    const target = namedRemoval[1].trim();
+    if (afterSuites.some((suite) => suiteLabelForVerification(suite).toLowerCase() === target.toLowerCase())) failures.push(`Frontier cross-check failed: expected suite row named "${target}" to be removed.`);
+  }
+
+  const removesEmptySuite = /\b(?:remove|delete|drop|clear)\b/i.test(instructions)
+    && /\b(?:null-data|no\s+data|empty|blank|mistake|accidental|one\s+with\s+no\s+data)\b/i.test(instructions)
+    && /\b(?:suite|space|unit|row|one)\b/i.test(instructions);
+  if (removesEmptySuite) {
+    const remainingEmpty = afterSuites.filter((suite) => !suiteHasDataForVerification(suite));
+    if (remainingEmpty.length) failures.push(`Frontier cross-check failed: expected no-data suite rows to be removed, but ${remainingEmpty.map(suiteLabelForVerification).filter(Boolean).join(", ") || "an unnamed suite"} remains.`);
+  }
+
+  if (failures.length) throw new Error(failures.join(" "));
+}
+
+export async function interpretBrokerEditRequest(rawProperty: Record<string, unknown>, instructions: string, options: BrokerEditInterpreterOptions = {}): Promise<BrokerEditInterpreterResult> {
+  const prompt = buildFrontierBrokerEditPrompt(rawProperty, instructions);
+  const provider = pickInterpreterProvider(options);
+  const timeoutMs = options.timeoutMs ?? Number(process.env.PIER_MANAGER_INTERPRETER_TIMEOUT_MS ?? 45_000);
+  const result = await withInterpreterTimeout(
+    provider === "gemini" ? callGeminiInterpreter(prompt, options) : callOpenAiInterpreter(prompt, options),
+    timeoutMs,
+  );
+  verifyFrontierInterpreterResult(rawProperty, instructions, result);
+  return result;
+}
+
+export { interpretBrokerEditRequestDeterministic };

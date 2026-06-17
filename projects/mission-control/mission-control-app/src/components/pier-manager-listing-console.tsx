@@ -933,8 +933,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setToastMessage("");
     const isOmRevision = options.source === "om-revision";
     setModificationStatus(isOmRevision
-      ? "Routing OM revision request through the ListingStream review draft flow before regenerating the Offering Memorandum…"
-      : "AI is analyzing property data... Fetching the current portal payload and drafting premium marketing copy from your delta...");
+      ? "Routing OM revision through the frontier ListingStream interpreter, then preparing the Offering Memorandum review draft…"
+      : "Frontier revision engine is mapping the broker instruction, cross-checking the JSON payload, and drafting premium copy without publishing…");
     try {
       const data = (await fetchJsonWithTimeout("/api/listingstream/ai-draft", {
         method: "POST",

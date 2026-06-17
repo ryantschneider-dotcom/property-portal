@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+import { interpretBrokerEditRequest, interpretBrokerEditRequestDeterministic } from "../src/lib/broker-edit-interpreter";
 import { normalizeIncomingBrokerReviewDraft } from "../src/lib/broker-review-draft-normalizer";
 import {
   buildBrokerReviewState,
@@ -13,6 +14,101 @@ import {
   reviseBrokerReviewDraft,
   type PropertyPortalCloudWriter,
 } from "../src/lib/property-portal-ai";
+
+const deterministicInterpreter = async (currentListing: Record<string, unknown>, instructions: string) => interpretBrokerEditRequestDeterministic(currentListing, instructions);
+process.env.OPENAI_API_KEY ||= "test-openai-key";
+
+
+test("frontier broker-edit-interpreter preserves exact suite capitalization h to H", async () => {
+  const calls: string[] = [];
+  const fakeFetch = async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push(String(url));
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    assert.match(JSON.stringify(body), /capitalize/i);
+    return Response.json({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            summary: ["Renamed Suite h to H using frontier semantic mapping."],
+            flags: [],
+            confidence: "high",
+            updatePayload: {
+              admin: { suites: [{ suiteNumber: "H", availableSqFt: "1200", baseRent: "22", rentType: "NNN" }] },
+              pricing: { availableSqFt: 1200, suiteNumbers: "H" },
+            },
+          }),
+        },
+      }],
+    });
+  };
+
+  const result = await interpretBrokerEditRequest(
+    { visibility: { transactionLabel: "For Lease" }, admin: { suites: [{ suiteNumber: "h", availableSqFt: "1200", baseRent: "22", rentType: "NNN" }] } },
+    "capitalize suite h to H",
+    { provider: "openai", model: "gpt-4.1", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+  );
+
+  const suites = ((result.updatePayload.admin as Record<string, unknown>).suites as Array<Record<string, unknown>>);
+  assert.equal(calls[0], "https://api.openai.com/v1/chat/completions");
+  assert.equal(suites[0].suiteNumber, "H");
+});
+
+test("frontier broker-edit-interpreter deletes null-data suite literally named space", async () => {
+  const fakeFetch = async () => Response.json({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          summary: ["Removed the null-data suite literally named space."],
+          flags: [],
+          confidence: "high",
+          updatePayload: {
+            admin: { suites: [{ suiteNumber: "A", availableSqFt: "1400", baseRent: "24", rentType: "NNN" }] },
+            pricing: { availableSqFt: 1400, suiteNumbers: "A" },
+          },
+        }),
+      },
+    }],
+  });
+
+  const result = await interpretBrokerEditRequest(
+    {
+      visibility: { transactionLabel: "For Lease" },
+      admin: { suites: [
+        { suiteNumber: "A", availableSqFt: "1400", baseRent: "24", rentType: "NNN" },
+        { suiteNumber: "space", availableSqFt: "", baseRent: "", rentType: "" },
+      ] },
+    },
+    "delete the null-data suite literally named space",
+    { provider: "openai", model: "gpt-4.1", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+  );
+
+  const suites = ((result.updatePayload.admin as Record<string, unknown>).suites as Array<Record<string, unknown>>);
+  assert.deepEqual(suites.map((suite) => suite.suiteNumber), ["A"]);
+});
+
+test("frontier broker-edit-interpreter blocks results that fail exact requested casing", async () => {
+  const fakeFetch = async () => Response.json({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          summary: ["Renamed Suite h."],
+          flags: [],
+          confidence: "high",
+          updatePayload: { admin: { suites: [{ suiteNumber: "a", availableSqFt: "1200", baseRent: "22", rentType: "NNN" }] } },
+        }),
+      },
+    }],
+  });
+
+  await assert.rejects(
+    () => interpretBrokerEditRequest(
+      { admin: { suites: [{ suiteNumber: "h", availableSqFt: "1200", baseRent: "22", rentType: "NNN" }] } },
+      "capitalize suite h to H",
+      { provider: "openai", model: "gpt-4.1", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+    ),
+    /expected Suite h to become exact suiteNumber "H"/,
+  );
+});
 
 test("broker review draft normalizer preserves review rendering for partial graphic-design AI output", () => {
   const draft = normalizeIncomingBrokerReviewDraft(
@@ -190,6 +286,7 @@ test("modification interpreter mutates structured fields before AI copy refineme
     propertyIdOrSlug: "2812-williams-street",
     instructions: "Suite 100 is leased. Change Suite 200 rent to $22/SF. Update zoning to IL.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "2812-williams-street",
       visibility: { transactionLabel: "For Lease" },
@@ -230,6 +327,7 @@ test("plain-English add-suite instructions create nested suite rows instead of o
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Add Suite A with 2,400 SF at $22/SF NNN.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "parrott-plaza",
       title: "Parrott Plaza",
@@ -265,6 +363,7 @@ test("plain-English suite updates extract explicit Available Sq. Ft. and Rent Ra
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Add Suite C. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month plus utilities.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "parrott-plaza",
       title: "Parrott Plaza",
@@ -298,6 +397,7 @@ test("semantic suite instruction capitalizes suite h to H and self-verifies befo
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Change suite h to H.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "parrott-plaza",
       visibility: { transactionLabel: "For Lease" },
@@ -335,6 +435,7 @@ test("semantic suite instruction removes mistaken no-data suite without low conf
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Remove the suite put in by mistake with no data.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "parrott-plaza",
       visibility: { transactionLabel: "For Lease" },
@@ -374,6 +475,7 @@ test("partial suite use-type updates preserve unmentioned suites", async () => {
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Change the use type on Suite M to storage.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "parrott-plaza",
       visibility: { transactionLabel: "For Lease" },
@@ -415,6 +517,7 @@ test("plain-English suite instructions extract architectural space type into nes
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Add Suite D as a warehouse storage suite with 4,000 SF at $12/SF NNN.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "parrott-plaza",
       title: "Parrott Plaza",
@@ -443,6 +546,7 @@ test("plain-English status changes produce ListingStream status fields before AI
     propertyIdOrSlug: "12-west-state-street",
     instructions: "Change this property to Leased.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "12-west-state-street",
       title: "12 West State Street",
@@ -492,6 +596,7 @@ test("plain-English archive modification creates high-confidence lifecycle revie
     propertyIdOrSlug: "3-mall-ter",
     instructions: "remove this listing and archive it",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json({
       slug: "3-mall-ter",
       title: "3 Mall Ter",
@@ -512,14 +617,14 @@ test("plain-English archive modification creates high-confidence lifecycle revie
 });
 
 test("polite archive and removal instructions remain high-confidence lifecycle requests", async () => {
-  const { interpretBrokerEditRequest } = await import("../src/lib/broker-edit-interpreter");
+  const { interpretBrokerEditRequestDeterministic } = await import("../src/lib/broker-edit-interpreter");
   for (const instructions of [
     "please remove this listing and archive it",
     "please take this listing down and archive it",
     "pull this property from the live site",
     "delist this listing from public listings",
   ]) {
-    const result = interpretBrokerEditRequest({ title: "3 Mall Ter", visibility: { transactionLabel: "For Sale" } }, instructions);
+    const result = interpretBrokerEditRequestDeterministic({ title: "3 Mall Ter", visibility: { transactionLabel: "For Sale" } }, instructions);
     assert.equal(result.confidence, "high", instructions);
     assert.equal(result.lifecycleAction, "archive", instructions);
     assert.deepEqual(result.updatePayload.lifecycle, { action: "archive", requestedByPlainEnglish: true });
@@ -527,8 +632,8 @@ test("polite archive and removal instructions remain high-confidence lifecycle r
 });
 
 test("suite removal or replacement instructions do not become archive lifecycle requests", async () => {
-  const { interpretBrokerEditRequest } = await import("../src/lib/broker-edit-interpreter");
-  const result = interpretBrokerEditRequest(
+  const { interpretBrokerEditRequestDeterministic } = await import("../src/lib/broker-edit-interpreter");
+  const result = interpretBrokerEditRequestDeterministic(
     {
       title: "Parrott Plaza",
       visibility: { transactionLabel: "For Lease" },
@@ -610,6 +715,7 @@ test("deterministic suite parser overwrites duplicated AI suite arrays and prese
     propertyIdOrSlug: "parrott-plaza",
     instructions: "Update Suite M. Available Sq. Ft.: 1,900. Rent Rate: $1,900/month.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
@@ -640,6 +746,7 @@ test("modification AI draft fetches current listing from property-portal before 
     propertyIdOrSlug: "2812-williams-street",
     instructions: "Add new TPO roof and drop asking rate to $22/SF.",
     baseUrl: "https://portal.example.com",
+    interpreter: deterministicInterpreter,
     fetchImpl: async (url) => {
       calls.push(String(url));
       return Response.json({ slug: "2812-williams-street", content: { saleDescription: "Existing description" } });

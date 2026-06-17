@@ -1,4 +1,4 @@
-import { interpretBrokerEditRequest, type BrokerEditInterpreterResult } from "@/lib/broker-edit-interpreter";
+import { interpretBrokerEditRequest, type BrokerEditInterpreterOptions, type BrokerEditInterpreterResult } from "@/lib/broker-edit-interpreter";
 import { buildPropertyPortalUrl, type PropertyPortalFetch, withPropertyPortalTimeout } from "@/lib/property-portal-client";
 
 export type PropertyPortalAiWriterResult = {
@@ -462,9 +462,13 @@ export async function createModificationReviewDraft(input: {
   baseUrl?: string;
   fetchImpl?: PropertyPortalFetch;
   writer?: PropertyPortalCloudWriter;
+  interpreter?: (currentListing: Record<string, unknown>, instructions: string) => Promise<BrokerEditInterpreterResult>;
+  interpreterOptions?: BrokerEditInterpreterOptions;
 }) {
   const currentListing = await fetchPropertyPortalListing(input);
-  const interpreter = interpretBrokerEditRequest(currentListing, input.instructions);
+  const interpreter = input.interpreter
+    ? await input.interpreter(currentListing, input.instructions)
+    : await interpretBrokerEditRequest(currentListing, input.instructions, input.interpreterOptions);
   const currentTitle = asString(currentListing.title) || asString((currentListing.content as Record<string, unknown> | undefined)?.saleTitle) || input.propertyIdOrSlug;
 
   if (interpreter.lifecycleAction) {

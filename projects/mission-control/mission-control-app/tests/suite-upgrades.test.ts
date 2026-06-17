@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { createModificationReviewDraft, buildModificationDeltaPrompt, type PropertyPortalCloudWriter } from "../src/lib/property-portal-ai";
+import { interpretBrokerEditRequestDeterministic } from "../src/lib/broker-edit-interpreter";
 import { buildPropertyPortalApprovedPayload } from "../src/lib/property-portal-client";
+
+const deterministicInterpreter = async (current: Record<string, unknown>, instructions: string) => interpretBrokerEditRequestDeterministic(current, instructions);
 
 const currentListing = {
   slug: "42-west-montgomery-cross-road",
@@ -36,6 +39,7 @@ test("suite parser extracts explicit lease type and suite notes without inventin
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "42-west-montgomery-cross-road",
     instructions: "Change Suite P lease type to Modified Gross. Suite notes: ideal for a showroom user with direct storefront access.",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
@@ -60,6 +64,7 @@ test("new suite parser leaves lease type blank when broker omits it", async () =
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "42-west-montgomery-cross-road",
     instructions: "Add Suite X with 800 SF at $1,250/month. Suite notes: small office suite near the main entry.",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
@@ -82,6 +87,7 @@ test("suite notes parser rewrites conversational broker instructions as public-f
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "42-west-montgomery-cross-road",
     instructions: "Please add a description under suite M that says the space is 100% storage with overhead drive-in rollup door and pedestrian door.",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
@@ -104,6 +110,7 @@ test("suite notes parser treats broker 'space' wording as a suite update and rew
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "42-west-montgomery-cross-road",
     instructions: "I need a description under space P that says this suite has a clean retail showroom up front with storage in the back.",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
@@ -126,6 +133,7 @@ test("suite notes parser preserves verbatim copy only when broker explicitly ask
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "42-west-montgomery-cross-road",
     instructions: "For suite M, put this in exactly: 100% STORAGE - broker to verify door sizes",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
@@ -163,6 +171,7 @@ test("suite floor plan file-only instructions produce high-confidence structured
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "42-west-montgomery-cross-road",
     instructions: "Attach the uploaded PDF floor plan to Suite P.",
+    interpreter: deterministicInterpreter,
     fetchImpl: async () => Response.json(currentListing),
     writer,
   });
