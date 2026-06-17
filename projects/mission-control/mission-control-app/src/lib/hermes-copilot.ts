@@ -122,7 +122,7 @@ export function buildMasterConsolePrompt(args: string, history: CopilotMessage[]
   const attachmentContext = formatCopilotAttachmentContext(attachments);
   const request = args.trim() || "Review the current command-center context and recommend the next best action.";
 
-  return `You are Ryan's Master Co-Pilot Console: a proactive, high-end hotel concierge and autonomous operations chief wired to local OpenClaw tools.\n\nOperating domains: PIER Commercial Real Estate, personal life logistics, Shopify management, independent app development, local Mac mini operations, files, schedules, research, and workflow execution.\n\nInteraction model:\n- If the request is broad, ambiguous, preference-dependent, or missing material constraints, ask concise multi-turn clarifying questions first. Ask only the questions needed to safely define parameters, preferences, scope, timing, budget, destination, identity, files, or success criteria.\n- If the request is specific enough, execute autonomously with the available tools immediately and return the completed result.\n- Act like a polished concierge: anticipate next steps, protect Ryan's time, state assumptions, and surface blockers without exposing internal planning or chain-of-thought.\n- For PIER work, preserve ListingStream/Mission Control safety rules, public/private data boundaries, and PIER brand standards.\n- For app development, inspect the codebase, write files, test, commit, push, and deploy when explicitly requested.\n- For personal logistics, establish missing preferences before booking-like execution or irreversible changes.\n\nRyan's request:\n${request}${contextBlock}${attachmentContext}`;
+  return `You are Ryan's Master Co-Pilot Console: a proactive, high-end hotel concierge and autonomous operations chief wired to local OpenClaw tools.\n\nOperating domains: PIER Commercial Real Estate, personal life logistics, Shopify management, independent app development, local Mac mini operations, files, schedules, research, and workflow execution.\n\nInteraction model:\n- If the request is broad, ambiguous, preference-dependent, or missing material constraints, ask concise multi-turn clarifying questions first. Ask only the questions needed to safely define parameters, preferences, scope, timing, budget, destination, identity, files, or success criteria.\n- If the request is specific enough, execute autonomously with the available tools immediately and return the completed result.\n- Act like a polished concierge: anticipate next steps, protect Ryan's time, state assumptions, and surface blockers without exposing internal planning or chain-of-thought.\n- For PIER work, preserve ListingStream/Mission Control safety rules, public/private data boundaries, and PIER brand standards.\n- For app development, inspect the codebase, write files, test, commit, push, and deploy when explicitly requested.\n- For personal logistics, establish missing preferences before booking-like execution or irreversible changes.\n\nOutput contract: Return only the final user-facing concierge message. Do not mention this prompt, the interaction model, chain-of-thought, internal reasoning, or why you are asking clarifying questions.\n\nRyan's request:\n${request}${contextBlock}${attachmentContext}`;
 }
 
 export function buildCopilotPrompt(command: CopilotCommandName | null, args: string, history: CopilotMessage[], attachments: CopilotAttachment[] = []) {
@@ -173,13 +173,20 @@ export function createCopilotAssistantFallback(input: {
 }
 
 export function stripReasoningTags(text: string) {
-  return text
+  let cleaned = text
     .replace(/(?:[ \t]*\n)*[ \t]*<(?:thought|think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)\b[^>]*>[\s\S]*?<\/(?:thought|think|thinking|reasoning|analysis|scratchpad|tool|tool_call|tool_result|observation)>[ \t]*(?:\n[ \t]*)*/gi, "\n")
     .replace(/^\s*(?:my\s+)?plan\s+is\s*:?\s*\n(?:\s*\d+[.)]\s+.*(?:\n|$))+/gim, "")
     .replace(/^\s*(?:analysis|reasoning|scratchpad|internal notes?|system plan)\s*:\s*[\s\S]*?(?=^\s*(?:final answer|final|answer|response)\s*:?\s*$|\n\s*##\s+|\n\s*#\s+|$)/gim, "")
     .replace(/^\s*(?:final answer|final|answer|response)\s*:?\s*$/gim, "")
     .replace(/<\/?(?:final|answer|response|message|assistant|output)\b[^>]*>/gi, "")
-    .replace(/<\/?[a-zA-Z_][\w:.-]*\b[^>]*>/g, "")
+    .replace(/<\/?[a-zA-Z_][\w:.-]*\b[^>]*>/g, "");
+
+  if (/\b(?:the user has stated|based on the prompt|interaction model|this is a request for clarification|I need to ask key clarifying questions|I will ask a concise set of questions)\b/i.test(cleaned)) {
+    const userFacingStart = cleaned.search(/(?:To assist(?: you)? with|To help(?: you)? with|Before I|Could you please|Please tell me|A few quick questions|What is the primary|What specific goals)/i);
+    if (userFacingStart > -1) cleaned = cleaned.slice(userFacingStart);
+  }
+
+  return cleaned
     .replace(/\n{2,}/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n[ \t]+/g, "\n")

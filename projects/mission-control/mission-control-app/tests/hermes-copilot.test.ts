@@ -91,8 +91,23 @@ test("Master Co-Pilot prompt uses concierge persona across life and operations d
   assert.match(prompt, /Shopify management/);
   assert.match(prompt, /independent app development/);
   assert.match(prompt, /ask concise multi-turn clarifying questions/i);
-  assert.match(prompt, /execute autonomously/i);
+  assert.match(prompt, /Output contract: Return only the final user-facing concierge message/);
   assert.match(prompt, /Active Master Console conversation context/);
+});
+
+test("Master Co-Pilot sanitizer removes prompt-analysis preamble from clarifying questions", () => {
+  const dirty = `The user has stated: "Help me plan a broad personal logistics request."
+This is a request for clarification before execution.
+Based on the prompt's "Interaction model": ask questions first.
+I will ask a concise set of questions to narrow down the request without narrating my internal thought process. To assist with your personal logistics, could you please tell me:
+* What is the primary area you'd like assistance with?
+* What specific outcome do you want?
+* What is the desired timeframe?`;
+  const clean = stripReasoningTags(dirty);
+
+  assert.doesNotMatch(clean, /The user has stated|Based on the prompt|Interaction model|internal thought process/);
+  assert.match(clean, /To assist with your personal logistics/);
+  assert.match(clean, /desired timeframe/);
 });
 
 test("Hermes Co-Pilot strips internal reasoning tags before rendering", () => {

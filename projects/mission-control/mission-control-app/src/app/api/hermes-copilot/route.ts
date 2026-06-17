@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     const [backend, action, openClaw] = await Promise.all([
       getOpenClawHealth(3000),
       runCopilotAction(parsed.command, parsed.args),
-      sendOpenClawChat(prompt, { sessionKey: "main", timeoutMs: vision?.ok ? 22000 : 55000, history }),
+      sendOpenClawChat(prompt, { sessionKey: consoleMode === "master" ? "master-console" : "main", timeoutMs: vision?.ok ? 22000 : 55000, history }),
     ]);
 
     const sanitizedOpenClawText = openClaw.ok ? stripReasoningTags(openClaw.text || "") : "";
