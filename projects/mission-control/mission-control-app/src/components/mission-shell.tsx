@@ -174,8 +174,8 @@ export async function MissionShell({
           </>
         )}
 
-        <main className="flex min-w-0 flex-col">
-          <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/85 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5">
+        <main className="flex h-screen min-w-0 flex-col overflow-hidden">
+          <header className="sticky top-0 z-20 flex-none border-b border-zinc-200/80 bg-white/85 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5">
             <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.26em] text-[#CB521E]">
@@ -224,7 +224,7 @@ export async function MissionShell({
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-4 lg:p-5 xl:p-6">{children}</div>
+          <div className="min-h-0 flex-1 overflow-auto p-4 lg:p-5 xl:p-6">{children}</div>
         </main>
 
         {!isBroker && (

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { stripReasoningTags } from "../src/lib/hermes-copilot";
+import { buildMasterConsolePrompt, containsMasterConsoleDelegationRefusal, stripReasoningTags } from "../src/lib/hermes-copilot";
 
 const shellSource = () => readFileSync("src/components/mission-shell.tsx", "utf8");
 const pageSource = () => readFileSync("src/app/master-console/page.tsx", "utf8");
@@ -51,4 +51,26 @@ test("Co-Pilot backend route sanitizes assistant output before both message and 
   assert.match(source, /const sanitizedOpenClawText = openClaw\.ok \? stripReasoningTags\(openClaw\.text/);
   assert.match(source, /openClaw: sanitizedOpenClaw/);
   assert.match(source, /makeMessage\("assistant", assistantContent/);
+});
+
+test("Master Console layout uses an unobstructed flex viewport below the sticky header", () => {
+  const shell = shellSource();
+  const component = readFileSync("src/components/master-copilot-console.tsx", "utf8");
+
+  assert.match(shell, /flex h-screen min-w-0 flex-col overflow-hidden/);
+  assert.match(shell, /min-h-0 flex-1 overflow-auto/);
+  assert.match(component, /grid h-full min-h-0/);
+  assert.match(component, /flex min-h-0 flex-col overflow-hidden/);
+  assert.match(component, /min-h-0 flex-1 overflow-y-auto/);
+});
+
+test("Master Console prompt and retry guard prioritize autonomous web research over referral-only refusals", () => {
+  const prompt = buildMasterConsolePrompt("Plan a trip to Florence next month", []);
+  const route = readFileSync("src/app/api/hermes-copilot/route.ts", "utf8");
+
+  assert.match(prompt, /MUST invoke available web-search\/scraping\/research tools/);
+  assert.match(prompt, /strictly forbidden from responding with referral-only language/);
+  assert.equal(containsMasterConsoleDelegationRefusal("I don't have direct access to real-time travel pricing, so I recommend checking a travel website."), true);
+  assert.match(route, /containsMasterConsoleDelegationRefusal/);
+  assert.match(route, /buildMasterConsoleToolRetryPrompt/);
 });

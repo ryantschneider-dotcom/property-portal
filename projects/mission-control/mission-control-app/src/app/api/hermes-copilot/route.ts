@@ -5,6 +5,8 @@ import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
 import {
   buildCopilotPrompt,
   buildMasterConsolePrompt,
+  buildMasterConsoleToolRetryPrompt,
+  containsMasterConsoleDelegationRefusal,
   CopilotConsoleMode,
   CopilotMessage,
   createCopilotAssistantFallback,
@@ -112,11 +114,23 @@ export async function POST(request: Request) {
     const prompt = vision?.ok
       ? `${basePrompt}\n\nMultimodal vision analysis already performed on the attached image(s):\n${vision.text}\n\nUse this visual analysis as verified evidence when answering. Return a complete final response now; do not merely acknowledge receipt.`
       : basePrompt;
-    const [backend, action, openClaw] = await Promise.all([
+    const [backend, action, openClawInitial] = await Promise.all([
       getOpenClawHealth(3000),
       runCopilotAction(parsed.command, parsed.args),
       sendOpenClawChat(prompt, { sessionKey: consoleMode === "master" ? "master-console" : "main", timeoutMs: vision?.ok ? 22000 : 55000, history }),
     ]);
+
+    let openClaw = openClawInitial;
+    if (consoleMode === "master" && openClaw.ok) {
+      const firstPassText = stripReasoningTags(openClaw.text || "");
+      if (containsMasterConsoleDelegationRefusal(firstPassText)) {
+        openClaw = await sendOpenClawChat(buildMasterConsoleToolRetryPrompt(prompt, firstPassText), {
+          sessionKey: "master-console",
+          timeoutMs: 55000,
+          history,
+        });
+      }
+    }
 
     const sanitizedOpenClawText = openClaw.ok ? stripReasoningTags(openClaw.text || "") : "";
     const sanitizedOpenClaw = openClaw.ok ? { ...openClaw, text: sanitizedOpenClawText } : openClaw;

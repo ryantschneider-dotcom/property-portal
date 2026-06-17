@@ -92,9 +92,9 @@ export function MasterCopilotConsole() {
   }
 
   return (
-    <div className="grid min-h-[calc(100vh-154px)] gap-5 xl:grid-cols-[minmax(0,1.55fr)_420px] 2xl:grid-cols-[minmax(0,1.7fr)_460px]">
-      <section className="flex min-h-[720px] flex-col overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm">
-        <div className="border-b border-zinc-200 bg-zinc-950 p-5 text-white lg:p-6">
+    <div className="grid h-full min-h-0 gap-5 xl:grid-cols-[minmax(0,1.55fr)_420px] 2xl:grid-cols-[minmax(0,1.7fr)_460px]">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm">
+        <div className="flex-none border-b border-zinc-200 bg-zinc-950 p-5 text-white lg:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.28em] text-[#f6a87f]">Autonomous concierge node</p>
@@ -111,7 +111,7 @@ export function MasterCopilotConsole() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-[#f6f4f1] p-4 lg:p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#f6f4f1] p-4 lg:p-5">
           <div className="space-y-4">
             {messages.map((message) => (
               <article key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -149,7 +149,7 @@ export function MasterCopilotConsole() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="border-t border-zinc-200 bg-white p-4 lg:p-5">
+        <form onSubmit={handleSubmit} className="flex-none border-t border-zinc-200 bg-white p-4 lg:p-5">
           {error ? <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
           <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-3 focus-within:border-[#CB521E]/40 focus-within:ring-2 focus-within:ring-[#CB521E]/10">
             <textarea
@@ -175,7 +175,7 @@ export function MasterCopilotConsole() {
         </form>
       </section>
 
-      <aside className="space-y-4">
+      <aside className="min-h-0 space-y-4 overflow-y-auto pb-1">
         <section className="rounded-[2rem] border border-zinc-200 bg-white p-5 shadow-sm">
           <p className="text-[11px] uppercase tracking-[0.24em] text-[#CB521E]">Operating lanes</p>
           <div className="mt-4 grid gap-3">
