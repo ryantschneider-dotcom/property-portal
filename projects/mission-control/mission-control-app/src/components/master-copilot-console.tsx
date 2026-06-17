@@ -21,6 +21,10 @@ const operatingLanes = [
 
 const fileStructures = ["/Users/macclaw/projects", "/Users/macclaw/listingstream-portal", "/Users/macclaw/.openclaw", "/Users/macclaw/.hermes"];
 
+const MASTER_CONSOLE_VIEWPORT_CLEARANCE_CLASS =
+  "grid h-full min-h-0 min-h-[calc(100dvh-11rem)] scroll-mt-40 gap-5 pb-2 xl:grid-cols-[minmax(0,1.55fr)_420px] 2xl:grid-cols-[minmax(0,1.7fr)_460px]";
+const MASTER_CONSOLE_CHAT_CARD_CLASS = "flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm";
+
 function createLocalMessage(role: "user" | "assistant", content: string, status: CopilotMessage["status"] = "ok"): CopilotMessage {
   return {
     id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
@@ -92,8 +96,8 @@ export function MasterCopilotConsole() {
   }
 
   return (
-    <div className="grid h-full min-h-0 gap-5 xl:grid-cols-[minmax(0,1.55fr)_420px] 2xl:grid-cols-[minmax(0,1.7fr)_460px]">
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm">
+    <div className={MASTER_CONSOLE_VIEWPORT_CLEARANCE_CLASS}>
+      <section className={MASTER_CONSOLE_CHAT_CARD_CLASS}>
         <div className="flex-none border-b border-zinc-200 bg-zinc-950 p-5 text-white lg:p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div>
@@ -143,7 +147,7 @@ export function MasterCopilotConsole() {
             ))}
             {isSending ? (
               <div className="rounded-3xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 shadow-sm">
-                OpenClaw is working through the request. If the scope is broad, expect concise clarifying questions before execution.
+                OpenClaw is executing the request through available tools. If a blocker remains after tool attempts, I will return the concrete blocker and next action.
               </div>
             ) : null}
           </div>
@@ -162,7 +166,7 @@ export function MasterCopilotConsole() {
               className="min-h-28 w-full resize-y bg-transparent px-2 py-2 text-base leading-7 text-zinc-950 outline-none placeholder:text-zinc-400"
             />
             <div className="flex flex-col gap-3 border-t border-zinc-200 pt-3 md:flex-row md:items-center md:justify-between">
-              <p className="text-xs text-zinc-500">Press ⌘/Ctrl + Enter to send. Broad requests trigger clarifying questions before execution.</p>
+              <p className="text-xs text-zinc-500">Press ⌘/Ctrl + Enter to send. Specific requests route to OpenClaw execution tools before any fallback answer.</p>
               <button
                 type="submit"
                 disabled={isSending || !draft.trim()}

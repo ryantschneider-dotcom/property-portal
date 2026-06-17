@@ -58,6 +58,10 @@ const postureItems = [
   "No client-facing access",
 ];
 
+const MASTER_CONSOLE_SHELL_CLASS = "flex h-screen min-w-0 flex-col overflow-hidden h-dvh";
+const MASTER_CONSOLE_HEADER_CLASS = "relative z-20 flex-none border-b border-zinc-200/80 bg-white/95 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5";
+const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 overflow-auto px-4 pb-4 pt-6 lg:px-5 lg:pb-5 lg:pt-6 xl:px-6 xl:pb-6 xl:pt-7";
+
 
 function getBrokerDisplayName(brokerId?: string | null) {
   if (brokerId === "joel") return "Joel Boblasky";
@@ -174,8 +178,8 @@ export async function MissionShell({
           </>
         )}
 
-        <main className="flex h-screen min-w-0 flex-col overflow-hidden">
-          <header className="sticky top-0 z-20 flex-none border-b border-zinc-200/80 bg-white/85 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5">
+        <main className={MASTER_CONSOLE_SHELL_CLASS}>
+          <header className={MASTER_CONSOLE_HEADER_CLASS}>
             <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.26em] text-[#CB521E]">
@@ -224,7 +228,7 @@ export async function MissionShell({
             </div>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-auto p-4 lg:p-5 xl:p-6">{children}</div>
+          <div className={MASTER_CONSOLE_HEADER_CLEARANCE_CLASS}>{children}</div>
         </main>
 
         {!isBroker && (
