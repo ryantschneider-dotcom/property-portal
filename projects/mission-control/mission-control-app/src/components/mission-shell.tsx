@@ -3,7 +3,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { ReactNode } from "react";
 import { ActivityStream } from "@/components/activity-stream";
-import { HermesCopilotDrawer } from "@/components/hermes-copilot-drawer";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ViewAsBrokerControl } from "@/components/view-as-broker-control";
 import { AUTH_COOKIE, getAuthSession } from "@/lib/auth";
@@ -39,7 +38,6 @@ const navGroups: { title: string; items: NavItem[] }[] = [
       { href: "/tools", label: "AI Tools", match: "prefix" },
       { href: "/workflows", label: "Workflows", match: "prefix" },
       { href: "/uploads", label: "Uploads", match: "prefix" },
-      { href: "/chat", label: "Hermes Co-Pilot", match: "prefix" },
     ],
   },
   {
@@ -90,7 +88,6 @@ export async function MissionShell({
   const activeBrokerId = session?.brokerId ?? "ryan";
   const activeBrokerName = getBrokerDisplayName(activeBrokerId);
   const visibleActions = isBroker ? [] : actions;
-  const showFloatingCopilot = !isBroker && currentPath !== "/hermes-co-pilot";
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -100,11 +97,11 @@ export async function MissionShell({
 
   return (
     <div className="min-h-screen bg-[#f6f4f1] text-zinc-950">
-      <div className={`grid min-h-screen ${isBroker ? "grid-cols-1" : "lg:grid-cols-[258px_1fr] 2xl:grid-cols-[258px_minmax(0,1fr)_300px]"}`}>
+      <div className={`grid min-h-screen ${isBroker ? "grid-cols-1" : "lg:grid-cols-[238px_1fr] 2xl:grid-cols-[280px_minmax(0,1fr)_300px]"}`}>
         {!isBroker && (
           <>
           <aside className="border-r border-white/10 bg-zinc-950 text-white lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto">
-          <div className="p-4">
+          <div className="p-3">
             <Link href="/" className="block rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-sm backdrop-blur transition hover:bg-white/[0.06]">
               <div className="rounded-2xl bg-[#1a1a1a] p-3 ring-1 ring-white/10">
                 <Image
@@ -125,7 +122,7 @@ export async function MissionShell({
               </p>
             </Link>
 
-            <nav className="mt-5 space-y-5">
+            <nav className="mt-4 space-y-4">
               {navGroups.map((group) => (
                 <div key={group.title}>
                   <p className="mb-2 px-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
@@ -177,14 +174,14 @@ export async function MissionShell({
         )}
 
         <main className="flex min-w-0 flex-col">
-          <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/85 px-5 py-4 shadow-sm backdrop-blur-xl lg:px-7">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <header className="sticky top-0 z-20 border-b border-zinc-200/80 bg-white/85 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.26em] text-[#CB521E]">
                   PIER Commercial Mission Control
                 </p>
-                <h2 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950 md:text-4xl">{title}</h2>
-                <p className="mt-2 max-w-4xl text-sm leading-6 text-zinc-600">{subtitle}</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">{title}</h2>
+                <p className="mt-1 max-w-4xl text-sm leading-5 text-zinc-600">{subtitle}</p>
               </div>
 
               <div className="flex flex-col gap-3 xl:items-end">
@@ -207,18 +204,18 @@ export async function MissionShell({
                   <SignOutButton />
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-                  <span className="rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-3 py-1 text-[#CB521E]">
+                  <span className="rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-2.5 py-0.5 text-[#CB521E]">
                     {today}
                   </span>
-                  <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-emerald-700">
+                  <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-2.5 py-0.5 text-emerald-700">
                     {isBroker ? "Broker Listing Console" : "private system online"}
                   </span>
                   {isMaster ? (
-                    <span className="rounded-full border border-[#CB521E]/30 bg-[#CB521E]/10 px-3 py-1 text-[#CB521E]">
+                    <span className="rounded-full border border-[#CB521E]/30 bg-[#CB521E]/10 px-2.5 py-0.5 text-[#CB521E]">
                       Impersonation Mode: Viewing as {activeBrokerName}
                     </span>
                   ) : null}
-                  <span className="rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1">
+                  <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-0.5">
                     local-first records
                   </span>
                 </div>
@@ -226,13 +223,13 @@ export async function MissionShell({
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto p-5 lg:p-7 xl:p-8">{children}</div>
+          <div className="flex-1 overflow-auto p-4 lg:p-5 xl:p-6">{children}</div>
         </main>
 
         {!isBroker && (
-        <aside className="hidden border-l border-zinc-200/80 bg-white/80 p-4 backdrop-blur 2xl:block">
-          <div className="sticky top-4 space-y-4">
-            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <aside className="hidden border-l border-zinc-200/80 bg-white/80 p-3 backdrop-blur 2xl:block">
+          <div className="sticky top-3 space-y-3">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
               <p className="text-[10px] uppercase tracking-[0.24em] text-[#CB521E]">
                 Live activity
               </p>
@@ -241,7 +238,7 @@ export async function MissionShell({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm">
               <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
                 Quick jump
               </p>
@@ -266,7 +263,6 @@ export async function MissionShell({
           </div>
         </aside>
         )}
-        {showFloatingCopilot && <HermesCopilotDrawer />}
       </div>
     </div>
   );

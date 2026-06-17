@@ -1,39 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { buildCopilotPrompt, normalizeCopilotAttachments } from "../src/lib/hermes-copilot";
 
-const drawerSource = () => readFileSync("src/components/hermes-copilot-drawer.tsx", "utf8");
 const routeSource = () => readFileSync("src/app/api/hermes-copilot/route.ts", "utf8");
 const attachmentRouteSource = () => readFileSync("src/app/api/hermes-copilot/attachments/route.ts", "utf8");
 
-test("Hermes Co-Pilot composer captures pasted screenshots, dropped files, and manual attachments", () => {
-  const source = drawerSource();
-
-  assert.match(source, /onPaste=\{handlePaste\}/);
-  assert.match(source, /onDrop=\{handleDrop\}/);
-  assert.match(source, /onDragOver=\{handleDragOver\}/);
-  assert.match(source, /type="file"/);
-  assert.match(source, /aria-label="Attach files to Hermes Co-Pilot"/);
-  assert.match(source, /accept="image\/\*,application\/pdf,text\/plain,text\/csv,application\/json/);
-  assert.match(source, /URL\.createObjectURL/);
-  assert.match(source, /attachmentPreviews/);
-  assert.match(source, /min-h-\[44px\]/);
-});
-
-test("Hermes Co-Pilot uploads attachments directly before send and forwards URLs into the chat request", () => {
-  const source = drawerSource();
-
-  assert.match(source, /fetch\("\/api\/hermes-copilot\/attachments"/);
-  assert.match(source, /prepareDirectUpload/);
-  assert.match(source, /signedUpload\.uploadUrl/);
-  assert.match(source, /method:\s*"PUT"/);
-  assert.match(source, /body:\s*attachment\.file/);
-  assert.doesNotMatch(source, /new FormData\(\)/);
-  assert.match(source, /attachments: uploadedAttachments/);
-  assert.match(source, /copilotMessages: requestHistory/);
-  assert.match(source, /pendingAttachments/);
+test("Hermes Co-Pilot media widget UI has been physically deleted", () => {
+  assert.equal(existsSync("src/components/hermes-copilot-drawer.tsx"), false);
+  assert.equal(existsSync("src/components/hermes-copilot-console.tsx"), false);
 });
 
 test("Hermes Co-Pilot attachment route uses authenticated signed Firebase storage URLs with file limits", () => {

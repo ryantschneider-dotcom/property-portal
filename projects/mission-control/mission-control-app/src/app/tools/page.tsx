@@ -17,7 +17,6 @@ export default async function ToolsPage({
       currentPath="/tools"
       actions={[
         { href: "/projects", label: "Open projects", tone: "primary" },
-        { href: "/chat", label: "AI action" },
         { href: "/uploads", label: "Upload file", tone: "ghost" },
       ]}
     >

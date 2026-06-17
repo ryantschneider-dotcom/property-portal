@@ -6,26 +6,23 @@ import { stripReasoningTags } from "../src/lib/hermes-copilot";
 
 const shellSource = () => readFileSync("src/components/mission-shell.tsx", "utf8");
 const pageSource = () => readFileSync("src/app/hermes-co-pilot/page.tsx", "utf8");
-const drawerSource = () => readFileSync("src/components/hermes-copilot-drawer.tsx", "utf8");
+const chatSource = () => readFileSync("src/app/chat/page.tsx", "utf8");
 
-test("Hermes Co-Pilot page uses the full-page master console instead of the stale static console", () => {
+test("Hermes Co-Pilot routes redirect back to the dashboard instead of rendering a widget", () => {
   const page = pageSource();
-  const drawer = drawerSource();
+  const chat = chatSource();
 
-  assert.match(page, /HermesCopilotMasterConsole/);
-  assert.doesNotMatch(page, /HermesCopilotConsole/);
-  assert.match(drawer, /variant=\"page\"/);
-  assert.match(drawer, /Hermes Co-Pilot master console/);
-  assert.match(drawer, /min-h-\[calc\(100vh-190px\)\]/);
-  assert.match(drawer, /sm:grid-cols-3/);
+  assert.match(page, /redirect\("\/"\)/);
+  assert.match(chat, /redirect\("\/"\)/);
+  assert.doesNotMatch(page, /HermesCopilotMasterConsole|HermesCopilotConsole/);
 });
 
-test("MissionShell suppresses the floating Co-Pilot widget on the dedicated Co-Pilot page", () => {
+test("MissionShell has no floating Co-Pilot widget suppression branch because the widget is gone", () => {
   const source = shellSource();
 
-  assert.match(source, /currentPath !== "\/hermes-co-pilot"/);
-  assert.match(source, /showFloatingCopilot/);
-  assert.match(source, /showFloatingCopilot && <HermesCopilotDrawer/);
+  assert.doesNotMatch(source, /currentPath !== "\/hermes-co-pilot"/);
+  assert.doesNotMatch(source, /showFloatingCopilot/);
+  assert.doesNotMatch(source, /HermesCopilotDrawer/);
 });
 
 test("Co-Pilot output sanitizer removes thought tags, internal plans, and meta-analysis before rendering", () => {

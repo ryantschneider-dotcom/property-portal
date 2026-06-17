@@ -1,34 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const shellSource = () => readFileSync("src/components/mission-shell.tsx", "utf8");
-const drawerSource = () => readFileSync("src/components/hermes-copilot-drawer.tsx", "utf8");
 
-test("MissionShell mounts a native Hermes Co-Pilot drawer globally", () => {
+test("MissionShell permanently omits the native Hermes Co-Pilot drawer widget", () => {
   const source = shellSource();
 
-  assert.match(source, /HermesCopilotDrawer/);
-  assert.match(source, /@\/components\/hermes-copilot-drawer/);
-  assert.match(source, /<HermesCopilotDrawer\s*\/>/);
+  assert.doesNotMatch(source, /HermesCopilotDrawer/);
+  assert.doesNotMatch(source, /@\/components\/hermes-copilot-drawer/);
+  assert.doesNotMatch(source, /showFloatingCopilot/);
+  assert.doesNotMatch(source, /<HermesCopilotDrawer\s*\/>/);
 });
 
-test("Hermes Co-Pilot drawer keeps Telegram as the permanent out-of-band backup", () => {
-  const source = drawerSource();
-
-  assert.match(source, /Telegram channel remains the permanent out-of-band backup/i);
-  assert.match(source, /Out-of-band backup/i);
-  assert.match(source, /Telegram/i);
+test("Hermes Co-Pilot widget component files are physically deleted", () => {
+  assert.equal(existsSync("src/components/hermes-copilot-drawer.tsx"), false);
+  assert.equal(existsSync("src/components/hermes-copilot-console.tsx"), false);
 });
 
-test("Hermes Co-Pilot drawer is a mobile-first fixed chat interface backed by the existing API", () => {
-  const source = drawerSource();
+test("Mission Control navigation no longer exposes chat or Co-Pilot links", () => {
+  const source = shellSource();
 
-  assert.match(source, /fixed inset-x-3 bottom-3/i);
-  assert.match(source, /sm:inset-auto sm:bottom-5 sm:right-5/i);
-  assert.match(source, /fetch\("\/api\/hermes-copilot"/);
-  assert.match(source, /localStorage/);
-  assert.match(source, /copilotMessages/);
-  assert.match(source, /aria-label="Open Hermes Co-Pilot chat"/);
-  assert.match(source, /aria-label="Close Hermes Co-Pilot chat"/);
+  assert.doesNotMatch(source, /Hermes Co-Pilot/);
+  assert.doesNotMatch(source, /\/chat/);
+  assert.doesNotMatch(source, /\/hermes-co-pilot/);
 });

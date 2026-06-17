@@ -133,11 +133,8 @@ test("Hermes Co-Pilot API remains stateless on Vercel and never imports the disk
   assert.doesNotMatch(routeSource, /readStore|writeStore|pushActivityEvent/);
 });
 
-test("Hermes Co-Pilot browser console owns durable chat history in localStorage", () => {
-  const componentSource = readFileSync("src/components/hermes-copilot-console.tsx", "utf8");
-
-  assert.match(componentSource, /localStorage/);
-  assert.match(componentSource, /copilotMessages|hermes-copilot/);
+test("Hermes Co-Pilot browser console file is deleted with the stripped widget UI", () => {
+  assert.equal(readFileSync("src/app/hermes-co-pilot/page.tsx", "utf8").includes("redirect(\"/\")"), true);
 });
 
 test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued acknowledgement", () => {

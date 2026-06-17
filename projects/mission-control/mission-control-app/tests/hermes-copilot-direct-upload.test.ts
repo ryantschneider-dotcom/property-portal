@@ -1,21 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
-const drawerSource = () => readFileSync("src/components/hermes-copilot-drawer.tsx", "utf8");
 const attachmentRouteSource = () => readFileSync("src/app/api/hermes-copilot/attachments/route.ts", "utf8");
 const storageSource = () => readFileSync("src/lib/mission-control-firebase-storage.ts", "utf8");
 
-test("Co-Pilot browser uses signed upload URLs and never posts raw File/FormData bodies through Vercel", () => {
-  const source = drawerSource();
-
-  assert.match(source, /prepareDirectUpload/i);
-  assert.match(source, /signedUpload\.uploadUrl/);
-  assert.match(source, /method:\s*"PUT"/);
-  assert.match(source, /body:\s*attachment\.file/);
-  assert.match(source, /"content-type":\s*"application\/json"/);
-  assert.doesNotMatch(source, /new FormData\(\)/);
-  assert.doesNotMatch(source, /formData\.append\("files"/);
+test("Co-Pilot browser upload widget file has been deleted with the rest of the UI widget", () => {
+  assert.equal(existsSync("src/components/hermes-copilot-drawer.tsx"), false);
 });
 
 test("Co-Pilot attachment route only signs metadata and does not parse multipart form data", () => {

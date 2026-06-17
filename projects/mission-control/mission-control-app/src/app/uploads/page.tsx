@@ -15,7 +15,6 @@ export default async function UploadsPage({
       actions={[
         { href: "/projects", label: "Open projects", tone: "primary" },
         { href: "/tools", label: "Run tool" },
-        { href: "/chat", label: "AI action", tone: "ghost" },
       ]}
     >
       <UploadWorkspace initialProjectId={project} />
