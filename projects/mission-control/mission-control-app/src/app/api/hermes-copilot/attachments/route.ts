@@ -12,6 +12,7 @@ const MAX_COPILOT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_COPILOT_ATTACHMENTS = 8;
 const ALLOWED_COPILOT_ATTACHMENT_TYPES = [
   /^image\//,
+  /^video\//,
   /^application\/pdf$/,
   /^text\//,
   /^application\/json$/,
@@ -39,7 +40,7 @@ async function requireAuth() {
 
 function isAllowedCopilotAttachment(file: { name: string; type: string }) {
   const type = file.type || "application/octet-stream";
-  return ALLOWED_COPILOT_ATTACHMENT_TYPES.some((pattern) => pattern.test(type)) || /\.(png|jpe?g|gif|webp|pdf|txt|csv|json|docx?|xlsx?|pptx?)$/i.test(file.name || "");
+  return ALLOWED_COPILOT_ATTACHMENT_TYPES.some((pattern) => pattern.test(type)) || /\.(png|jpe?g|gif|webp|mp4|mov|m4v|webm|pdf|txt|csv|json|docx?|xlsx?|pptx?)$/i.test(file.name || "");
 }
 
 function normalizeRequestedFiles(body: AttachmentRequest) {

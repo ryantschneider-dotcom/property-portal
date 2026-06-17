@@ -74,3 +74,22 @@ test("Master Console prompt and retry guard prioritize autonomous web research o
   assert.match(route, /containsMasterConsoleDelegationRefusal/);
   assert.match(route, /buildMasterConsoleToolRetryPrompt/);
 });
+
+test("Master Console prompt inherits Ryan's durable Hermes memory baseline", () => {
+  const prompt = buildMasterConsolePrompt("Find me flights to Florence next month", []);
+
+  assert.match(prompt, /Ryan T\. Schneider/);
+  assert.match(prompt, /Isle of Hope \/ Savannah, Georgia/);
+  assert.match(prompt, /Savannah\/Hilton Head International \(SAV\)/);
+  assert.match(prompt, /do not ask for Ryan's departure city/i);
+});
+
+test("Master Console desktop composer exposes drag-and-drop and attachment upload controls", () => {
+  const component = readFileSync("src/components/master-copilot-console.tsx", "utf8");
+
+  assert.match(component, /onDrop=\{handleDrop\}/);
+  assert.match(component, /fileInputRef/);
+  assert.match(component, /Attach files/);
+  assert.match(component, /\/api\/hermes-copilot\/attachments/);
+  assert.match(component, /attachments: uploadedAttachments/);
+});

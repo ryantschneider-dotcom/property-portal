@@ -72,3 +72,17 @@ test("Hermes Co-Pilot route invokes the multimodal vision layer and falls back t
   assert.match(visionSource, /inlineData/);
   assert.match(visionSource, /fetchFirebaseStorageObject/);
 });
+
+test("Hermes Co-Pilot parses document media into the OpenClaw context window", () => {
+  const source = routeSource();
+  const mediaSource = readFileSync("src/lib/copilot-media.ts", "utf8");
+  const attachmentRoute = attachmentRouteSource();
+
+  assert.match(source, /buildCopilotMediaAttachmentContext/);
+  assert.match(source, /Parsed media\/document context already extracted/);
+  assert.match(source, /mediaContext/);
+  assert.match(mediaSource, /pdfjs-dist\/legacy\/build\/pdf\.mjs/);
+  assert.match(mediaSource, /extractPdfText/);
+  assert.match(mediaSource, /Storage path/);
+  assert.match(attachmentRoute, /\^video\\\//);
+});

@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, KeyboardEvent, useMemo, useRef, useState } from "react";
 
-import type { CopilotMessage } from "@/lib/hermes-copilot";
+import type { CopilotAttachment, CopilotMessage } from "@/lib/hermes-copilot";
 import { renderMarkdownPreview } from "@/lib/hermes-copilot";
 
 const quickStarts = [
@@ -20,6 +20,19 @@ const operatingLanes = [
 ];
 
 const fileStructures = ["/Users/macclaw/projects", "/Users/macclaw/listingstream-portal", "/Users/macclaw/.openclaw", "/Users/macclaw/.hermes"];
+const MAX_PENDING_ATTACHMENTS = 8;
+const ACCEPTED_ATTACHMENT_TYPES = "image/*,video/*,.pdf,.txt,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
+
+type PendingAttachment = {
+  id: string;
+  file: File;
+};
+
+type SignedUpload = CopilotAttachment & {
+  uploadUrl: string;
+  method: "PUT";
+  headers: Record<string, string>;
+};
 
 const MASTER_CONSOLE_VIEWPORT_CLEARANCE_CLASS =
   "grid h-full min-h-0 min-h-[calc(100dvh-11rem)] scroll-mt-40 gap-5 pb-2 xl:grid-cols-[minmax(0,1.55fr)_420px] 2xl:grid-cols-[minmax(0,1.7fr)_460px]";
@@ -45,26 +58,96 @@ export function MasterCopilotConsole() {
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeHistory = useMemo(() => messages.slice(-40), [messages]);
 
+  function addPendingFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList).filter((file) => file.size > 0);
+    if (!files.length) return;
+    setPendingAttachments((current) => {
+      const availableSlots = Math.max(MAX_PENDING_ATTACHMENTS - current.length, 0);
+      const nextFiles = files.slice(0, availableSlots).map((file) => ({
+        id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${file.name}-${Math.random()}`,
+        file,
+      }));
+      if (files.length > availableSlots) setError(`Only ${MAX_PENDING_ATTACHMENTS} files can be attached at once.`);
+      return [...current, ...nextFiles];
+    });
+  }
+
+  function removePendingAttachment(id: string) {
+    setPendingAttachments((current) => current.filter((attachment) => attachment.id !== id));
+  }
+
+  function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) addPendingFiles(event.target.files);
+    event.target.value = "";
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+    if (event.dataTransfer.files) addPendingFiles(event.dataTransfer.files);
+  }
+
+  async function uploadPendingAttachments(): Promise<CopilotAttachment[]> {
+    if (!pendingAttachments.length) return [];
+    setUploadStatus(`Uploading ${pendingAttachments.length} attachment${pendingAttachments.length === 1 ? "" : "s"}…`);
+    const response = await fetch("/api/hermes-copilot/attachments", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        files: pendingAttachments.map(({ file }) => ({ name: file.name, type: file.type || "application/octet-stream", size: file.size })),
+      }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { attachments?: SignedUpload[]; error?: string };
+    if (!response.ok || !Array.isArray(data.attachments)) throw new Error(data.error || `Attachment upload prep returned HTTP ${response.status}`);
+    const uploaded: CopilotAttachment[] = [];
+    for (const [index, signed] of data.attachments.entries()) {
+      const pending = pendingAttachments[index];
+      if (!pending) continue;
+      const upload = await fetch(signed.uploadUrl, {
+        method: signed.method || "PUT",
+        headers: signed.headers,
+        body: pending.file,
+      });
+      if (!upload.ok) throw new Error(`${pending.file.name} upload failed with HTTP ${upload.status}`);
+      const { uploadUrl: _uploadUrl, method: _method, headers: _headers, ...attachment } = signed;
+      uploaded.push(attachment);
+    }
+    return uploaded;
+  }
+
   async function sendMessage(messageText: string) {
     const trimmed = messageText.trim();
-    if (!trimmed || isSending) return;
-    const userMessage = createLocalMessage("user", trimmed, "sent");
+    if ((!trimmed && !pendingAttachments.length) || isSending) return;
+    const attachmentsToSend = pendingAttachments;
+    const outboundText = trimmed || `Please review the attached ${attachmentsToSend.length === 1 ? "file" : "files"}.`;
+    const userMessage = createLocalMessage("user", outboundText, "sent");
+    userMessage.attachments = attachmentsToSend.map(({ file, id }) => ({ id, name: file.name, url: "pending-upload", contentType: file.type || "application/octet-stream", size: file.size }));
     setMessages((current) => [...current, userMessage]);
     setDraft("");
     setError("");
+    setUploadStatus("");
     setIsSending(true);
 
     try {
+      const uploadedAttachments = await uploadPendingAttachments();
+      setMessages((current) => current.map((message) => message.id === userMessage.id ? { ...message, attachments: uploadedAttachments } : message));
+      setPendingAttachments([]);
+      setUploadStatus(uploadedAttachments.length ? "Attachments uploaded and added to context." : "");
       const response = await fetch("/api/hermes-copilot", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          message: trimmed,
+          message: outboundText,
           history: activeHistory,
+          attachments: uploadedAttachments,
           consoleMode: "master",
         }),
       });
@@ -142,6 +225,7 @@ export function MasterCopilotConsole() {
                   ) : (
                     <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
                   )}
+                  {message.attachments?.length ? <AttachmentManifest attachments={message.attachments} tone={message.role === "user" ? "dark" : "light"} /> : null}
                 </div>
               </article>
             ))}
@@ -155,7 +239,13 @@ export function MasterCopilotConsole() {
 
         <form onSubmit={handleSubmit} className="flex-none border-t border-zinc-200 bg-white p-4 lg:p-5">
           {error ? <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
-          <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-3 focus-within:border-[#CB521E]/40 focus-within:ring-2 focus-within:ring-[#CB521E]/10">
+          {uploadStatus ? <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{uploadStatus}</div> : null}
+          <div
+            onDragOver={(event) => { event.preventDefault(); setIsDragActive(true); }}
+            onDragLeave={() => setIsDragActive(false)}
+            onDrop={handleDrop}
+            className={`rounded-3xl border bg-zinc-50 p-3 focus-within:border-[#CB521E]/40 focus-within:ring-2 focus-within:ring-[#CB521E]/10 ${isDragActive ? "border-[#CB521E] ring-2 ring-[#CB521E]/20" : "border-zinc-200"}`}
+          >
             <textarea
               ref={textareaRef}
               value={draft}
@@ -165,15 +255,38 @@ export function MasterCopilotConsole() {
               placeholder="Hand me the outcome: plan the day, triage PIER work, scope Shopify ops, build an app feature, or ask me the minimum concierge questions first…"
               className="min-h-28 w-full resize-y bg-transparent px-2 py-2 text-base leading-7 text-zinc-950 outline-none placeholder:text-zinc-400"
             />
+            {pendingAttachments.length ? (
+              <div className="mt-2 grid gap-2 border-t border-zinc-200 pt-3 md:grid-cols-2">
+                {pendingAttachments.map(({ id, file }) => (
+                  <div key={id} className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-zinc-900">{file.name}</p>
+                      <p className="text-zinc-500">{file.type || "application/octet-stream"} · {formatFileSize(file.size)}</p>
+                    </div>
+                    <button type="button" onClick={() => removePendingAttachment(id)} className="rounded-full px-2 py-1 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900" aria-label={`Remove ${file.name}`}>×</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <input ref={fileInputRef} type="file" multiple accept={ACCEPTED_ATTACHMENT_TYPES} className="hidden" onChange={handleFileSelection} />
             <div className="flex flex-col gap-3 border-t border-zinc-200 pt-3 md:flex-row md:items-center md:justify-between">
-              <p className="text-xs text-zinc-500">Press ⌘/Ctrl + Enter to send. Specific requests route to OpenClaw execution tools before any fallback answer.</p>
+              <p className="text-xs text-zinc-500">Drag files here or attach PDFs, images, videos, and docs. ⌘/Ctrl + Enter sends to OpenClaw with media context.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-700 shadow-sm transition hover:border-[#CB521E]/40 hover:text-[#CB521E]"
+                >
+                  Attach files
+                </button>
               <button
                 type="submit"
-                disabled={isSending || !draft.trim()}
+                disabled={isSending || (!draft.trim() && !pendingAttachments.length)}
                 className="rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#a94318] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSending ? "Routing…" : "Send to Master Co-Pilot"}
               </button>
+              </div>
             </div>
           </div>
         </form>
@@ -222,6 +335,25 @@ export function MasterCopilotConsole() {
           </p>
         </section>
       </aside>
+    </div>
+  );
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function AttachmentManifest({ attachments, tone }: { attachments: CopilotAttachment[]; tone: "dark" | "light" }) {
+  return (
+    <div className="mt-3 grid gap-2">
+      {attachments.map((attachment) => (
+        <div key={attachment.id} className={`rounded-2xl border px-3 py-2 text-xs ${tone === "dark" ? "border-white/20 bg-white/10 text-white/85" : "border-zinc-200 bg-zinc-50 text-zinc-600"}`}>
+          <p className={`truncate font-semibold ${tone === "dark" ? "text-white" : "text-zinc-900"}`}>{attachment.name}</p>
+          <p>{attachment.contentType} · {formatFileSize(attachment.size)}</p>
+        </div>
+      ))}
     </div>
   );
 }

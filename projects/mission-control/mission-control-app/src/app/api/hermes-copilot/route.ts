@@ -15,6 +15,7 @@ import {
   parseCopilotCommand,
   stripReasoningTags,
 } from "@/lib/hermes-copilot";
+import { buildCopilotMediaAttachmentContext } from "@/lib/copilot-media";
 import { analyzeCopilotImageAttachments } from "@/lib/copilot-vision";
 import { getOpenClawHealth, sendOpenClawChat } from "@/lib/openclaw-client";
 import { buildPropertyPortalUrl, getPropertyPortalInternalHeaders, safePropertyPortalFetch } from "@/lib/property-portal-client";
@@ -105,15 +106,28 @@ export async function POST(request: Request) {
     const userMessage = makeMessage("user", rawMessage, parsed.command, "sent");
     if (attachments.length) userMessage.attachments = attachments;
     const basePrompt = consoleMode === "master" ? buildMasterConsolePrompt(rawMessage, history, attachments) : buildCopilotPrompt(parsed.command, parsed.args, history, attachments);
-    const vision = await analyzeCopilotImageAttachments({
-      message: rawMessage,
-      history,
-      attachments,
-      timeoutMs: 32000,
-    });
+    const [vision, mediaContext] = await Promise.all([
+      analyzeCopilotImageAttachments({
+        message: rawMessage,
+        history,
+        attachments,
+        timeoutMs: 32000,
+      }),
+      buildCopilotMediaAttachmentContext({
+        message: rawMessage,
+        history,
+        attachments,
+        timeoutMs: 32000,
+      }),
+    ]);
+    const mediaPromptContext = mediaContext?.ok
+      ? `\n\nParsed media/document context already extracted from the uploaded files:\n${mediaContext.text}\n\nUse this extracted lease/document/media context as verified evidence before asking Ryan to summarize or re-upload anything.`
+      : mediaContext?.error
+        ? `\n\nMedia/document parser note: ${mediaContext.error}. Attachment URLs and storage paths are still available in the prompt; use OpenClaw tools to inspect them before asking Ryan to describe them.`
+        : "";
     const prompt = vision?.ok
-      ? `${basePrompt}\n\nMultimodal vision analysis already performed on the attached image(s):\n${vision.text}\n\nUse this visual analysis as verified evidence when answering. Return a complete final response now; do not merely acknowledge receipt.`
-      : basePrompt;
+      ? `${basePrompt}${mediaPromptContext}\n\nMultimodal vision analysis already performed on the attached image(s):\n${vision.text}\n\nUse this visual analysis as verified evidence when answering. Return a complete final response now; do not merely acknowledge receipt.`
+      : `${basePrompt}${mediaPromptContext}`;
     const [backend, action, openClawInitial] = await Promise.all([
       getOpenClawHealth(3000),
       runCopilotAction(parsed.command, parsed.args),
@@ -141,7 +155,7 @@ export async function POST(request: Request) {
 
     const messages = [...history, userMessage, assistantMessage].slice(-80);
 
-    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, vision, openClaw: sanitizedOpenClaw });
+    return NextResponse.json({ ok: true, messages, assistant: assistantMessage, backend, action, vision, mediaContext, openClaw: sanitizedOpenClaw });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to send Co-Pilot message" }, { status: 500 });
