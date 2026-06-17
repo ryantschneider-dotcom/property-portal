@@ -293,6 +293,82 @@ test("plain-English suite updates extract explicit Available Sq. Ft. and Rent Ra
   assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).askingPriceRatePerSf, 1900);
 });
 
+test("semantic suite instruction capitalizes suite h to H and self-verifies before delta preview", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Change suite h to H.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "parrott-plaza",
+      visibility: { transactionLabel: "For Lease" },
+      pricing: { availableSqFt: 3000, suiteNumbers: "h, P" },
+      admin: {
+        suites: [
+          { suiteNumber: "h", availableSqFt: "1100", baseRent: "1100", rentType: "Monthly" },
+          { suiteNumber: "P", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly" },
+        ],
+      },
+    }),
+    writer: async (prompt) => {
+      assert.match(prompt, /semantically map/i);
+      assert.match(prompt, /Change suite h to H/);
+      return {
+        title: "Parrott Plaza",
+        descriptionHtml: "<p>Suite h capitalization corrected.</p>",
+        highlights: ["Suite label corrected"],
+        structuredUpdates: {},
+        mediaNotes: [],
+      };
+    },
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  assert.deepEqual(suites.map((suite) => suite.suiteNumber), ["H", "P"]);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).suiteNumbers, "H, P");
+  assert.match(draft.review.interpreter?.summary.join(" ") ?? "", /Renamed Suite h to H/i);
+  assert.match(JSON.stringify(draft.structuredUpdates.reviewFlags), /Autonomous revision QA passed/);
+  assert.deepEqual(((draft.review.deltaPreview?.after.admin as { suites: Array<Record<string, unknown>> }).suites).map((suite) => suite.suiteNumber), ["H", "P"]);
+});
+
+test("semantic suite instruction removes mistaken no-data suite without low confidence", async () => {
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "parrott-plaza",
+    instructions: "Remove the suite put in by mistake with no data.",
+    baseUrl: "https://portal.example.com",
+    fetchImpl: async () => Response.json({
+      slug: "parrott-plaza",
+      visibility: { transactionLabel: "For Lease" },
+      pricing: { availableSqFt: 3000, suiteNumbers: "M, space, P" },
+      admin: {
+        suites: [
+          { suiteNumber: "M", availableSqFt: "1100", baseRent: "1100", rentType: "Monthly" },
+          { suiteNumber: "space", availableSqFt: "", baseRent: "", rentType: "" },
+          { suiteNumber: "P", availableSqFt: "1900", baseRent: "1900", rentType: "Monthly" },
+        ],
+      },
+    }),
+    writer: async (prompt) => {
+      assert.match(prompt, /current property-portal listing payload/i);
+      assert.match(prompt, /semantic/i);
+      return {
+        title: "Parrott Plaza",
+        descriptionHtml: "<p>Mistaken no-data suite removed.</p>",
+        highlights: ["Suite stack cleaned"],
+        structuredUpdates: {},
+        mediaNotes: [],
+      };
+    },
+  });
+
+  assert.notEqual(draft.review.interpreter?.confidence, "low");
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  assert.deepEqual(suites.map((suite) => suite.suiteNumber), ["M", "P"]);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).availableSqFt, 3000);
+  assert.equal((draft.structuredUpdates.pricing as Record<string, unknown>).suiteNumbers, "M, P");
+  assert.match(draft.review.interpreter?.summary.join(" ") ?? "", /semantically removed Suite space/i);
+  assert.match(JSON.stringify(draft.structuredUpdates.reviewFlags), /Autonomous revision QA passed/);
+});
+
 test("partial suite use-type updates preserve unmentioned suites", async () => {
   const draft = await createModificationReviewDraft({
     propertyIdOrSlug: "parrott-plaza",

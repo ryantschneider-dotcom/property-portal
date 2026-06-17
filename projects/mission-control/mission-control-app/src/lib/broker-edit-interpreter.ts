@@ -329,6 +329,82 @@ function suiteMatches(suite: SuiteRecord, suiteNumber: string) {
   return suite.suiteNumber.toLowerCase() === suiteNumber.toLowerCase();
 }
 
+function hasMeaningfulSuiteData(suite: SuiteRecord) {
+  return Boolean(
+    asString(suite.availableSqFt)
+      || asString(suite.baseRent)
+      || asString(suite.rentType)
+      || asString(suite.spaceType)
+      || asString(suite.suiteNotes)
+      || (Array.isArray(suite.suitePhotos) && suite.suitePhotos.length)
+      || (Array.isArray(suite.suiteFloorPlans) && suite.suiteFloorPlans.length),
+  );
+}
+
+function extractSuiteRenameIntent(instructions: string) {
+  const match = instructions.match(/\b(?:change|rename|update|correct|capitalize)\s+(?:the\s+)?(?:suite|space|unit)\s+([A-Za-z0-9-]+)\s+(?:to|as|into)\s+([A-Za-z0-9-]+)\b/i);
+  if (!match?.[1] || !match?.[2]) return null;
+  return { from: match[1].trim(), to: match[2].trim() };
+}
+
+function instructionTargetsEmptySuite(instructions: string) {
+  return /\b(?:remove|delete|drop|clear)\b/i.test(instructions)
+    && /\b(?:no\s+data|empty|blank|mistake|accidental|put\s+in\s+by\s+mistake|one\s+with\s+no\s+data)\b/i.test(instructions)
+    && /\b(?:suite|space|unit|row|one)\b/i.test(instructions);
+}
+
+function instructionRemovesNamedSuite(instructions: string) {
+  const match = instructions.match(/\b(?:remove|delete|drop|clear)\s+(?:the\s+)?(?:suite|space|unit)\s+(?:named\s+|called\s+)?([A-Za-z0-9-]+)\b/i)
+    || instructions.match(/\b(?:remove|delete|drop|clear)\s+(?:the\s+)?(?:one|row)\s+(?:named\s+|called\s+)([A-Za-z0-9-]+)\b/i);
+  return match?.[1]?.trim() || null;
+}
+
+function applySemanticSuiteMapping(suites: SuiteRecord[], instructions: string) {
+  const messages: string[] = [];
+  const flags: string[] = [];
+  let changed = false;
+  let nextSuites = suites.map((suite) => ({ ...suite }));
+
+  const rename = extractSuiteRenameIntent(instructions);
+  if (rename) {
+    const index = nextSuites.findIndex((suite) => suiteMatches(suite, rename.from));
+    if (index >= 0) {
+      const previous = nextSuites[index].suiteNumber;
+      nextSuites[index] = { ...nextSuites[index], suiteNumber: rename.to };
+      changed = true;
+      messages.push(`Renamed Suite ${previous} to ${rename.to} using semantic instruction mapping.`);
+    } else {
+      flags.push(`Semantic instruction asked to rename Suite ${rename.from}, but no matching suite row was found.`);
+    }
+  }
+
+  const namedRemoval = instructionRemovesNamedSuite(instructions);
+  const removeEmpty = instructionTargetsEmptySuite(instructions);
+  if (namedRemoval || removeEmpty) {
+    const removeIndexes = new Set<number>();
+    if (namedRemoval) {
+      nextSuites.forEach((suite, index) => {
+        if (suiteMatches(suite, namedRemoval)) removeIndexes.add(index);
+      });
+    }
+    if (removeEmpty) {
+      nextSuites.forEach((suite, index) => {
+        if (!hasMeaningfulSuiteData(suite)) removeIndexes.add(index);
+      });
+    }
+    if (removeIndexes.size) {
+      const removedNames = nextSuites.filter((_, index) => removeIndexes.has(index)).map((suite) => suite.suiteNumber || "unnamed");
+      nextSuites = nextSuites.filter((_, index) => !removeIndexes.has(index));
+      changed = true;
+      messages.push(`Semantically removed Suite ${removedNames.join(", ")} from the active suite stack.`);
+    } else if (namedRemoval || removeEmpty) {
+      flags.push("Semantic removal instruction was understood, but no matching named or no-data suite row was found.");
+    }
+  }
+
+  return { suites: nextSuites, changed, messages, flags };
+}
+
 function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructions: string) {
   const suiteIndex = suites.findIndex((suite) => suiteMatches(suite, suiteNumber));
   if (suiteIndex === -1) {
@@ -540,6 +616,15 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   }
 
   const suites = normalizeSuiteRows(admin.suites);
+  const semanticSuiteMapping = suites.length ? applySemanticSuiteMapping(suites, instructions) : { suites, changed: false, messages: [], flags: [] };
+  if (semanticSuiteMapping.changed) {
+    nextAdmin.suites = semanticSuiteMapping.suites;
+    nextPricing.availableSqFt = totalSuiteSqFt(semanticSuiteMapping.suites);
+    nextPricing.suiteNumbers = semanticSuiteMapping.suites.map((suite) => suite.suiteNumber).filter(Boolean).join(", ");
+    summary.push(...semanticSuiteMapping.messages);
+  }
+  if (semanticSuiteMapping.flags.length) flags.push(...semanticSuiteMapping.flags);
+
   const leasedSuite = extractLeasedSuite(instructions);
   if (leasedSuite) {
     if (!suites.length) {
@@ -558,7 +643,7 @@ export function interpretBrokerEditRequest(rawProperty: Record<string, unknown>,
   }
 
   const suiteNumber = extractSuiteNumber(instructions.replace(/suite\s+[A-Za-z0-9-]+\s+(?:is\s+)?leased/gi, ""));
-  if (suiteNumber && (suites.length || shouldAddSuite(instructions))) {
+  if (suiteNumber && (!semanticSuiteMapping.changed || shouldAddSuite(instructions)) && (suites.length || shouldAddSuite(instructions))) {
     const baseSuites = Array.isArray(nextAdmin.suites) ? (nextAdmin.suites as SuiteRecord[]) : suites;
     const suiteUpdate = updateSuiteRecord(baseSuites, suiteNumber, instructions);
     if (suiteUpdate.changed) {

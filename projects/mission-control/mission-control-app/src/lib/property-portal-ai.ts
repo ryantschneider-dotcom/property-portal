@@ -125,6 +125,7 @@ export function buildModificationDeltaPrompt(input: { currentListing: Record<str
 Task:
 - Read the current property-portal listing payload
 - Read the plain-text broker instruction
+- Semantically map fuzzy broker intent to the correct data objects in the current property-portal listing payload before drafting copy
 - Autonomously rewrite the description, update specs, or flag media changes accurately based solely on that delta
 - Preserve unchanged facts from the current listing
 - Never return generic shell text like "AI-drafted listing review" as title or content
@@ -133,7 +134,7 @@ Task:
 - Valid status values are: "leased", "sold", and "under_contract". Matching display labels are: "Leased", "Sold", and "Under Contract"
 - Return only fields that should change in structuredUpdates; unchanged fields are merged by backend from the canonical listing
 - For multi-tenant suite instructions, aggressively extract the broker's exact Available Sq. Ft. and Rent Rate values into structuredUpdates.admin.suites[].availableSqFt and .baseRent. The "Call" fallback is strictly prohibited when the broker supplied a number, including labels like "Available Sq. Ft.: 1,900" or "Rent Rate: $1,900/month".
-- When changing one suite, preserve every existing suite not explicitly mentioned by the broker. Return an admin.suites array that includes all unchanged suites plus the corrected changed suite rows. Only omit/delete suite rows when the broker explicitly says a suite is leased/removed/deleted/dropped, or says to remove/clear all suites. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
+- When changing one suite, semantically match the target suite row even when casing, shorthand, or broker phrasing differs, then preserve every existing suite not explicitly mentioned by the broker. Return an admin.suites array that includes all unchanged suites plus the corrected changed suite rows. Only omit/delete suite rows when the broker explicitly says a suite is leased/removed/deleted/dropped, or says to remove/clear all suites. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
 - For suite-specific uploaded files, never put file descriptions or user-provided labels into URLs. The backend will attach actual Firebase Storage download URLs to suites[].suitePhotos or suites[].suiteFloorPlans; do not place suite floor plans/photos in parent media, photos, heroImageUrl, or listing.photos.
 - For suite rows, extract admin.suites[].spaceType only when the broker explicitly describes a real architectural/use type such as Office, Retail, Industrial, Warehouse, Storage, Flex, Medical Office, Restaurant, or Showroom. Never write "Available Space" as a suite spaceType; omit the field when unstated so ListingStream can inherit root propertyType.
 - For suite rows, actively extract lease type/expense structure into admin.suites[].rentType only when the broker states it (NNN, NN, Gross, Modified Gross, Full Service, Plus Utilities). If no lease type is stated for a suite, omit or preserve the existing rentType; do not invent NNN.
@@ -330,6 +331,70 @@ function applyStructuredUpdates(property: Record<string, unknown>, updates: Reco
   return deepMergeRecords(property, updates);
 }
 
+
+function getSuiteRows(value: Record<string, unknown>) {
+  const admin = normalizeRecord(value.admin);
+  return Array.isArray(admin.suites) ? admin.suites.map((suite) => normalizeRecord(suite)) : [];
+}
+
+function suiteLabel(value: unknown) {
+  return asString(normalizeRecord(value).suiteNumber || normalizeRecord(value).suite || normalizeRecord(value).name);
+}
+
+function suiteHasMeaningfulData(value: Record<string, unknown>) {
+  return Boolean(
+    asString(value.availableSqFt)
+      || asString(value.baseRent)
+      || asString(value.rentType)
+      || asString(value.spaceType)
+      || asString(value.suiteNotes || value.notes || value.description)
+      || (Array.isArray(value.suitePhotos) && value.suitePhotos.length)
+      || (Array.isArray(value.suiteFloorPlans) && value.suiteFloorPlans.length),
+  );
+}
+
+function verifyRevisionAgainstInstruction(currentListing: Record<string, unknown>, updates: Record<string, unknown>, instructions: string) {
+  const after = applyStructuredUpdates(currentListing, updates);
+  const afterSuites = getSuiteRows(after);
+  const failures: string[] = [];
+  const confirmations: string[] = [];
+
+  const rename = instructions.match(/\b(?:change|rename|update|correct|capitalize)\s+(?:the\s+)?(?:suite|space|unit)\s+([A-Za-z0-9-]+)\s+(?:to|as|into)\s+([A-Za-z0-9-]+)\b/i);
+  if (rename?.[1] && rename?.[2]) {
+    const from = rename[1].trim();
+    const to = rename[2].trim();
+    const hasTarget = afterSuites.some((suite) => suiteLabel(suite) === to);
+    const hasSourceExact = from !== to && afterSuites.some((suite) => suiteLabel(suite) === from);
+    if (hasTarget && !hasSourceExact) confirmations.push(`Verified Suite ${from} was renamed to ${to}.`);
+    else failures.push(`Expected Suite ${from} to be renamed to ${to}, but the resulting payload did not reflect that exact target.`);
+  }
+
+  const removesEmptySuite = /\b(?:remove|delete|drop|clear)\b/i.test(instructions)
+    && /\b(?:no\s+data|empty|blank|mistake|accidental|one\s+with\s+no\s+data)\b/i.test(instructions)
+    && /\b(?:suite|space|unit|row|one)\b/i.test(instructions);
+  if (removesEmptySuite) {
+    const remainingEmpty = afterSuites.filter((suite) => !suiteHasMeaningfulData(suite));
+    if (!remainingEmpty.length) confirmations.push("Verified no-data suite rows were removed.");
+    else failures.push(`Expected no-data suite rows to be removed, but ${remainingEmpty.map(suiteLabel).filter(Boolean).join(", ") || "an unnamed suite"} remains.`);
+  }
+
+  return { ok: failures.length === 0, confirmations, failures };
+}
+
+function attachRevisionQa(updates: Record<string, unknown>, qa: { ok: boolean; confirmations: string[]; failures: string[] }) {
+  if (!qa.confirmations.length && !qa.failures.length) return updates;
+  const reviewFlags = normalizeRecord(updates.reviewFlags);
+  const autoFilled = normalizeHighlights(reviewFlags.autoFilled || reviewFlags.successfulAutoFill || reviewFlags.autoFilledFields);
+  const needsManualInput = normalizeHighlights(reviewFlags.needsManualInput || reviewFlags.manualInputNeeded || reviewFlags.humanConfirmationNeeded);
+  return deepMergeRecords(updates, {
+    reviewFlags: {
+      ...reviewFlags,
+      autoFilled: qa.ok ? [...autoFilled, "Autonomous revision QA passed", ...qa.confirmations] : autoFilled,
+      needsManualInput: qa.ok ? needsManualInput : [...needsManualInput, "Autonomous revision QA could not confirm the requested change", ...qa.failures],
+    },
+  });
+}
+
 function buildDeltaPreview(currentListing: Record<string, unknown>, updates: Record<string, unknown>): PropertyPortalDeltaPreview {
   return {
     before: pickDeltaPreviewFields(currentListing),
@@ -425,7 +490,9 @@ export async function createModificationReviewDraft(input: {
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
   const writerStructuredUpdates = mergePartialSuiteUpdates(currentListing, writerResult.structuredUpdates, input.instructions);
-  const structuredUpdates = deepMergeRecords(writerStructuredUpdates, interpreter.updatePayload);
+  const mergedStructuredUpdates = deepMergeRecords(writerStructuredUpdates, interpreter.updatePayload);
+  const revisionQa = verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.instructions);
+  const structuredUpdates = attachRevisionQa(mergedStructuredUpdates, revisionQa);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
   const safeWriterResult = {
     ...writerResult,
