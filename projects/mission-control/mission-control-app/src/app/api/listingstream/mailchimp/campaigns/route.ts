@@ -9,6 +9,7 @@ import {
   sendMailchimpCampaign,
   sendMailchimpTestEmail,
 } from "@/lib/mailchimp-client";
+import { buildMailchimpListingEmailHtml } from "@/lib/mailchimp-listing-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,7 +73,7 @@ function getHeroImageUrl(listing: Record<string, unknown>) {
 
 function getMarketingCopy(listing: Record<string, unknown>) {
   const content = getRecord(listing, "content");
-  return getString(content, "marketingBlurb", "saleDescription", "leaseDescription", "description") || getString(listing, "description", "summary") || "PIER Commercial is sharing this ListingStream update for broker review and market distribution.";
+  return getString(content, "marketingBlurb", "saleDescription", "leaseDescription", "description") || getString(listing, "description", "summary") || "PIER Commercial Real Estate Brokerage is sharing this commercial property update for broker review and market distribution.";
 }
 
 function getFactRows(listing: Record<string, unknown>, includeFinancials?: boolean) {
@@ -98,64 +99,15 @@ function getFactRows(listing: Record<string, unknown>, includeFinancials?: boole
 }
 
 function getMailchimpPortalUrl(listing: Record<string, unknown>) {
-  return getString(listing, "publicUrl", "previewUrl") || (getString(listing, "slug") ? `https://listingstream-portal.vercel.app/properties/${encodeURIComponent(getString(listing, "slug"))}` : "https://piercommercial.com");
+  return getString(listing, "publicUrl", "previewUrl") || (getString(listing, "slug") ? `https://listingportal.piercommercial.com/property/${encodeURIComponent(getString(listing, "slug"))}` : "https://piercommercial.com");
 }
-
 export function buildListingEmailHtml(input: Required<Pick<CampaignRequest, "subjectLine" | "fromName" | "fromEmail">> & Pick<CampaignRequest, "listing" | "includeFinancials">) {
   const listing = input.listing || {};
-  const title = escapeHtml(listing.title || getAddressText(listing) || "PIER Commercial Listing");
-  const address = escapeHtml(getAddressText(listing));
-  const transaction = escapeHtml(listing.transactionLabel || listing.listingType || listing.propertyType || "Commercial Real Estate Opportunity");
-  const broker = escapeHtml(input.fromName);
-  const email = escapeHtml(input.fromEmail);
-  const portalUrl = escapeHtml(getMailchimpPortalUrl(listing));
-  const heroImage = escapeHtml(getHeroImageUrl(listing));
-  const marketingCopy = escapeHtml(getMarketingCopy(listing));
-  const factRows = getFactRows(listing, input.includeFinancials);
-  const factsHtml = factRows.length ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-collapse:collapse;">${factRows.map(([label, value]) => `<tr><td style="width:36%;padding:10px 12px;border-bottom:1px solid #e8e0d8;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;font-weight:800;">${escapeHtml(label)}</td><td style="padding:10px 12px;border-bottom:1px solid #e8e0d8;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:#1a1a2e;font-weight:700;">${escapeHtml(value)}</td></tr>`).join("")}</table>` : "";
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${escapeHtml(input.subjectLine)}</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f4f1ed;font-family:Georgia,'Times New Roman',serif;color:#1a1a2e;">
-    <center style="width:100%;background:#f4f1ed;padding:32px 0;">
-      <table role="presentation" width="680" cellpadding="0" cellspacing="0" style="width:680px;max-width:680px;background:#ffffff;border-collapse:collapse;border:1px solid #e8e0d8;box-shadow:0 12px 36px rgba(15,25,35,.12);">
-        <tr>
-          <td style="background:#0f1923;padding:28px 34px 24px;border-bottom:5px solid #CB521E;">
-            <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#CB521E;font-weight:800;">PIER Commercial Real Estate</div>
-            <h1 style="margin:14px 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:34px;line-height:1.08;color:#ffffff;font-weight:500;">${title}</h1>
-            <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#f4f1ed;">${transaction}</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:0;background:#111827;">
-            ${heroImage ? `<img src="${heroImage}" alt="${title}" width="680" style="display:block;width:680px;max-width:100%;height:auto;border:0;">` : `<div style="height:18px;background:#CB521E;"></div>`}
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:34px;">
-            <h2 style="margin:0 0 14px;font-family:Georgia,'Times New Roman',serif;font-size:25px;line-height:1.2;color:#1a1a2e;font-weight:500;">${escapeHtml(input.subjectLine)}</h2>
-            ${address ? `<p style="margin:0 0 22px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.6;color:#374151;">${address}</p>` : ""}
-            <p style="margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.65;color:#374151;">${marketingCopy}</p>
-            ${factsHtml}
-            ${input.includeFinancials ? `<div style="margin:0 0 24px;border-left:5px solid #CB521E;background:#fff7ed;padding:16px 18px;font-family:Arial,Helvetica,sans-serif;color:#7c2d12;font-size:15px;line-height:1.5;">High-level financial context is included where available in the ListingStream record.</div>` : ""}
-            <a href="${portalUrl}" style="display:inline-block;background:#CB521E;color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:800;letter-spacing:.02em;padding:14px 22px;border-radius:2px;">View ListingStream Property Page</a>
-            <p style="margin:24px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#6b7280;">Reply directly to ${broker} at <a href="mailto:${email}" style="color:#CB521E;font-weight:700;">${email}</a> for details, tour coordination, or underwriting support.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:22px 34px;background:#f8f8f8;border-top:1px solid #e8e0d8;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#6b7280;">
-            <strong style="color:#1a1a2e;">PIER Commercial Real Estate Brokerage and Management</strong><br>
-            Savannah, Georgia · <a href="mailto:${email}" style="color:#CB521E;">${email}</a>
-          </td>
-        </tr>
-      </table>
-    </center>
-  </body>
-</html>`;
+  return buildMailchimpListingEmailHtml({
+    listing,
+    listingUrl: getMailchimpPortalUrl(listing),
+    includeFinancials: input.includeFinancials,
+  });
 }
 
 function validateBrokerEmail(fromEmail: string, brokerEmail?: string) {

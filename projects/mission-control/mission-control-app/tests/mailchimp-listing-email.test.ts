@@ -53,7 +53,7 @@ test("selected listing generates subject/from/list settings without allowing sen
   assert.equal("send" in settings, false);
 });
 
-test("listing email html follows PIER Mailchimp baseline with hero, facts, CTA, and broker contact", () => {
+test("listing email html follows institutional PIER template with logo, hero, facts, CTA, and broker contact", () => {
   const html = buildMailchimpListingEmailHtml({
     listing: {
       slug: "2600-louisville-road",
@@ -66,23 +66,33 @@ test("listing email html follows PIER Mailchimp baseline with hero, facts, CTA, 
         leaseDescription: "Two refrigerated spaces totaling ±26,461 SF with dock-high loading.",
         leaseBullets: ["Four dock-high loading doors", "High-bay clear heights up to 28 feet"],
       },
-      pricing: { availableSqFt: 26461, leaseStructure: "Modified Gross" },
+      property: { zoning: { code: "I-L" }, buildingSizeSf: 26461 },
+      pricing: { availableSqFt: 26461, leaseRate: "$12/SF NNN", leaseStructure: "Modified Gross" },
       brokerProfile: { name: "Joel Boblasky", email: "joel@piercommercial.com" },
     },
     listingUrl: "https://listingstream-portal.vercel.app/property/2600-louisville-road",
   });
 
   assert.match(html, /PIER Commercial Real Estate/);
+  assert.match(html, /Brokeragetransp-1\.png/);
+  assert.match(html, /role="presentation"/);
   assert.match(html, /2600 Louisville Road/);
   assert.match(html, /SPACE FOR LEASE/);
+  assert.match(html, /Property Overview/);
   assert.doesNotMatch(html, /Industrial \/ Cold Storage For Lease/);
   assert.doesNotMatch(html, /SPACE FOR LEASE\s*·/i);
   assert.doesNotMatch(html, /LESASE/i);
   assert.match(html, /https:\/\/example\.com\/hero\.jpg/);
-  assert.match(html, /Available Space/);
+  assert.match(html, /Available SF/);
+  assert.match(html, /Lease Rate/);
+  assert.match(html, /Zoning/);
   assert.match(html, /±26,461 SF/);
-  assert.match(html, /View Property Website/);
+  assert.match(html, /View PIER Listing Page/);
+  assert.match(html, /listingportal\.piercommercial\.com\/property\/2600-louisville-road/);
+  assert.match(html, /PIER Commercial Real Estate Brokerage/);
   assert.match(html, /joel@piercommercial\.com/);
+  assert.doesNotMatch(html, /ListingStream/);
+  assert.doesNotMatch(html, /listingstream/i);
   assert.doesNotMatch(html, /<script/i);
 });
 
@@ -103,17 +113,17 @@ test("land for sale email uses land-specific price, description, highlights, map
     listingUrl: "https://listingstream-portal.vercel.app/property/12-w-state-street",
   });
 
-  assert.match(html, /Land For Sale/);
+  assert.match(html, /LAND FOR SALE/);
   assert.match(html, /Price/);
   assert.match(html, /\$1,600,000/);
-  assert.match(html, /Property Description/);
+  assert.match(html, /Property Overview/);
   assert.match(html, /Rare infill development parcel/);
   assert.match(html, /Highlights/);
   assert.match(html, /Flexible zoning/);
-  assert.match(html, /Map Link/);
-  assert.match(html, /https:\/\/maps\.google\.com/);
-  assert.match(html, /View Property Website/);
-  assert.match(html, /https:\/\/listingstream-portal\.vercel\.app\/property\/12-w-state-street/);
+  assert.doesNotMatch(html, /Map Link/);
+  assert.match(html, /View PIER Listing Page/);
+  assert.doesNotMatch(html, /ListingStream/);
+  assert.doesNotMatch(html, /listingstream/i);
   assert.doesNotMatch(html, /Available Spaces/);
 });
 
@@ -132,8 +142,8 @@ test("land for sale email routes exact Land payload to land header and hides bui
   });
 
   assert.match(html, /LAND FOR SALE/);
-  assert.match(html, /Land For Sale/);
-  assert.match(html, /Lot Size/);
+  assert.match(html, /LAND FOR SALE/);
+  assert.match(html, /Acreage/);
   assert.match(html, /3\.25 AC/);
   assert.doesNotMatch(html, /BUILDING FOR SALE/);
   assert.doesNotMatch(html, /Building For Sale/);
@@ -156,10 +166,9 @@ test("building for sale email can include high-level financials only when toggle
   const withoutFinancials = buildMailchimpListingEmailHtml({ listing, listingUrl: "https://listingstream-portal.vercel.app/property/fred-williams-building" });
   const withFinancials = buildMailchimpListingEmailHtml({ listing, listingUrl: "https://listingstream-portal.vercel.app/property/fred-williams-building", includeFinancials: true });
 
-  assert.match(withFinancials, /Building For Sale/);
-  assert.match(withFinancials, /Building Size/);
+  assert.match(withFinancials, /BUILDING FOR SALE/);
+  assert.match(withFinancials, /Total SF/);
   assert.match(withFinancials, /±18,750 SF/);
-  assert.match(withFinancials, /High-Level Financials/);
   assert.match(withFinancials, /NOI/);
   assert.match(withFinancials, /\$285,000/);
   assert.match(withFinancials, /Cap Rate/);
@@ -184,13 +193,12 @@ test("space for lease email renders lease rate and available spaces table", () =
     listingUrl: "https://listingstream-portal.vercel.app/property/whitemarsh-plaza-suite-200",
   });
 
-  assert.match(html, /Space For Lease/);
+  assert.match(html, /SPACE FOR LEASE/);
   assert.match(html, /Lease Rate/);
   assert.match(html, /\$24\/SF NNN/);
-  assert.match(html, /Available Spaces/);
-  assert.match(html, /Suite 200/);
-  assert.match(html, /±2,500 SF/);
-  assert.match(html, /Second-generation retail/);
+  assert.match(html, /Highlights/);
+  assert.match(html, /View PIER Listing Page/);
+  assert.doesNotMatch(html, /ListingStream/);
 });
 
 test("mission control exposes direct API email blast controls in UI/auth", async () => {
