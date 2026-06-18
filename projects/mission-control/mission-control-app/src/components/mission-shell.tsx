@@ -58,9 +58,10 @@ const postureItems = [
   "No client-facing access",
 ];
 
-const MASTER_CONSOLE_SHELL_CLASS = "flex h-screen min-w-0 flex-col overflow-hidden h-dvh";
-const MASTER_CONSOLE_HEADER_CLASS = "relative z-20 flex-none border-b border-zinc-200/80 bg-white/95 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5";
-const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 overflow-auto px-4 pb-4 pt-6 lg:px-5 lg:pb-5 lg:pt-6 xl:px-6 xl:pb-6 xl:pt-7";
+const MISSION_SHELL_HEADER_HEIGHT_CLASS = "[--mission-shell-header-height:112px] md:[--mission-shell-header-height:128px]";
+const MASTER_CONSOLE_SHELL_CLASS = `flex h-screen min-w-0 flex-col overflow-hidden h-dvh scroll-pt-[var(--mission-shell-header-height)] ${MISSION_SHELL_HEADER_HEIGHT_CLASS}`;
+const MASTER_CONSOLE_HEADER_CLASS = "sticky top-0 z-20 flex-none border-b border-zinc-200/80 bg-white/95 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5";
+const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 overflow-auto px-4 pb-4 pt-[calc(var(--mission-shell-header-height)+1.5rem)] scroll-pt-[var(--mission-shell-header-height)] lg:px-5 lg:pb-5 xl:px-6 xl:pb-6";
 
 
 function getBrokerDisplayName(brokerId?: string | null) {
@@ -228,7 +229,7 @@ export async function MissionShell({
             </div>
           </header>
 
-          <div className={MASTER_CONSOLE_HEADER_CLEARANCE_CLASS}>{children}</div>
+          <div data-testid="mission-shell-content" className={MASTER_CONSOLE_HEADER_CLEARANCE_CLASS}>{children}</div>
         </main>
 
         {!isBroker && (

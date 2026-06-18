@@ -680,8 +680,8 @@ test("mission-control revision proxy forwards property-portal internal token hel
 
 test("mission-control ai-draft route has bounded Vercel/runtime timeout handling", async () => {
   const routeSource = await readFile("src/app/api/listingstream/ai-draft/route.ts", "utf8");
-  assert.match(routeSource, /export const maxDuration = 60/);
-  assert.match(routeSource, /AI_DRAFT_ROUTE_TIMEOUT_MS/);
+  assert.match(routeSource, /export const maxDuration = 300/);
+  assert.match(routeSource, /AI_DRAFT_ROUTE_TIMEOUT_MS[\s\S]*240_000/);
   assert.match(routeSource, /withPropertyPortalTimeout/);
   assert.match(routeSource, /timed out before a modification draft was returned/);
 });

@@ -241,9 +241,23 @@ function requiredLabel(label: string, required = true) {
 
 async function parseJsonResponse(response: Response) {
   const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : { error: await response.text().catch(() => "") };
-  if (!response.ok) throw new Error(String((data as { error?: unknown }).error ?? "ListingStream backend request failed."));
+  const data = contentType.includes("application/json")
+    ? await response.json().catch(() => {
+      throw new Error("Malformed ListingStream JSON response. The draft API returned unreadable JSON; please retry, and if it repeats contact Hermes with the timestamp.");
+    })
+    : { error: await response.text().catch(() => "") };
+  if (!response.ok) throw new Error(String((data as { error?: unknown }).error || `ListingStream backend request failed (${response.status}).`));
   return data;
+}
+
+const PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS = 300_000;
+
+function requireDraftResponse(data: unknown, label: string) {
+  if (!isRecord(data) || !isRecord(data.draft)) {
+    const message = isRecord(data) && typeof data.error === "string" ? data.error : `${label} returned no draft payload. Please retry; the UI stopped instead of staying stuck.`;
+    throw new Error(message);
+  }
+  return data.draft;
 }
 
 function getAbortableErrorMessage(error: unknown, fallback: string) {
@@ -493,6 +507,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [modificationInstructions, setModificationInstructions] = useState("");
   const [modificationAssets, setModificationAssets] = useState<File[]>([]);
   const [modificationStatus, setModificationStatus] = useState(initialModificationStatus);
+  const [modificationError, setModificationError] = useState("");
   const [modificationSubmitting, setModificationSubmitting] = useState(false);
   const [mailchimpAudiences, setMailchimpAudiences] = useState<{ id: string; name: string; memberCount: number | null }[]>([]);
   const [mailchimpAudienceId, setMailchimpAudienceId] = useState("");
@@ -528,6 +543,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
   const [reviewStatus, setReviewStatus] = useState("No draft ready yet.");
+  const [reviewError, setReviewError] = useState("");
   const [toastMessage, setToastMessage] = useState("");
   const [draftPreviewUrl, setDraftPreviewUrl] = useState("");
   const [publishSuccessMessage, setPublishSuccessMessage] = useState("");
@@ -903,6 +919,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   async function submitBrokerHubIntake(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIntakeSubmitting(true);
+    setReviewError("");
     setPublishSuccessMessage("");
     setToastMessage("");
     setIntakeStatus("AI is analyzing property data... Drafting premium marketing copy, assessor/parcel gaps, and location intelligence...");
@@ -912,14 +929,17 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "new-listing", input }),
-      }, 90_000)) as { draft: unknown };
-      const draft = normalizeIncomingBrokerReviewDraft(data.draft, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
+      }, PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS)) as { draft: unknown };
+      const draftPayload = requireDraftResponse(data, "New listing draft API");
+      const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
       setReviewDraft(draft);
       revealReviewDraft("actions");
       setReviewStatus(`Review Draft ready for ${draft.title}. Hero photo and media stay staged until approval.`);
       setIntakeStatus(`The PIER Commercial Big Brain enrichment draft is ready for broker review. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
     } catch (error) {
-      setIntakeStatus(getAbortableErrorMessage(error, "Could not generate listing review draft."));
+      const message = getAbortableErrorMessage(error, "Could not generate listing review draft.");
+      setReviewError(message);
+      setIntakeStatus(message);
     } finally {
       setIntakeSubmitting(false);
     }
@@ -929,6 +949,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     const cleanInstructions = instructions.trim();
     if (!selectedPropertyId || !cleanInstructions) return;
     setModificationSubmitting(true);
+    setModificationError("");
+    setReviewError("");
     setPublishSuccessMessage("");
     setToastMessage("");
     const isOmRevision = options.source === "om-revision";
@@ -940,8 +962,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "modification", propertyIdOrSlug: selectedPropertyId, instructions: cleanInstructions }),
-      }, 90_000)) as { draft: unknown };
-      const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
+      }, PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS)) as { draft: unknown };
+      const draftPayload = requireDraftResponse(data, "Listing modification draft API");
+      const draft = normalizeIncomingBrokerReviewDraft(draftPayload, {
         kind: "modification",
         title: selectedListing?.title || selectedListing?.address || selectedPropertyId || "Listing modification draft",
         sourceInput: { propertyIdOrSlug: selectedPropertyId, instructions: cleanInstructions, source: options.source },
@@ -953,7 +976,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         ? "OM revision draft ready. Approve the ListingStream draft update, then regenerate the OM from the revised listing data."
         : "Revised listing draft ready for broker review; nothing has been published yet.");
     } catch (error) {
-      setModificationStatus(getAbortableErrorMessage(error, isOmRevision ? "Could not generate OM revision draft." : "Could not generate listing modification draft."));
+      const message = getAbortableErrorMessage(error, isOmRevision ? "Could not generate OM revision draft." : "Could not generate listing modification draft.");
+      setModificationError(message);
+      setModificationStatus(message);
     } finally {
       setModificationSubmitting(false);
     }
@@ -1111,6 +1136,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   async function reviseDraft() {
     if (!reviewDraft || !revisionFeedback.trim()) return;
     setReviewBusy(true);
+    setReviewError("");
     setPublishSuccessMessage("");
     setToastMessage("");
     setReviewStatus("The PIER Commercial Big Brain is revising the draft from broker feedback…");
@@ -1119,8 +1145,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "revise", draft: reviewDraft, feedback: revisionFeedback.trim() }),
-      }, 90_000)) as { draft: unknown };
-      const draft = normalizeIncomingBrokerReviewDraft(data.draft, {
+      }, PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS)) as { draft: unknown };
+      const draftPayload = requireDraftResponse(data, "Draft revision API");
+      const draft = normalizeIncomingBrokerReviewDraft(draftPayload, {
         kind: reviewDraft.kind,
         title: reviewDraft.title,
         sourceInput: reviewDraft.sourceInput,
@@ -1130,7 +1157,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       setRevisionFeedback("");
       setReviewStatus(`Revised draft ready. Revision count: ${getDraftRevisionCount(draft)}.`);
     } catch (error) {
-      setReviewStatus(getAbortableErrorMessage(error, "Could not revise draft."));
+      const message = getAbortableErrorMessage(error, "Could not revise draft.");
+      setReviewError(message);
+      setReviewStatus(message);
     } finally {
       setReviewBusy(false);
     }
@@ -1664,6 +1693,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">{activeListingsStatus}</p>
                   <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
+                  {modificationError ? <p data-testid="listing-revision-error" role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{modificationError}</p> : null}
                 </div>
               </div>
             ) : null}
@@ -1839,6 +1869,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for The PIER Commercial Big Brain to process before approval" />
               <button type="button" onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
             </div>
+            {reviewError ? <p data-testid="listing-revision-error" role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{reviewError}</p> : null}
           </div>
 
           <div data-testid="assessor-data-fields" className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">
@@ -1921,6 +1952,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             </div>
           ) : null}
           <p className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{reviewStatus}</p>
+          {reviewError ? <p data-testid="listing-revision-error" role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{reviewError}</p> : null}
         </section>
       ) : null}
     </div>

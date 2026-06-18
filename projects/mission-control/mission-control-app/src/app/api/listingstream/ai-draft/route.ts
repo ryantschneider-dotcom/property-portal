@@ -7,9 +7,9 @@ import { createPropertyPortalProxyError, withPropertyPortalTimeout } from "@/lib
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
-const AI_DRAFT_ROUTE_TIMEOUT_MS = Number(process.env.PIER_MANAGER_AI_DRAFT_ROUTE_TIMEOUT_MS ?? 55_000);
+const AI_DRAFT_ROUTE_TIMEOUT_MS = Number(process.env.PIER_MANAGER_AI_DRAFT_ROUTE_TIMEOUT_MS ?? 240_000);
 
 type AiDraftRequest =
   | {
