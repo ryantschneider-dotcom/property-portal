@@ -8,6 +8,7 @@ import {
   getBrokerPassword,
   getLoginRole,
   isBrokerAllowedPath,
+  isStaffAllowedPath,
   isMasterSession,
   type AuthRole,
 } from "../src/lib/auth";
@@ -15,6 +16,7 @@ import {
 function configurePasswords() {
   process.env.MISSION_CONTROL_PASSWORD = "master-secret";
   process.env.BROKER_PASSWORD = "broker-secret";
+  process.env.MISSION_CONTROL_STAFF_USERS = JSON.stringify([{ email: "jonathan@piercommercial.com", name: "Jonathan Caparelli", password: "staff-secret" }]);
 }
 
 test("login passwords are classified into master and broker roles", () => {
@@ -23,6 +25,8 @@ test("login passwords are classified into master and broker roles", () => {
   assert.equal(getBrokerPassword(), "broker-secret");
   assert.equal(getLoginRole("master-secret"), "master");
   assert.equal(getLoginRole("broker-secret"), "broker");
+  assert.equal(getLoginRole("staff-secret", "jonathan@piercommercial.com"), "staff");
+  assert.equal(getLoginRole("staff-secret", "wrong@piercommercial.com"), null);
   assert.equal(getLoginRole("wrong-secret"), null);
 });
 
@@ -31,10 +35,12 @@ test("signed auth tokens preserve role and do not accept legacy role-less sessio
 
   const masterToken = await createAuthToken("master");
   const brokerToken = await createAuthToken("broker");
+  const staffToken = await createAuthToken("staff", Date.now(), "anthony");
   const legacyToken = await createAuthToken(undefined as unknown as AuthRole);
 
   assert.deepEqual(await getAuthSession(masterToken), { role: "master" });
   assert.deepEqual(await getAuthSession(brokerToken), { role: "broker" });
+  assert.deepEqual(await getAuthSession(staffToken), { role: "staff", brokerId: "anthony" });
   assert.equal(await getAuthSession(legacyToken), null);
   assert.equal(await isMasterSession(masterToken), true);
   assert.equal(await isMasterSession(brokerToken), false);
@@ -59,14 +65,23 @@ test("broker sessions are limited to pier-manager and its required support APIs"
   for (const path of denied) assert.equal(isBrokerAllowedPath(path), false, `${path} should be broker-restricted`);
 });
 
-test("proxy enforces broker redirects and api denials before route handlers", async () => {
+test("staff sessions are limited to PIER Manager plus broker-switch support", () => {
+  assert.equal(isStaffAllowedPath("/pier-manager"), true);
+  assert.equal(isStaffAllowedPath("/api/listingstream/intake"), true);
+  assert.equal(isStaffAllowedPath("/api/auth/impersonation"), true);
+  assert.equal(isStaffAllowedPath("/settings"), false);
+  assert.equal(isBrokerAllowedPath("/api/auth/impersonation"), false);
+});
+
+test("proxy enforces broker and staff redirects before route handlers", async () => {
   const source = await readFile("src/proxy.ts", "utf8");
 
   assert.match(source, /getAuthSession/);
   assert.match(source, /isBrokerAllowedPath/);
-  assert.match(source, /session\.role === "broker"/);
+  assert.match(source, /session\?\.role === "broker"/);
+  assert.match(source, /session\?\.role === "staff"/);
+  assert.match(source, /isStaffAllowedPath/);
   assert.match(source, /brokerHomePath/);
-  assert.match(source, /status: 403/);
 });
 
 test("mission shell hides mission-control navigation for broker sessions", async () => {

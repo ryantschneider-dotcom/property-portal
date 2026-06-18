@@ -13,13 +13,13 @@ export async function POST(request: NextRequest) {
   const cookieStore = await cookies();
   const session = await getAuthSession(cookieStore.get(AUTH_COOKIE)?.value);
 
-  if (session?.role !== "master") {
-    return NextResponse.json({ ok: false, error: "Master admin session required" }, { status: 403 });
+  if (session?.role !== "master" && session?.role !== "staff") {
+    return NextResponse.json({ ok: false, error: "Admin or staff session required" }, { status: 403 });
   }
 
   const body = (await request.json().catch(() => ({}))) as { brokerId?: string };
   const brokerId = normalizeBrokerId(body.brokerId);
-  cookieStore.set(AUTH_COOKIE, await createAuthToken("master", Date.now(), brokerId), {
+  cookieStore.set(AUTH_COOKIE, await createAuthToken(session.role, Date.now(), brokerId), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -27,5 +27,5 @@ export async function POST(request: NextRequest) {
     maxAge: getAuthCookieMaxAgeSeconds(),
   });
 
-  return NextResponse.json({ ok: true, role: "master", brokerId });
+  return NextResponse.json({ ok: true, role: session.role, brokerId });
 }

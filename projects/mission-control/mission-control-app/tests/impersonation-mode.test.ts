@@ -29,8 +29,9 @@ test("master session tokens can carry a sanitized active broker context for View
   assert.equal(normalizeBrokerId("unknown"), "ryan");
 });
 
-test("only master sessions can use impersonation mode", () => {
+test("master and staff sessions can use broker switching", () => {
   assert.equal(canImpersonateBroker({ role: "master" }), true);
+  assert.equal(canImpersonateBroker({ role: "staff", brokerId: "joel" }), true);
   assert.equal(canImpersonateBroker({ role: "master", brokerId: "joel" }), true);
   assert.equal(canImpersonateBroker({ role: "broker", brokerId: "joel" }), false);
   assert.equal(canImpersonateBroker(null), false);
@@ -47,13 +48,13 @@ test("login no longer hardcodes Ryan as the broker context for every auth cookie
   assert.equal(getLoginRole("master-secret"), "master");
 });
 
-test("master-only impersonation endpoint rewrites the signed auth cookie with selected broker", async () => {
+test("admin and staff impersonation endpoint rewrites the signed auth cookie with selected broker", async () => {
   const source = await readFile("src/app/api/auth/impersonation/route.ts", "utf8");
 
   assert.match(source, /getAuthSession/);
-  assert.match(source, /session\?\.role !== "master"/);
+  assert.match(source, /session\?\.role !== "master" && session\?\.role !== "staff"/);
   assert.match(source, /normalizeBrokerId/);
-  assert.match(source, /createAuthToken\("master"/);
+  assert.match(source, /createAuthToken\(session\.role/);
   assert.match(source, /brokerId/);
 });
 

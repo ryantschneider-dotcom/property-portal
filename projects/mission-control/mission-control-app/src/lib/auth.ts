@@ -1,6 +1,6 @@
 export const AUTH_COOKIE = "mission_control_auth";
 
-export type AuthRole = "master" | "broker";
+export type AuthRole = "master" | "broker" | "staff";
 export type BrokerId = "ryan" | "anthony" | "joel";
 export type AuthSession = { role: AuthRole; brokerId?: BrokerId };
 
@@ -31,7 +31,7 @@ export function normalizeBrokerId(value: unknown): BrokerId {
 }
 
 export function canImpersonateBroker(session: AuthSession | null | undefined) {
-  return session?.role === "master";
+  return session?.role === "master" || session?.role === "staff";
 }
 
 export function getMissionControlPassword() {
@@ -62,6 +62,52 @@ export function getBrokerPassword() {
   return configured;
 }
 
+function normalizeEmail(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+export type StaffPortalUser = { email: string; name?: string; password: string };
+
+export function getStaffPortalUsers(): StaffPortalUser[] {
+  const configured = process.env.MISSION_CONTROL_STAFF_USERS?.trim();
+  if (!configured) return [];
+
+  try {
+    const parsed = JSON.parse(configured) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+        const record = entry as Record<string, unknown>;
+        const email = normalizeEmail(record.email);
+        const password = String(record.password ?? "").trim();
+        const name = String(record.name ?? "").trim();
+        return email && password ? { email, password, ...(name ? { name } : {}) } : null;
+      })
+      .filter((entry): entry is StaffPortalUser => Boolean(entry));
+  } catch {
+    return configured
+      .split(",")
+      .map((pair) => {
+        const [emailValue, passwordValue] = pair.split(":");
+        const email = normalizeEmail(emailValue);
+        const password = String(passwordValue ?? "").trim();
+        return email && password ? { email, password } : null;
+      })
+      .filter((entry): entry is StaffPortalUser => Boolean(entry));
+  }
+}
+
+export function getStaffPortalUser(email: unknown) {
+  const candidate = normalizeEmail(email);
+  return getStaffPortalUsers().find((user) => user.email === candidate) ?? null;
+}
+
+export function isValidStaffPortalLogin(email: unknown, password: string) {
+  const user = getStaffPortalUser(email);
+  return Boolean(user && password.trim() === user.password);
+}
+
 export function getAuthConfig() {
   return {
     masterPassword: getMissionControlPassword(),
@@ -69,11 +115,12 @@ export function getAuthConfig() {
   };
 }
 
-export function getLoginRole(password: string): AuthRole | null {
+export function getLoginRole(password: string, email?: unknown): AuthRole | null {
   const candidate = password.trim();
   const { masterPassword, brokerPassword } = getAuthConfig();
 
   if (candidate === masterPassword) return "master";
+  if (isValidStaffPortalLogin(email, candidate)) return "staff";
   if (brokerPassword && candidate === brokerPassword && brokerPassword !== masterPassword) return "broker";
   return null;
 }
@@ -112,7 +159,7 @@ function fromBase64Url(value: string) {
 }
 
 function isAuthRole(value: string): value is AuthRole {
-  return value === "master" || value === "broker";
+  return value === "master" || value === "broker" || value === "staff";
 }
 
 export async function createAuthToken(role?: AuthRole, now = Date.now(), brokerId = "") {
@@ -163,8 +210,13 @@ export async function isMasterSession(token?: string | null, now = Date.now()) {
 }
 
 const brokerAllowedExactPaths = new Set(["/pier-manager", "/login", "/api/auth/logout"]);
+const staffAllowedExactPaths = new Set([...brokerAllowedExactPaths, "/api/auth/impersonation"]);
 const brokerAllowedPrefixes = ["/pier-manager/", "/api/listingstream/", "/api/offering-summaries/", "/api/uploads/file/"];
 
 export function isBrokerAllowedPath(pathname: string) {
   return brokerAllowedExactPaths.has(pathname) || brokerAllowedPrefixes.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isStaffAllowedPath(pathname: string) {
+  return staffAllowedExactPaths.has(pathname) || brokerAllowedPrefixes.some((prefix) => pathname.startsWith(prefix));
 }

@@ -89,8 +89,9 @@ export async function MissionShell({
   children: ReactNode;
 }) {
   const session = await getCurrentAuthSession();
-  const isBroker = session?.role === "broker";
-  const isMaster = session?.role === "master";
+  const isStaff = session?.role === "staff";
+  const isBroker = session?.role === "broker" || isStaff;
+  const canSwitchBroker = session?.role === "master" || isStaff;
   const activeBrokerId = session?.brokerId ?? "ryan";
   const activeBrokerName = getBrokerDisplayName(activeBrokerId);
   const visibleActions = isBroker ? [] : actions;
@@ -206,7 +207,7 @@ export async function MissionShell({
                       {action.label}
                     </Link>
                   ))}
-                  {isMaster ? <ViewAsBrokerControl activeBrokerId={activeBrokerId} /> : null}
+                  {canSwitchBroker ? <ViewAsBrokerControl activeBrokerId={activeBrokerId} /> : null}
                   <SignOutButton />
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
@@ -216,7 +217,7 @@ export async function MissionShell({
                   <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-2.5 py-0.5 text-emerald-700">
                     {isBroker ? "Broker Listing Console" : "private system online"}
                   </span>
-                  {isMaster ? (
+                  {canSwitchBroker ? (
                     <span className="rounded-full border border-[#CB521E]/30 bg-[#CB521E]/10 px-2.5 py-0.5 text-[#CB521E]">
                       Impersonation Mode: Viewing as {activeBrokerName}
                     </span>

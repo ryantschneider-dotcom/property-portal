@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [brokerId, setBrokerId] = useState("ryan");
   const [error, setError] = useState("");
@@ -21,7 +22,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ password, brokerId }),
+        body: JSON.stringify({ email, password, brokerId }),
       });
 
       if (!response.ok) {
@@ -48,10 +49,19 @@ export default function LoginPage() {
         </p>
         <h1 className="mt-3 text-3xl font-semibold">Sign in</h1>
         <p className="mt-3 text-sm leading-6 text-neutral-400">
-          Private single-user access for Ryan’s internal Mission Control.
+          Private staff access for PIER Manager listing intake, revisions, and broker-context work.
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleLogin}>
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="Email for staff access (optional for admin/broker password)"
+            autoComplete="email"
+            className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-500"
+          />
+
           <input
             type="password"
             value={password}

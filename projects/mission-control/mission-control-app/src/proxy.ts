@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AUTH_COOKIE, isBrokerAllowedPath, isValidAuthToken, getAuthSession } from "@/lib/auth";
+import { AUTH_COOKIE, isBrokerAllowedPath, isStaffAllowedPath, isValidAuthToken, getAuthSession } from "@/lib/auth";
 
 const publicPaths = new Set([
   "/login",
@@ -39,6 +39,13 @@ export async function proxy(request: NextRequest) {
     brokerUrl.pathname = brokerHomePath;
     brokerUrl.search = "";
     return NextResponse.redirect(brokerUrl);
+  }
+
+  if (session?.role === "staff" && !isStaffAllowedPath(pathname) && !isPublic) {
+    const staffUrl = request.nextUrl.clone();
+    staffUrl.pathname = brokerHomePath;
+    staffUrl.search = "";
+    return NextResponse.redirect(staffUrl);
   }
 
   return NextResponse.next();
