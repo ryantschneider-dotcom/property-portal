@@ -1369,7 +1369,13 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             <div data-testid="active-listing-scrollbox" role="listbox" aria-label="Active ListingStream properties" className="mt-2 max-h-[52vh] overflow-y-auto overscroll-contain rounded-xl border border-zinc-200 bg-zinc-50 shadow-inner sm:max-h-96 xl:max-h-[32rem]">
               {activeListings.length === 0 ? <p className="px-4 py-3 text-sm text-zinc-500">{activeListingsStatus}</p> : filteredAddressListings.length === 0 ? <p className="px-4 py-3 text-sm text-zinc-500">No listings match your search.</p> : filteredAddressListings.map((listing) => {
                 const value = getListingSelectionValue(listing);
-                return <button key={listing.id} data-testid="active-listing-option" type="button" role="option" aria-selected={false} onClick={() => selectActiveListing(value)} className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"><span>{getListingSearchLabel(listing)}</span><span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span></button>;
+                const enrichment = listing.publicRecordEnrichment;
+                const enrichmentLabel = enrichment?.countyPortal
+                  ? `${enrichment.status || "queued"} via ${enrichment.countyPortal}`
+                  : listing.enrichmentStatus
+                    ? `Auto-Enrich ${listing.enrichmentStatus}`
+                    : "Auto-Enrich will queue on intake";
+                return <button key={listing.id} data-testid="active-listing-option" type="button" role="option" aria-selected={false} onClick={() => selectActiveListing(value)} className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"><span>{getListingSearchLabel(listing)}</span><span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span><span className="mt-2 inline-flex rounded-full border border-[#CB521E]/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#CB521E]">{enrichmentLabel}</span></button>;
               })}
             </div>
           </div>

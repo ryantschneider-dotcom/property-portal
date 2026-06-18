@@ -32,6 +32,12 @@ export type PropertyPortalActiveListing = {
   blockedIssueCount?: number;
   buildoutReady?: boolean;
   enrichmentStatus?: string;
+  publicRecordEnrichment?: {
+    status?: string;
+    message?: string;
+    countyPortal?: string;
+    updatedAt?: string;
+  };
   revisionWorkflow?: unknown;
   workflowStatus?: string;
   publishStatus?: string;
