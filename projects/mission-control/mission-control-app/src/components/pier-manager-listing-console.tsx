@@ -519,7 +519,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [includeFinancials, setIncludeFinancials] = useState(false);
   const [mailchimpLoading, setMailchimpLoading] = useState(false);
   const [mailchimpGenerating, setMailchimpGenerating] = useState(false);
-  const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
+  const [mailchimpCampaignId, setMailchimpCampaignId] = useState("");
+  const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
+  const [mailchimpSmokeTestSent, setMailchimpSmokeTestSent] = useState(false);
+  const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create an embedded draft preview. Nothing sends automatically.");
   const [omRevisionInstructions, setOmRevisionInstructions] = useState("");
   const [omDraftId, setOmDraftId] = useState("");
   const [omDraftPreviewHtml, setOmDraftPreviewHtml] = useState("");
@@ -765,7 +768,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setMailchimpFromEmail(fallbackBrokerContext.email);
     setMailchimpBrokerContext(fallbackBrokerContext);
     setIncludeFinancials(false);
-    setMailchimpStatus("Load audiences, choose a list, then create a draft Email Blast campaign. Nothing sends automatically.");
+    setMailchimpCampaignId("");
+    setMailchimpPreviewHtml("");
+    setMailchimpSmokeTestSent(false);
+    setMailchimpStatus("Load audiences, choose a list, then create an embedded draft preview. Nothing sends automatically.");
     setMailchimpLoading(false);
     setMailchimpGenerating(false);
     setOmRevisionInstructions("");
@@ -1135,12 +1141,16 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   async function createMailchimpEmailDraft() {
     if (!selectedListing || !mailchimpAudienceId || !mailchimpSubjectLine.trim()) return;
     setMailchimpGenerating(true);
-    setMailchimpStatus("Creating a Mailchimp draft campaign for broker review. Nothing will be sent automatically.");
+    setMailchimpCampaignId("");
+    setMailchimpPreviewHtml("");
+    setMailchimpSmokeTestSent(false);
+    setMailchimpStatus("Creating embedded Mailchimp campaign preview through the API. No external Mailchimp login is required.");
     try {
       const data = await parseJsonResponse(await fetch("/api/listingstream/mailchimp/campaigns", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          action: "create-draft",
           audienceId: mailchimpAudienceId,
           subjectLine: mailchimpSubjectLine.trim(),
           fromName: mailchimpFromName.trim(),
@@ -1150,11 +1160,61 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
           listing: selectedListing,
           includeFinancials,
         }),
-      })) as { campaign?: { id?: string; archiveUrl?: string | null } };
-      const campaignLabel = data.campaign?.id ? ` Campaign ${data.campaign.id} is saved in Mailchimp.` : " Campaign is saved in Mailchimp.";
-      setMailchimpStatus(`Draft blast created for ${mailchimpFromName} <${mailchimpFromEmail}>.${campaignLabel} Review inside Mailchimp before sending.`);
+      })) as { campaign?: { id?: string; archiveUrl?: string | null }; previewHtml?: string; smokeTestRequired?: boolean };
+      const campaignId = data.campaign?.id || "";
+      setMailchimpCampaignId(campaignId);
+      setMailchimpPreviewHtml(data.previewHtml || "");
+      const campaignLabel = campaignId ? ` Campaign ${campaignId} is saved in Mailchimp.` : " Campaign is saved in Mailchimp.";
+      setMailchimpStatus(`Embedded draft blast created for ${mailchimpFromName} <${mailchimpFromEmail}>.${campaignLabel} Review the desktop preview below, then send the broker-only smoke test before any list deployment.`);
     } catch (error) {
       setMailchimpStatus(error instanceof Error ? error.message : "Could not create Mailchimp draft.");
+    } finally {
+      setMailchimpGenerating(false);
+    }
+  }
+
+  async function sendMailchimpBrokerSmokeTest() {
+    if (!mailchimpCampaignId || !mailchimpFromEmail.trim()) return;
+    setMailchimpGenerating(true);
+    setMailchimpStatus(`Sending broker-only smoke test to ${mailchimpFromEmail.trim()} before list deployment…`);
+    try {
+      const data = await parseJsonResponse(await fetch("/api/listingstream/mailchimp/campaigns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "send-test",
+          campaignId: mailchimpCampaignId,
+          fromEmail: mailchimpFromEmail.trim(),
+          brokerEmail: mailchimpFromEmail.trim(),
+        }),
+      })) as { previewHtml?: string; smokeTest?: { sentAt?: string; testEmail?: string } };
+      if (data.previewHtml) setMailchimpPreviewHtml(data.previewHtml);
+      setMailchimpSmokeTestSent(true);
+      setMailchimpStatus(`Broker smoke test sent to ${data.smokeTest?.testEmail || mailchimpFromEmail.trim()}. Confirm the delivered layout, then deploy to the selected list when ready.`);
+    } catch (error) {
+      setMailchimpStatus(error instanceof Error ? error.message : "Could not send broker smoke test.");
+    } finally {
+      setMailchimpGenerating(false);
+    }
+  }
+
+  async function deployMailchimpCampaignToList() {
+    if (!mailchimpCampaignId || !mailchimpSmokeTestSent) return;
+    setMailchimpGenerating(true);
+    setMailchimpStatus("Deploying approved campaign to the selected Mailchimp audience…");
+    try {
+      const data = await parseJsonResponse(await fetch("/api/listingstream/mailchimp/campaigns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "send-live",
+          campaignId: mailchimpCampaignId,
+          smokeTestConfirmed: true,
+        }),
+      })) as { send?: { sentAt?: string }; campaign?: { status?: string } };
+      setMailchimpStatus(`Campaign deployed to the selected list. Mailchimp status: ${data.campaign?.status || "sent"}.`);
+    } catch (error) {
+      setMailchimpStatus(error instanceof Error ? error.message : "Could not deploy Mailchimp campaign.");
     } finally {
       setMailchimpGenerating(false);
     }
@@ -1846,8 +1906,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         {hasActivePropertyContext ? (
           <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit min-w-0 overflow-hidden`}>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Email Blast</p>
-            <h4 className="mt-1 text-base font-semibold text-zinc-950">Generate a responsive listing blast from this selected property</h4>
-            <p className="mt-1 text-sm leading-6 text-zinc-600">Create a Mailchimp draft campaign for this listing. Sender details follow the assigned lead broker automatically; nothing sends until reviewed in Mailchimp.</p>
+            <h4 className="mt-1 text-base font-semibold text-zinc-950">Generate an embedded PIER-branded listing blast preview</h4>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">Create and preview the Mailchimp draft inside PIER Manager. Deployment stays locked until a broker-only smoke test is sent to the initiating broker address.</p>
             <p data-testid="mailchimp-broker-context" className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-semibold text-zinc-600">Sender: {mailchimpBrokerContext.name} &lt;{mailchimpBrokerContext.email}&gt;</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
@@ -1881,10 +1941,25 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             </div>
             <div data-testid="mailchimp-action-buttons" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button type="submit" disabled={mailchimpGenerating || mailchimpLoading || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                {mailchimpGenerating ? "Creating Draft…" : "Create Draft Blast"}
+                {mailchimpGenerating ? "Working…" : "Create Embedded Draft Preview"}
+              </button>
+              <button type="button" onClick={sendMailchimpBrokerSmokeTest} disabled={mailchimpGenerating || !mailchimpCampaignId} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                Send Broker Smoke Test
+              </button>
+              <button type="button" onClick={deployMailchimpCampaignToList} disabled={mailchimpGenerating || !mailchimpCampaignId || !mailchimpSmokeTestSent} className="w-full rounded-xl bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                Deploy to Selected List
               </button>
             </div>
             <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>
+            {mailchimpPreviewHtml ? (
+              <div data-testid="mailchimp-embedded-preview" className="mt-4 overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-100 shadow-sm">
+                <div className="flex flex-col gap-1 border-b border-zinc-200 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+                  <span>Embedded Mailchimp Draft Preview</span>
+                  <span>{mailchimpSmokeTestSent ? "Broker test sent — list deployment unlocked" : "Broker smoke test required before deployment"}</span>
+                </div>
+                <iframe title="Embedded Mailchimp campaign preview" srcDoc={mailchimpPreviewHtml} className="h-[76vh] min-h-[620px] w-full bg-white xl:h-[82vh]" />
+              </div>
+            ) : null}
           </form>
         ) : null}
       </div>

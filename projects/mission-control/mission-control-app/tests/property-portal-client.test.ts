@@ -586,6 +586,50 @@ test("suite floor plan image uploads route to suiteFloorPlans and discard placeh
 
 
 
+test("Parrott Plaza photo uploads persist as property-bound media images in launch payload", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, any> }> = [];
+  const photoUrl = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/property-intake%2F42-w-montgomery-cross-road%2Ffront.jpg?alt=media&token=safe123";
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "publish-live",
+    assets: [new File(["photo-bytes"], "front.jpg", { type: "image/jpeg" })],
+    uploadStagedImage: async (file, options) => ({
+      url: photoUrl,
+      path: `property-intake/42-w-montgomery-cross-road/${options.index}-${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
+    draft: {
+      kind: "modification",
+      title: "42 W Montgomery Crossroad",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "42-w-montgomery-cross-road", instructions: "Add these Parrott Plaza property photos." },
+      currentListing: {
+        slug: "42-w-montgomery-cross-road",
+        media: { heroImageUrl: "https://cdn.example.com/existing.jpg", images: [{ id: "existing", urls: { original: "https://cdn.example.com/existing.jpg" } }] },
+      },
+      structuredUpdates: { content: { leaseTitle: "Parrott Plaza" } },
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/42-w-montgomery-cross-road" } });
+    },
+  });
+
+  const approvedPayload = calls.find((call) => call.url.endsWith("/api/admin/properties/launch-package"))?.body.approvedPayload as Record<string, any>;
+  assert.equal(approvedPayload.media.heroImageUrl, photoUrl);
+  assert.equal(approvedPayload.media.images.length, 2);
+  assert.equal(approvedPayload.media.images[1].boundPropertySlug, "42-w-montgomery-cross-road");
+  assert.equal(approvedPayload.media.images[1].storagePath, "property-intake/42-w-montgomery-cross-road/1-front.jpg");
+  assert.equal(approvedPayload.media.images[1].urls.original, photoUrl);
+  assert.deepEqual(approvedPayload.photos, [{ id: "pier-manager-staged-1", title: "Hero Photo", source: "pier-manager-durable-upload", url: photoUrl, href: photoUrl, downloadUrl: photoUrl, storagePath: "property-intake/42-w-montgomery-cross-road/1-front.jpg", contentType: "image/jpeg", size: 11, originalName: "front.jpg" }]);
+});
+
+
 test("approval publish request strips raw file payloads before JSON transit to ListingStream", async () => {
   const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
   const calls: Array<{ url: string; bodyText: string; body: Record<string, any> }> = [];

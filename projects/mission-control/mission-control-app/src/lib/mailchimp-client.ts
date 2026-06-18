@@ -14,6 +14,13 @@ export type MailchimpDraftCampaignInput = {
   html: string;
 };
 
+export type MailchimpCampaignSummary = {
+  id: string;
+  webId: unknown;
+  status: unknown;
+  archiveUrl: string | null;
+};
+
 function getMailchimpConfig() {
   const apiKey = process.env.MAILCHIMP_API_KEY?.trim();
   const serverPrefix = (process.env.MAILCHIMP_SERVER_PREFIX || apiKey?.split("-").pop() || "").trim();
@@ -47,6 +54,15 @@ async function mailchimpFetch(path: string, init: RequestInit = {}) {
   return data as Record<string, unknown>;
 }
 
+function summarizeCampaign(campaign: Record<string, unknown>): MailchimpCampaignSummary {
+  return {
+    id: String(campaign.id || ""),
+    webId: campaign.web_id ?? null,
+    status: campaign.status ?? "save",
+    archiveUrl: typeof campaign.archive_url === "string" ? campaign.archive_url : null,
+  };
+}
+
 export async function listMailchimpAudiences(): Promise<MailchimpAudience[]> {
   const data = await mailchimpFetch("/lists?count=100&fields=lists.id,lists.name,lists.stats.member_count,total_items");
   const lists = Array.isArray(data.lists) ? data.lists : [];
@@ -73,6 +89,13 @@ export async function createMailchimpDraftCampaign(input: MailchimpDraftCampaign
         title: input.title,
         from_name: input.fromName,
         reply_to: input.fromEmail,
+        auto_footer: false,
+        inline_css: true,
+      },
+      tracking: {
+        opens: true,
+        html_clicks: true,
+        text_clicks: true,
       },
     }),
   });
@@ -82,10 +105,32 @@ export async function createMailchimpDraftCampaign(input: MailchimpDraftCampaign
     method: "PUT",
     body: JSON.stringify({ html: input.html }),
   });
+  return summarizeCampaign(campaign);
+}
+
+export async function getMailchimpCampaignContent(campaignId: string) {
+  const id = encodeURIComponent(campaignId);
+  const data = await mailchimpFetch(`/campaigns/${id}/content?fields=html,plain_text`);
   return {
-    id: campaignId,
-    webId: campaign.web_id ?? null,
-    status: campaign.status ?? "save",
-    archiveUrl: campaign.archive_url ?? null,
+    html: typeof data.html === "string" ? data.html : "",
+    plainText: typeof data.plain_text === "string" ? data.plain_text : "",
   };
+}
+
+export async function getMailchimpCampaign(campaignId: string) {
+  const data = await mailchimpFetch(`/campaigns/${encodeURIComponent(campaignId)}?fields=id,web_id,status,archive_url,settings.subject_line,settings.reply_to,settings.from_name`);
+  return summarizeCampaign(data);
+}
+
+export async function sendMailchimpTestEmail(input: { campaignId: string; brokerEmail: string }) {
+  await mailchimpFetch(`/campaigns/${encodeURIComponent(input.campaignId)}/actions/test`, {
+    method: "POST",
+    body: JSON.stringify({ test_emails: [input.brokerEmail], send_type: "html" }),
+  });
+  return { ok: true, campaignId: input.campaignId, testEmail: input.brokerEmail, sentAt: new Date().toISOString() };
+}
+
+export async function sendMailchimpCampaign(campaignId: string) {
+  await mailchimpFetch(`/campaigns/${encodeURIComponent(campaignId)}/actions/send`, { method: "POST" });
+  return { ok: true, campaignId, sentAt: new Date().toISOString() };
 }

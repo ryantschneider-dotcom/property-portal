@@ -199,9 +199,12 @@ test("mission control exposes direct API email blast controls in UI/auth", async
 
   assert.match(componentSource, /Email Blast/);
   assert.match(componentSource, /\/api\/listingstream\/mailchimp\/lists/);
-  assert.match(componentSource, /\/api\/listingstream\/mailchimp\/campaign-draft/);
+  assert.match(componentSource, /\/api\/listingstream\/mailchimp\/campaigns/);
   assert.match(componentSource, /Audience Selector/);
-  assert.match(componentSource, /Create Draft Blast/);
+  assert.match(componentSource, /Create Embedded Draft Preview/);
+  assert.match(componentSource, /mailchimp-embedded-preview/);
+  assert.match(componentSource, /Send Broker Smoke Test/);
+  assert.match(componentSource, /Deploy to Selected List/);
   assert.match(componentSource, /includeFinancials/);
   assert.match(authSource, /\/api\/listingstream\//);
 });

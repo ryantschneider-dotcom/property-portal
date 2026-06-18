@@ -627,17 +627,22 @@ async function buildStagedDraftMedia(input: { assets: File[] | undefined; slug?:
     size: upload.size,
     originalName: upload.originalName,
   }));
+  const targetSlug = clean(input.slug) || clean(input.draft.sourceInput?.propertyIdOrSlug as string | undefined) || clean(input.draft.sourceInput?.slug as string | undefined);
   return {
     media: {
       heroImageUrl: imageUrls[0],
       heroPhoto: imageUrls[0],
       photos,
       images: imageUploads.map((upload, index) => ({
-        id: `pier-manager-staged-${index + 1}`,
-        title: index === 0 ? "Hero Photo" : `Photo ${index + 1}`,
+        id: upload.path ? `pier-manager-${upload.path}` : `pier-manager-staged-${index + 1}`,
+        title: upload.originalName || (index === 0 ? "Hero Photo" : `Photo ${index + 1}`),
         source: "pier-manager-durable-upload",
+        boundPropertySlug: targetSlug || null,
         storagePath: upload.path,
-        urls: { original: upload.url, full: upload.url, large: upload.url, thumb: upload.url },
+        contentType: upload.contentType,
+        size: upload.size,
+        uploadedAt: new Date().toISOString(),
+        urls: { original: upload.url, full: upload.url, xlarge: upload.url, large: upload.url, medium: upload.url, thumb: upload.url },
       })),
     },
     images: imageUploads,
@@ -739,6 +744,27 @@ export async function submitPropertyPortalListingModification(input: PropertyPor
   return parsePortalResponse(response);
 }
 
+function mergeMediaPayload(existingMedia: unknown, stagedMedia: Record<string, unknown>) {
+  const existing = isRecord(existingMedia) ? existingMedia : {};
+  const staged = isRecord(stagedMedia.media) ? stagedMedia.media : {};
+  const merged = deepMergeRecords(existing, staged);
+  const existingImages = Array.isArray(existing.images) ? existing.images : [];
+  const stagedImages = Array.isArray(staged.images) ? staged.images : [];
+  if (existingImages.length || stagedImages.length) {
+    const seen = new Set<string>();
+    merged.images = [...existingImages, ...stagedImages].filter((image) => {
+      const key = isRecord(image)
+        ? clean(image.id as string | undefined) || clean(image.storagePath as string | undefined) || clean((isRecord(image.urls) ? image.urls.original : "") as string | undefined)
+        : String(image ?? "");
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  return merged;
+}
+
 export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequestOptions & { draft: PropertyPortalReviewDraftForApproval; assets?: File[]; mode?: PropertyPortalPublishMode; uploadStagedImage?: StagedListingImageUploader }): Promise<PropertyPortalApprovalResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const source = input.draft.sourceInput ?? {};
@@ -807,10 +833,7 @@ export async function approvePropertyPortalReviewDraft(input: PropertyPortalRequ
   if (stagedMedia) {
     const stagedMediaRecord = stagedMedia as Record<string, unknown>;
     if (isRecord(stagedMediaRecord.media)) {
-      savePayload.media = deepMergeRecords(
-        isRecord(savePayload.media) ? savePayload.media : {},
-        stagedMediaRecord.media,
-      );
+      savePayload.media = mergeMediaPayload(savePayload.media, stagedMediaRecord);
       savePayload.photos = (stagedMediaRecord.media as Record<string, unknown>).photos;
     }
     if (isRecord(stagedMediaRecord.admin)) {

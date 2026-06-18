@@ -46,6 +46,32 @@ function isGenericReviewTitle(value: unknown) {
   return /^(ai[- ]drafted listing review|ai draft ready for broker review)$/i.test(String(value ?? "").trim());
 }
 
+function mergeMediaPayload(existingMedia: unknown, nextMedia: unknown) {
+  const existing = isRecord(existingMedia) ? existingMedia : {};
+  const next = isRecord(nextMedia) ? nextMedia : {};
+  const merged = { ...existing, ...next } as Record<string, unknown>;
+  const existingImages = Array.isArray(existing.images) ? existing.images : [];
+  const nextImages = Array.isArray(next.images) ? next.images : [];
+  if (existingImages.length || nextImages.length) {
+    const seen = new Set<string>();
+    merged.images = [...existingImages, ...nextImages].filter((image) => {
+      const record = isRecord(image) ? image : {};
+      const urls = isRecord(record.urls) ? record.urls : {};
+      const key = String(record.id || record.storagePath || urls.original || urls.large || "").trim();
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  if (!merged.heroImageUrl && Array.isArray(merged.images)) {
+    const firstImage = merged.images.find(isRecord) as Record<string, unknown> | undefined;
+    const urls = firstImage && isRecord(firstImage.urls) ? firstImage.urls : {};
+    merged.heroImageUrl = urls.large || urls.xlarge || urls.full || urls.original || null;
+  }
+  return merged;
+}
+
 export async function POST(request: Request) {
   let identifier = "";
   try {
@@ -98,6 +124,8 @@ export async function POST(request: Request) {
       }
       if (!hasMeaningfulValue(payloadForSave.media) && hasMeaningfulValue(existingData?.media)) {
         payloadForSave.media = existingData?.media;
+      } else if (hasMeaningfulValue(payloadForSave.media)) {
+        payloadForSave.media = mergeMediaPayload(existingData?.media, payloadForSave.media);
       }
       const approvedSlug = String(payloadForSave.slug || existingData?.slug || identifier).trim();
 
