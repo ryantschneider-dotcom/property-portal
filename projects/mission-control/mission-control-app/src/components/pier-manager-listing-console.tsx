@@ -1240,7 +1240,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         setToastMessage(normalizedPreviewUrl ? `${message} Open the clickable Draft Preview link below.` : `${message} Preview URL was not returned; check the dropdown for the saved draft.`);
         setReviewStatus(`${message} ${normalizedPreviewUrl ? `Draft URL: ${normalizedPreviewUrl}` : "No preview URL came back from ListingStream."}`);
       } else {
-        const message = "Success! Modifications have been published and will be live on the website shortly.";
+        const autoEnrich = (result as { autoEnrich?: { queued?: boolean; jobId?: string; status?: string } }).autoEnrich;
+        const enrichmentNote = autoEnrich?.queued
+          ? ` Global Auto-Enrich is running asynchronously in the background (job ${autoEnrich.jobId}); you can keep working from this desktop console while SAGIS/municipal data backfills the table.`
+          : "";
+        const message = `Success! Modifications have been published and will be live on the website shortly.${enrichmentNote}`;
         setReviewStatus(`${message} Refreshing the live ListingStream baseline so the next edit starts from the newly published document…`);
         await refreshActiveListingsAfterPublish(publishedPropertyId);
         completeSuccessfulSubmission();

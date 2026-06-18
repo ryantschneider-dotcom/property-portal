@@ -70,3 +70,9 @@ test("Offering Site dashboard finalizes live routed URL for sharing without devi
   assert.match(component, /Copy the public URL below when ready/);
   assert.doesNotMatch(component, /retry from your phone|send it from your phone|on mobile/i);
 });
+
+test("PIER Manager publish flow keeps desktop work unblocked while global Auto-Enrich runs", () => {
+  assert.match(component, /Global Auto-Enrich is running asynchronously in the background/);
+  assert.match(component, /you can keep working from this desktop console/);
+  assert.match(component, /SAGIS\/municipal data backfills the table/);
+});
