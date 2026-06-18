@@ -57,8 +57,11 @@ test("Master Console layout uses an unobstructed flex viewport below the sticky 
   const shell = shellSource();
   const component = readFileSync("src/components/master-copilot-console.tsx", "utf8");
 
-  assert.match(shell, /flex h-screen min-w-0 flex-col overflow-hidden/);
-  assert.match(shell, /min-h-0 flex-1 overflow-auto/);
+  assert.match(shell, /flex min-h-screen min-w-0 flex-col bg-\[#f6f4f1\]/);
+  assert.doesNotMatch(shell, /h-screen min-w-0 flex-col overflow-hidden/);
+  assert.doesNotMatch(shell, /h-dvh/);
+  assert.doesNotMatch(shell, /min-h-0 flex-1 overflow-auto/);
+  assert.match(shell, /min-h-0 flex-1 bg-\[#f6f4f1\]/);
   assert.match(component, /grid h-full min-h-0/);
   assert.match(component, /flex min-h-0 flex-col overflow-hidden/);
   assert.match(component, /min-h-0 flex-1 overflow-y-auto/);

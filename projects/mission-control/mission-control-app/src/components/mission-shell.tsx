@@ -59,9 +59,9 @@ const postureItems = [
 ];
 
 const MISSION_SHELL_HEADER_HEIGHT_CLASS = "[--mission-shell-header-height:112px] md:[--mission-shell-header-height:128px]";
-const MASTER_CONSOLE_SHELL_CLASS = `flex h-screen min-w-0 flex-col overflow-hidden h-dvh scroll-pt-[var(--mission-shell-header-height)] ${MISSION_SHELL_HEADER_HEIGHT_CLASS}`;
+const MASTER_CONSOLE_SHELL_CLASS = `flex min-h-screen min-w-0 flex-col bg-[#f6f4f1] scroll-pt-[var(--mission-shell-header-height)] ${MISSION_SHELL_HEADER_HEIGHT_CLASS}`;
 const MASTER_CONSOLE_HEADER_CLASS = "sticky top-0 z-20 flex-none border-b border-zinc-200/80 bg-white/95 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5";
-const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 overflow-auto px-4 pb-4 pt-[calc(var(--mission-shell-header-height)+1.5rem)] scroll-pt-[var(--mission-shell-header-height)] lg:px-5 lg:pb-5 xl:px-6 xl:pb-6";
+const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 bg-[#f6f4f1] px-4 pb-6 pt-[calc(var(--mission-shell-header-height)+1.5rem)] scroll-pt-[var(--mission-shell-header-height)] lg:px-5 xl:px-6";
 
 
 function getBrokerDisplayName(brokerId?: string | null) {

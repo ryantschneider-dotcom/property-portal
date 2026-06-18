@@ -93,10 +93,14 @@ test("PIER Manager AI draft route and client timeout budgets are long enough for
 
 test("MissionShell applies global sticky-header clearance so no route content is hidden behind the header", async () => {
   const shell = await readFile("src/components/mission-shell.tsx", "utf8");
+  const globals = await readFile("src/app/globals.css", "utf8");
 
   assert.match(shell, /MISSION_SHELL_HEADER_HEIGHT_CLASS/);
   assert.match(shell, /sticky top-0/);
   assert.match(shell, /scroll-pt-\[var\(--mission-shell-header-height\)\]/);
   assert.match(shell, /pt-\[calc\(var\(--mission-shell-header-height\)\+1\.5rem\)\]/);
   assert.match(shell, /data-testid="mission-shell-content"/);
+  assert.match(shell, /flex min-h-screen min-w-0 flex-col bg-\[#f6f4f1\]/);
+  assert.doesNotMatch(shell, /h-dvh|h-screen min-w-0 flex-col overflow-hidden|min-h-0 flex-1 overflow-auto/);
+  assert.match(globals, /html \{[\s\S]*background: #f6f4f1/);
 });

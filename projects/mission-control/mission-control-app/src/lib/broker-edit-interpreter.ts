@@ -12,6 +12,8 @@ type SuiteRecord = {
   suiteFloorPlans?: unknown[];
 };
 
+type ListingArrayName = "documents" | "attachments" | "links";
+
 export type BrokerEditInterpreterResult = {
   summary: string[];
   flags: string[];
@@ -35,6 +37,38 @@ function asRecord(value: unknown): UnknownRecord {
 
 function asString(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function normalizeTextForMatching(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function meaningfulTokens(value: string) {
+  const stopWords = new Set(["the", "a", "an", "and", "or", "to", "from", "of", "for", "with", "public", "listing", "file", "files", "document", "documents", "attachment", "attachments", "link", "links", "url", "urls", "report", "pdf"]);
+  return normalizeTextForMatching(value)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !stopWords.has(token));
+}
+
+function objectSearchText(value: unknown) {
+  const record = asRecord(value);
+  return [
+    record.id,
+    record.title,
+    record.name,
+    record.label,
+    record.description,
+    record.fileName,
+    record.filename,
+    record.url,
+    record.href,
+    record.downloadUrl,
+  ].map(asString).filter(Boolean).join(" ");
 }
 
 function parseNumericToken(value: string | undefined) {
@@ -267,6 +301,65 @@ function getRequestedLifecycleAction(instructions: string): "archive" | "delete"
   if (/\bpull\s+(?:it|this|this\s+listing|this\s+property|the\s+listing|the\s+property|listing|property)\s+from\s+(?:the\s+)?(?:live\s+)?(?:site|website|public\s+listings|market)\b/.test(text)) return "archive";
   if (/\b(?:delete|permanently\s+delete)\s+(?:it|this|the\s+)?(?:listing|property)\b/.test(text)) return "delete";
   return null;
+}
+
+function instructionRequestsArrayRemoval(instructions: string, arrayName?: ListingArrayName) {
+  const text = normalizeTextForMatching(instructions);
+  if (!/\b(remove|delete|drop|clear|hide|unpublish|take off|take down)\b/i.test(instructions)) return false;
+  if (!arrayName) return /\b(documents?|attachments?|links?|urls?|files?)\b/.test(text);
+  const singular = arrayName === "documents" ? "document" : arrayName === "attachments" ? "attachment" : "link";
+  return new RegExp(`\\b${singular}s?\\b|\\b${arrayName}\\b|\\bfiles?\\b|\\burls?\\b`).test(text);
+}
+
+function instructionRequestsAllArrayRemoval(instructions: string, arrayName: ListingArrayName) {
+  const singular = arrayName === "documents" ? "document" : arrayName === "attachments" ? "attachment" : "link";
+  return new RegExp(`\\b(?:remove|delete|drop|clear)\\s+(?:all|every)\\s+(?:public\\s+)?(?:${singular}s?|${arrayName}|files?|urls?)\\b`, "i").test(instructions);
+}
+
+function arrayItemMatchesRemovalInstruction(item: unknown, instructions: string) {
+  const itemText = objectSearchText(item);
+  const normalizedInstruction = normalizeTextForMatching(instructions);
+  const normalizedItem = normalizeTextForMatching(itemText);
+  if (!normalizedItem) return false;
+
+  const phraseFields = ["title", "name", "label", "description", "fileName", "filename", "id"]
+    .map((key) => asString(asRecord(item)[key]))
+    .filter(Boolean)
+    .map(normalizeTextForMatching)
+    .filter((value) => value.length >= 3);
+  if (phraseFields.some((field) => normalizedInstruction.includes(field))) return true;
+
+  const tokens = meaningfulTokens(itemText);
+  if (!tokens.length) return false;
+  const hitCount = tokens.filter((token) => normalizedInstruction.includes(token)).length;
+  return tokens.length === 1 ? hitCount === 1 && tokens[0].length >= 5 : hitCount >= Math.min(2, tokens.length);
+}
+
+function applyListingArrayRemovals(rawProperty: Record<string, unknown>, instructions: string) {
+  const updatePayload: Partial<Record<ListingArrayName, unknown[]>> = {};
+  const messages: string[] = [];
+  const flags: string[] = [];
+
+  for (const arrayName of ["documents", "attachments", "links"] as ListingArrayName[]) {
+    const current = Array.isArray(rawProperty[arrayName]) ? rawProperty[arrayName] as unknown[] : [];
+    if (!current.length || !instructionRequestsArrayRemoval(instructions, arrayName)) continue;
+
+    let next: unknown[];
+    if (instructionRequestsAllArrayRemoval(instructions, arrayName)) {
+      next = [];
+    } else {
+      next = current.filter((item) => !arrayItemMatchesRemovalInstruction(item, instructions));
+    }
+
+    if (next.length < current.length) {
+      updatePayload[arrayName] = next;
+      messages.push(`Removed ${current.length - next.length} ${arrayName.slice(0, -1)}${current.length - next.length === 1 ? "" : "s"} from the listing ${arrayName} array.`);
+    } else {
+      flags.push(`Removal requested for ${arrayName}, but no matching object could be safely identified; no success flag should be returned for that array.`);
+    }
+  }
+
+  return { updatePayload, messages, flags };
 }
 
 function getRequestedListingStatus(instructions: string): "leased" | "sold" | "under_contract" | null {
@@ -531,6 +624,11 @@ function interpretBrokerEditRequestDeterministic(rawProperty: Record<string, unk
     summary.push(`${requestedLifecycleAction === "archive" ? "Archive" : "Delete"} listing requested from broker instructions.`);
   }
 
+  const arrayRemovals = applyListingArrayRemovals(rawProperty, instructions);
+  Object.assign(updatePayload, arrayRemovals.updatePayload);
+  summary.push(...arrayRemovals.messages);
+  flags.push(...arrayRemovals.flags);
+
   const requestedListingStatus = getRequestedListingStatus(instructions);
   if (requestedListingStatus) {
     Object.assign(updatePayload, buildListingStatusPayload(requestedListingStatus));
@@ -720,12 +818,15 @@ function buildFrontierBrokerEditPrompt(rawProperty: Record<string, unknown>, ins
   "summary": ["broker-safe summary strings"],
   "flags": [],
   "confidence": "high" | "medium" | "low",
-  "updatePayload": { "pricing": {}, "property": {}, "content": {}, "admin": { "suites": [] } },
+  "updatePayload": { "pricing": {}, "property": {}, "content": {}, "admin": { "suites": [] }, "documents": [], "attachments": [], "links": [] },
   "lifecycleAction": "archive" | "delete" // omit unless explicitly requested for the whole listing
 }
 
 Critical rules:
 - Use high-reasoning semantic matching over brittle regex. Map fuzzy broker language to the exact current listing objects.
+- Documents/attachments/links are mutable arrays. If the broker asks to remove, delete, hide, unpublish, drop, or take down a document, attachment, file, URL, or link, identify the object inside the current documents, attachments, or links array by semantic evidence from id, title, name, label, description, filename, url, href, or downloadUrl.
+- For documents/attachments/links removals, return the COMPLETE resulting array for every mutated array with only the requested objects removed and every unrelated object preserved. Do not return a partial array and do not leave the matched object in place.
+- Verification gate: when a removal is requested for documents, attachments, or links, the corresponding output array length must be strictly less than the input array length before you return a success/high-confidence summary. If the length is not lower, set confidence "low", add a flag explaining no matching object was safely removed, and do not claim success.
 - If the broker says to capitalize, rename, correct, or change suite h to H, update admin.suites so the resulting suiteNumber is exactly "H" (uppercase H), never "a" and never lowercase "h".
 - If the broker says to delete/remove the null-data/no-data/blank suite literally named "space", remove the suite row whose suiteNumber is exactly "space" even though "space" is also a generic real-estate noun.
 - Preserve every suite not explicitly removed. When updating admin.suites, return the full resulting suites array, not a partial array.
@@ -779,7 +880,7 @@ async function callOpenAiInterpreter(prompt: string, options: BrokerEditInterpre
       temperature: 0,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, and self-verification before output." },
+        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, documents/attachments/links array mutation, and self-verification before output. For requested document/link/attachment removals, never report success unless the mutated output array is strictly shorter than the input array." },
         { role: "user", content: prompt },
       ],
     }),
@@ -845,6 +946,25 @@ function suiteHasDataForVerification(value: UnknownRecord) {
   );
 }
 
+function listingArrayForVerification(value: Record<string, unknown>, arrayName: ListingArrayName) {
+  return Array.isArray(value[arrayName]) ? value[arrayName] as unknown[] : [];
+}
+
+function verifyListingArrayRemoval(rawProperty: Record<string, unknown>, after: Record<string, unknown>, instructions: string, failures: string[]) {
+  for (const arrayName of ["documents", "attachments", "links"] as ListingArrayName[]) {
+    if (!instructionRequestsArrayRemoval(instructions, arrayName)) continue;
+    const beforeArray = listingArrayForVerification(rawProperty, arrayName);
+    if (!beforeArray.length) continue;
+    const afterArray = listingArrayForVerification(after, arrayName);
+    if (afterArray.length >= beforeArray.length) {
+      failures.push(`Frontier cross-check failed: removal was requested for ${arrayName}, but output ${arrayName} length (${afterArray.length}) was not strictly less than input length (${beforeArray.length}).`);
+      continue;
+    }
+    const stillMatched = afterArray.filter((item) => arrayItemMatchesRemovalInstruction(item, instructions));
+    if (stillMatched.length) failures.push(`Frontier cross-check failed: requested ${arrayName} removal still leaves a semantically matching object in the output array.`);
+  }
+}
+
 function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, instructions: string, result: BrokerEditInterpreterResult) {
   const after = deepMergeForVerification(rawProperty, result.updatePayload);
   const afterSuites = suiteRowsForVerification(after);
@@ -873,6 +993,8 @@ function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, i
     const remainingEmpty = afterSuites.filter((suite) => !suiteHasDataForVerification(suite));
     if (remainingEmpty.length) failures.push(`Frontier cross-check failed: expected no-data suite rows to be removed, but ${remainingEmpty.map(suiteLabelForVerification).filter(Boolean).join(", ") || "an unnamed suite"} remains.`);
   }
+
+  verifyListingArrayRemoval(rawProperty, after, instructions, failures);
 
   if (failures.length) throw new Error(failures.join(" "));
 }

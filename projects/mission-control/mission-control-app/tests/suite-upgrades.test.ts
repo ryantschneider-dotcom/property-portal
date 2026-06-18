@@ -143,6 +143,52 @@ test("suite notes parser preserves verbatim copy only when broker explicitly ask
   assert.equal(suiteM?.suiteNotes, "100% STORAGE - broker to verify door sizes");
 });
 
+test("document array removal instructions semantically delete the matching public link", async () => {
+  const listingWithDocuments = {
+    ...currentListing,
+    documents: [
+      { id: "site-plan", title: "Pooler Parkway Site Plan", url: "https://example.com/site-plan.pdf" },
+      { id: "flyer", title: "Old Marketing Flyer", url: "https://example.com/old-flyer.pdf" },
+    ],
+    attachments: [
+      { id: "survey", name: "Boundary Survey", href: "https://example.com/survey.pdf" },
+      { id: "soil", name: "Old Soils Report", href: "https://example.com/soils.pdf" },
+    ],
+    links: [
+      { id: "drone", label: "Drone Video", url: "https://example.com/drone" },
+      { id: "dropbox", label: "Old Dropbox Folder", url: "https://example.com/dropbox" },
+    ],
+  };
+  const instructions = "Remove the old marketing flyer document, old soils report attachment, and old Dropbox folder link.";
+
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Pooler Parkway Vacant Land Revision Draft",
+    descriptionHtml: "<p>Document removals prepared for broker review.</p>",
+    highlights: ["Requested documents and links removed from public payload"],
+    structuredUpdates: {},
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "pooler-parkway-vacant-land",
+    instructions,
+    interpreter: deterministicInterpreter,
+    fetchImpl: async () => Response.json(listingWithDocuments),
+    writer,
+  });
+  const result = draft.review.interpreter;
+
+  assert.ok(result);
+  assert.equal((draft.structuredUpdates.documents as unknown[]).length, 1);
+  assert.equal((draft.structuredUpdates.attachments as unknown[]).length, 1);
+  assert.equal((draft.structuredUpdates.links as unknown[]).length, 1);
+  assert.deepEqual((draft.structuredUpdates.documents as Array<Record<string, unknown>>).map((item) => item.id), ["site-plan"]);
+  assert.deepEqual((draft.structuredUpdates.attachments as Array<Record<string, unknown>>).map((item) => item.id), ["survey"]);
+  assert.deepEqual((draft.structuredUpdates.links as Array<Record<string, unknown>>).map((item) => item.id), ["drone"]);
+  assert.equal(result.confidence, "high");
+  assert.equal(result.flags.length, 0);
+});
+
 test("modification prompt requires wrapper stripping and broker-written marketing tone for narrative fields", () => {
   const prompt = buildModificationDeltaPrompt({
     currentListing,
