@@ -190,17 +190,31 @@ function hasMeaningfulValue(value: unknown): boolean {
   return true;
 }
 
-function deepMergeRecords(...records: Record<string, unknown>[]) {
+function shouldApplyMergedValue(path: string[], value: unknown) {
+  if (value === undefined) return false;
+  if (Array.isArray(value)) return true;
+  if (value === null) return path.includes("links") || path.includes("documents") || path.includes("attachments") || path.includes("media");
+  if (typeof value === "string") return value.trim().length > 0 || path.includes("links");
+  if (isRecord(value)) return true;
+  return hasMeaningfulValue(value);
+}
+
+function deepMergeRecordList(records: Record<string, unknown>[], path: string[] = []) {
   const output: Record<string, unknown> = {};
   for (const record of records) {
     for (const [key, value] of Object.entries(record)) {
-      if (!hasMeaningfulValue(value)) continue;
+      const nextPath = [...path, key];
+      if (!shouldApplyMergedValue(nextPath, value)) continue;
       const existing = output[key];
-      if (isRecord(existing) && isRecord(value)) output[key] = deepMergeRecords(existing, value);
+      if (isRecord(existing) && isRecord(value)) output[key] = deepMergeRecordList([existing, value], nextPath);
       else output[key] = value;
     }
   }
   return output;
+}
+
+function deepMergeRecords(...records: Record<string, unknown>[]) {
+  return deepMergeRecordList(records);
 }
 
 function isGenericReviewTitle(title: string) {

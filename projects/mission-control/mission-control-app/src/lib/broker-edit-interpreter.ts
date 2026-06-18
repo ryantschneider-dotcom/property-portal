@@ -63,12 +63,22 @@ function objectSearchText(value: unknown) {
     record.name,
     record.label,
     record.description,
+    record.documentType,
+    record.source,
     record.fileName,
     record.filename,
     record.url,
     record.href,
     record.downloadUrl,
-  ].map(asString).filter(Boolean).join(" ");
+  ].map(asString).filter(Boolean).join(" | ");
+}
+
+function humanizeKey(key: string) {
+  return key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ");
+}
+
+function linkFieldSearchText(key: string, value: unknown) {
+  return `${humanizeKey(key)} | ${asString(value)}`;
 }
 
 function parseNumericToken(value: string | undefined) {
@@ -318,13 +328,16 @@ function instructionRequestsAllArrayRemoval(instructions: string, arrayName: Lis
 
 function arrayItemMatchesRemovalInstruction(item: unknown, instructions: string) {
   const itemText = objectSearchText(item);
+  return textMatchesRemovalInstruction(itemText, instructions);
+}
+
+function textMatchesRemovalInstruction(itemText: string, instructions: string) {
   const normalizedInstruction = normalizeTextForMatching(instructions);
   const normalizedItem = normalizeTextForMatching(itemText);
   if (!normalizedItem) return false;
 
-  const phraseFields = ["title", "name", "label", "description", "fileName", "filename", "id"]
-    .map((key) => asString(asRecord(item)[key]))
-    .filter(Boolean)
+  const phraseFields = itemText
+    .split(/\s{2,}|\|/g)
     .map(normalizeTextForMatching)
     .filter((value) => value.length >= 3);
   if (phraseFields.some((field) => normalizedInstruction.includes(field))) return true;
@@ -335,8 +348,21 @@ function arrayItemMatchesRemovalInstruction(item: unknown, instructions: string)
   return tokens.length === 1 ? hitCount === 1 && tokens[0].length >= 5 : hitCount >= Math.min(2, tokens.length);
 }
 
+function removeMatchingLinkObjectFields(currentLinks: Record<string, unknown>, instructions: string) {
+  const nextLinks: Record<string, unknown> = { ...currentLinks };
+  const removedKeys: string[] = [];
+  for (const [key, value] of Object.entries(currentLinks)) {
+    if (!asString(value)) continue;
+    if (textMatchesRemovalInstruction(linkFieldSearchText(key, value), instructions)) {
+      nextLinks[key] = null;
+      removedKeys.push(key);
+    }
+  }
+  return { nextLinks, removedKeys };
+}
+
 function applyListingArrayRemovals(rawProperty: Record<string, unknown>, instructions: string) {
-  const updatePayload: Partial<Record<ListingArrayName, unknown[]>> = {};
+  const updatePayload: Partial<Record<ListingArrayName, unknown[] | Record<string, unknown>>> = {};
   const messages: string[] = [];
   const flags: string[] = [];
 
@@ -356,6 +382,17 @@ function applyListingArrayRemovals(rawProperty: Record<string, unknown>, instruc
       messages.push(`Removed ${current.length - next.length} ${arrayName.slice(0, -1)}${current.length - next.length === 1 ? "" : "s"} from the listing ${arrayName} array.`);
     } else {
       flags.push(`Removal requested for ${arrayName}, but no matching object could be safely identified; no success flag should be returned for that array.`);
+    }
+  }
+
+  const currentLinks = asRecord(rawProperty.links);
+  if (Object.keys(currentLinks).length && instructionRequestsArrayRemoval(instructions, "links")) {
+    const { nextLinks, removedKeys } = removeMatchingLinkObjectFields(currentLinks, instructions);
+    if (removedKeys.length) {
+      updatePayload.links = nextLinks;
+      messages.push(`Removed ${removedKeys.join(", ")} from the listing links object.`);
+    } else if (!Array.isArray(rawProperty.links)) {
+      flags.push("Removal requested for links, but no matching link object field could be safely identified; no success flag should be returned for links.");
     }
   }
 
@@ -818,15 +855,16 @@ function buildFrontierBrokerEditPrompt(rawProperty: Record<string, unknown>, ins
   "summary": ["broker-safe summary strings"],
   "flags": [],
   "confidence": "high" | "medium" | "low",
-  "updatePayload": { "pricing": {}, "property": {}, "content": {}, "admin": { "suites": [] }, "documents": [], "attachments": [], "links": [] },
+  "updatePayload": { "pricing": {}, "property": {}, "content": {}, "admin": { "suites": [] }, "documents": [], "attachments": [], "links": { "saleListingUrl": null, "websiteUrl": null, "leaseListingUrl": null, "virtualTourUrl": null, "matterportUrl": null, "youTubeUrl": null } },
   "lifecycleAction": "archive" | "delete" // omit unless explicitly requested for the whole listing
 }
 
 Critical rules:
 - Use high-reasoning semantic matching over brittle regex. Map fuzzy broker language to the exact current listing objects.
-- Documents/attachments/links are mutable arrays. If the broker asks to remove, delete, hide, unpublish, drop, or take down a document, attachment, file, URL, or link, identify the object inside the current documents, attachments, or links array by semantic evidence from id, title, name, label, description, filename, url, href, or downloadUrl.
-- For documents/attachments/links removals, return the COMPLETE resulting array for every mutated array with only the requested objects removed and every unrelated object preserved. Do not return a partial array and do not leave the matched object in place.
-- Verification gate: when a removal is requested for documents, attachments, or links, the corresponding output array length must be strictly less than the input array length before you return a success/high-confidence summary. If the length is not lower, set confidence "low", add a flag explaining no matching object was safely removed, and do not claim success.
+- Documents/attachments are mutable arrays; links is a mutable object on live ListingStream records. Pooler Parkway stores the public external Sale Listing URL in BOTH top-level documents[] (documentType "External Link", title "Sale Listing") and links.saleListingUrl. If the broker asks to remove/delete/hide the Pooler/Sale Listing link, return documents as the complete resulting array with that External Link object removed AND return links with saleListingUrl set to null while preserving unrelated link fields.
+- If the broker asks to remove, delete, hide, unpublish, drop, or take down a document, attachment, file, URL, or link, identify the object/field inside the current documents, attachments, or links payload by semantic evidence from id, title, name, label, description, documentType, source, filename, url, href, downloadUrl, or link object key (saleListingUrl, websiteUrl, leaseListingUrl, virtualTourUrl, matterportUrl, youTubeUrl).
+- For documents/attachments removals, return the COMPLETE resulting array for every mutated array with only the requested objects removed and every unrelated object preserved. For links removals, return the COMPLETE resulting links object with the requested URL field set to null. Do not return a partial array/object and do not leave the matched object/URL in place.
+- Verification gate: when a removal is requested for documents or attachments, the corresponding output array length must be strictly less than the input array length before you return a success/high-confidence summary. When a removal is requested for links, the matching links.* URL value must be null or absent and must not equal the input URL before you return success/high-confidence. If this is not true, set confidence "low", add a flag explaining no matching object/field was safely removed, and do not claim success.
 - If the broker says to capitalize, rename, correct, or change suite h to H, update admin.suites so the resulting suiteNumber is exactly "H" (uppercase H), never "a" and never lowercase "h".
 - If the broker says to delete/remove the null-data/no-data/blank suite literally named "space", remove the suite row whose suiteNumber is exactly "space" even though "space" is also a generic real-estate noun.
 - Preserve every suite not explicitly removed. When updating admin.suites, return the full resulting suites array, not a partial array.
@@ -880,7 +918,7 @@ async function callOpenAiInterpreter(prompt: string, options: BrokerEditInterpre
       temperature: 0,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, documents/attachments/links array mutation, and self-verification before output. For requested document/link/attachment removals, never report success unless the mutated output array is strictly shorter than the input array." },
+        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, documents/attachments array mutation, links object field deletion, and self-verification before output. For requested document/link/attachment removals, never report success unless the mutated output documents/attachments array is strictly shorter or the matched links.* URL field is null/absent." },
         { role: "user", content: prompt },
       ],
     }),
@@ -950,8 +988,23 @@ function listingArrayForVerification(value: Record<string, unknown>, arrayName: 
   return Array.isArray(value[arrayName]) ? value[arrayName] as unknown[] : [];
 }
 
+function verifyLinksObjectRemoval(rawProperty: Record<string, unknown>, after: Record<string, unknown>, instructions: string, failures: string[]) {
+  if (!instructionRequestsArrayRemoval(instructions, "links")) return;
+  const beforeLinks = asRecord(rawProperty.links);
+  if (!Object.keys(beforeLinks).length) return;
+  const afterLinks = asRecord(after.links);
+  const beforeMatches = Object.entries(beforeLinks).filter(([, value]) => asString(value) && textMatchesRemovalInstruction(linkFieldSearchText("saleListingUrl", value), instructions));
+  const explicitlyMatched = Object.entries(beforeLinks).filter(([key, value]) => asString(value) && textMatchesRemovalInstruction(linkFieldSearchText(key, value), instructions));
+  const matches = explicitlyMatched.length ? explicitlyMatched : beforeMatches;
+  for (const [key, value] of matches) {
+    if (asString(afterLinks[key]) === asString(value)) {
+      failures.push(`Frontier cross-check failed: requested links removal still leaves links.${key} unchanged.`);
+    }
+  }
+}
+
 function verifyListingArrayRemoval(rawProperty: Record<string, unknown>, after: Record<string, unknown>, instructions: string, failures: string[]) {
-  for (const arrayName of ["documents", "attachments", "links"] as ListingArrayName[]) {
+  for (const arrayName of ["documents", "attachments"] as ListingArrayName[]) {
     if (!instructionRequestsArrayRemoval(instructions, arrayName)) continue;
     const beforeArray = listingArrayForVerification(rawProperty, arrayName);
     if (!beforeArray.length) continue;
@@ -995,6 +1048,7 @@ function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, i
   }
 
   verifyListingArrayRemoval(rawProperty, after, instructions, failures);
+  verifyLinksObjectRemoval(rawProperty, after, instructions, failures);
 
   if (failures.length) throw new Error(failures.join(" "));
 }
