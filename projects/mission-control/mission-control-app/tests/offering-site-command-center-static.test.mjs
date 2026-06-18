@@ -4,6 +4,8 @@ import test from "node:test";
 
 const component = readFileSync("src/components/pier-manager-listing-console.tsx", "utf8");
 const route = readFileSync("src/app/api/listingstream/offering-sites/route.ts", "utf8");
+const activeListingsRoute = readFileSync("src/app/api/listingstream/active-listings/route.ts", "utf8");
+const autoEnrichRoute = readFileSync("src/app/api/listingstream/auto-enrich/route.ts", "utf8");
 
 test("Offering Site Command Center exposes a clean single-click launch interface", () => {
   assert.match(component, /data-testid="offering-site-command-center"/);
@@ -36,6 +38,8 @@ test("Offering Site Command Center surfaces simple blocked and failed states wit
   assert.match(component, /blocked/i);
   assert.match(component, /failed/i);
   assert.match(component, /Retry Build/);
+  assert.match(component, /Auto-Enrich Data/);
+  assert.match(component, /autoEnrichOfferingSiteData/);
   assert.match(component, /retryOfferingSiteBuild/);
   assert.match(component, /baseline\.validation\.missingFields/);
   assert.match(component, /offeringSiteError/);
@@ -50,9 +54,19 @@ test("Mission Control proxy protects and forwards ListingStream offering-site jo
   assert.match(route, /offering site/);
 });
 
-test("Offering Site dashboard finalizes live routed URL for sharing", () => {
+test("Choose your workflow requests the complete active portfolio and exposes Auto-Enrich Data", () => {
+  assert.match(component, /portfolio=all/);
+  assert.match(activeListingsRoute, /showCompletePortfolio/);
+  assert.match(activeListingsRoute, /portfolio/);
+  assert.doesNotMatch(activeListingsRoute, /limit:\s*4|take:\s*4|slice\(0,\s*4/);
+  assert.match(autoEnrichRoute, /\/api\/admin\/properties\/auto-enrich/);
+  assert.match(autoEnrichRoute, /Auto-Enrich Data/);
+});
+
+test("Offering Site dashboard finalizes live routed URL for sharing without device assumptions", () => {
   assert.match(component, /deployment\?\.publicUrl/);
   assert.match(component, /deployment\?\.customDomain/);
   assert.match(component, /Offering site is live and routed/);
-  assert.match(component, /Copy the public URL below and send it from your phone/);
+  assert.match(component, /Copy the public URL below when ready/);
+  assert.doesNotMatch(component, /retry from your phone|send it from your phone|on mobile/i);
 });

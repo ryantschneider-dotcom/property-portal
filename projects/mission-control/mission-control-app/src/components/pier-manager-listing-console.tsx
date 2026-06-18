@@ -558,7 +558,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/listingstream/active-listings?brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" })
+    fetch(`/api/listingstream/active-listings?portfolio=all&brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" })
       .then(parseJsonResponse)
       .then((data) => {
         if (cancelled) return;
@@ -643,7 +643,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       const payload = await fetch("/api/listingstream/offering-sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-mobile", gate: "5" }),
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", gate: "5" }),
       }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
@@ -652,9 +652,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         // Gate 4 explicitly surfaces baseline.validation.missingFields from ListingStream blocked states.
         if (payload.job.status === "blocked") {
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
-          setOfferingSiteStatus("Offering site build is blocked. Fix the source data gaps and retry from your phone.");
+          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the build.");
         } else {
-          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Offering site is live and routed. Copy the public URL below and send it from your phone." : "Offering site build is underway. Refresh status for the latest result.");
+          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Offering site is live and routed. Copy the public URL below when ready." : "Offering site build is underway. Refresh status for the latest result.");
         }
       } else {
         setOfferingSiteError(payload.error || "ListingStream did not return an offering site job.");
@@ -688,6 +688,38 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
 
   function retryOfferingSiteBuild() {
     void launchOfferingSiteBuild(offeringSiteJob?.listingId || offeringSiteSelectedListingId, offeringSiteJob);
+  }
+
+  async function autoEnrichOfferingSiteData() {
+    const targetListingId = offeringSiteJob?.listingId || offeringSiteSelectedListingId;
+    if (!targetListingId) {
+      setOfferingSiteError("Select an active ListingStream listing before running Auto-Enrich Data.");
+      return;
+    }
+    setOfferingSiteBusy(true);
+    setOfferingSiteError("");
+    setOfferingSiteStatus("Auto-Enrich Data is querying public GIS and tax assessor records, then patching missing ListingStream fields…");
+    try {
+      const payload = await fetch("/api/listingstream/auto-enrich", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop" }),
+      }).then(parseJsonResponse) as { ok?: boolean; status?: string; message?: string; missingAfter?: string[]; patch?: Record<string, unknown> };
+      await refreshActiveListingsAfterPublish(targetListingId);
+      const remaining = Array.isArray(payload.missingAfter) ? payload.missingAfter : [];
+      if (payload.ok && remaining.length === 0) {
+        setOfferingSiteStatus(payload.message || "Auto-Enrich Data patched public records into ListingStream. Relaunching the offering site build…");
+        await launchOfferingSiteBuild(targetListingId, offeringSiteJob);
+      } else {
+        setOfferingSiteStatus(payload.message || "Auto-Enrich Data completed, but the offering site still needs source data review.");
+        if (remaining.length) setOfferingSiteError(`Auto-Enrich Data still needs: ${remaining.join(", ")}`);
+      }
+    } catch (error) {
+      setOfferingSiteError(error instanceof Error ? error.message : "Auto-Enrich Data failed.");
+      setOfferingSiteStatus("Auto-Enrich Data needs attention.");
+    } finally {
+      setOfferingSiteBusy(false);
+    }
   }
 
   function revealReviewDraft(target: "panel" | "actions" = "panel") {
@@ -820,7 +852,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
 
   async function refreshActiveListingsAfterPublish(preferredPropertyId: string) {
     const cacheBust = Date.now();
-    const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?fresh=${cacheBust}&brokerId=${encodeURIComponent(activeBrokerId)}`, {
+    const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?portfolio=all&fresh=${cacheBust}&brokerId=${encodeURIComponent(activeBrokerId)}`, {
       cache: "no-store",
       headers: {
         "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
@@ -1005,7 +1037,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setOmError("");
     setPublishSuccessMessage("");
     setToastMessage("");
-    setModificationStatus("AI is translating your vibe-code instruction into draft-only OM changes and rendering a mobile review preview…");
+    setModificationStatus("AI is translating your vibe-code instruction into draft-only OM changes and rendering a responsive review preview…");
     try {
       const slug = encodeURIComponent(getListingSelectionValue(selectedListing));
       const data = (await fetchJsonWithTimeout(`/api/listingstream/offering-memorandums/${slug}/drafts`, {
@@ -1019,7 +1051,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       setOmDraftId(data.draftId);
       setOmDraftPreviewHtml(data.previewHtml);
       setOmRevisionSummary(Array.isArray(data.parsedSummary) ? data.parsedSummary.map((item) => String(item)).filter(Boolean) : []);
-      setModificationStatus("AI OM preview ready. Review it below on mobile, then approve + publish or send another vibe-code refinement.");
+      setModificationStatus("AI OM preview ready. Review it below, then approve + publish or send another vibe-code refinement.");
     } catch (error) {
       const message = getAbortableErrorMessage(error, "Could not generate AI OM preview.");
       setOmError(message);
@@ -1234,7 +1266,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         body: JSON.stringify({ action, propertyIdOrSlug: selectedPropertyId }),
       });
       await parseJsonResponse(response);
-      const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" }));
+      const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?portfolio=all&brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" }));
       const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
       setActiveListings(items);
       setSelectedPropertyId(items[0]?.slug || items[0]?.id || "");
@@ -1407,7 +1439,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         {offeringSiteError ? (
           <div role="alert" className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
             {offeringSiteError}
-            <button type="button" onClick={retryOfferingSiteBuild} disabled={offeringSiteBusy || !offeringSiteCanRetry} className="mt-3 block rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-extrabold text-amber-900 disabled:opacity-50">Retry Build</button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => void autoEnrichOfferingSiteData()} disabled={offeringSiteBusy || !offeringSiteSelectedListingId} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-extrabold text-white disabled:opacity-50">Auto-Enrich Data</button>
+              <button type="button" onClick={retryOfferingSiteBuild} disabled={offeringSiteBusy || !offeringSiteCanRetry} className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-extrabold text-amber-900 disabled:opacity-50">Retry Build</button>
+            </div>
           </div>
         ) : null}
 

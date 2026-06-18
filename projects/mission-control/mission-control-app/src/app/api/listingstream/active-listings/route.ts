@@ -18,10 +18,14 @@ async function requirePierManagerAuth() {
 export async function GET(request: Request) {
   try {
     const session = await requirePierManagerAuth();
-    const requestedBrokerId = new URL(request.url).searchParams.get("brokerId");
-    const brokerId = normalizeBrokerId(requestedBrokerId || session?.brokerId || "ryan");
-    const params = new URLSearchParams({ brokerId });
-    const response = await safePropertyPortalFetch(fetch, buildPropertyPortalUrl(`/api/broker/active-listings?${params.toString()}`), {
+    const url = new URL(request.url);
+    const requestedBrokerId = url.searchParams.get("brokerId");
+    const showCompletePortfolio = url.searchParams.get("portfolio") === "all" || url.searchParams.get("all") === "1";
+    const brokerId = showCompletePortfolio ? "" : normalizeBrokerId(requestedBrokerId || session?.brokerId || "ryan");
+    const params = new URLSearchParams();
+    if (brokerId) params.set("brokerId", brokerId);
+    const query = params.toString();
+    const response = await safePropertyPortalFetch(fetch, buildPropertyPortalUrl(`/api/broker/active-listings${query ? `?${query}` : ""}`), {
       cache: "no-store",
       headers: {
         accept: "application/json",
