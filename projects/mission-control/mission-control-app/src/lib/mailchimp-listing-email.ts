@@ -28,7 +28,10 @@ function record(value: unknown): ListingRecord {
 }
 
 function getNested(source: ListingRecord, path: string) {
-  return path.split(".").reduce<unknown>((current, key) => record(current)[key], source);
+  return path.split(".").reduce<unknown>((current, key) => {
+    if (Array.isArray(current) && /^\d+$/.test(key)) return current[Number(key)];
+    return record(current)[key];
+  }, source);
 }
 
 function firstText(source: ListingRecord, paths: string[]) {
@@ -157,7 +160,15 @@ export function buildMailchimpCampaignSettings(input: { listing: ListingRecord; 
 }
 
 function heroImageUrl(listing: ListingRecord) {
+  const media = record(listing.media);
+  const mediaImages = Array.isArray(media.images) ? media.images : [];
+  const firstMediaImage = record(mediaImages.find((image) => record(image).url || record(record(image).urls).original || record(record(image).urls).full));
+  const firstMediaImageUrl = text(firstMediaImage.url) || firstText(firstMediaImage, ["urls.original", "urls.full", "urls.xlarge", "urls.large"]);
+  if (firstMediaImageUrl) return firstMediaImageUrl;
   const direct = firstText(listing, [
+    "media.images.0.url",
+    "media.images.0.urls.original",
+    "media.images.0.urls.full",
     "media.heroImageUrl",
     "media.heroPhoto",
     "media.hero.url",
@@ -175,14 +186,17 @@ function heroImageUrl(listing: ListingRecord) {
 }
 
 function marketingDescription(listing: ListingRecord) {
+  const verifiedSections = [
+    firstText(listing, ["content.propertyDescription", "content.leaseDescription", "content.saleDescription"]),
+    firstText(listing, ["content.locationDescription"]),
+    firstText(listing, ["content.siteDescription"]),
+  ].filter(Boolean);
+  const uniqueSections = verifiedSections.filter((section, index, all) => all.findIndex((candidate) => candidate.toLowerCase() === section.toLowerCase()) === index);
+  if (uniqueSections.length) return uniqueSections.join("\n\n");
   return firstText(listing, [
-    "content.propertyDescription",
-    "content.siteDescription",
     "content.propertyOverview",
     "content.marketingDescription",
     "content.marketingBlurb",
-    "content.saleDescription",
-    "content.leaseDescription",
     "content.description",
     "property.description",
     "property.propertyDescription",
@@ -190,7 +204,7 @@ function marketingDescription(listing: ListingRecord) {
     "description",
     "propertyDescription",
     "summary",
-  ]) || firstDeepText(listing, [/^(propertyDescription|siteDescription|propertyOverview|marketingDescription|marketingBlurb|saleDescription|leaseDescription|description|summary)$/i]);
+  ]) || firstDeepText(listing, [/^(propertyDescription|siteDescription|locationDescription|propertyOverview|marketingDescription|marketingBlurb|saleDescription|leaseDescription|description|summary)$/i]);
 }
 
 function highlightItems(listing: ListingRecord) {
@@ -281,24 +295,38 @@ function suiteSize(suite: ListingRecord) {
 function suiteRate(suite: ListingRecord) {
   const pricing = record(suite.pricing);
   const value = suite.leaseRate || suite.baseRent || suite.ratePerSf || suite.askingRatePerSf || suite.askingRent || suite.price || pricing.leaseRate || pricing.askingRent || pricing.rate || pricing.price;
-  if (typeof value === "number" && Number.isFinite(value)) return `$${value.toLocaleString()}/SF`;
-  return text(value);
+  const rentType = text(suite.rentType || pricing.rentType);
+  const suffix = rentType ? ` ${rentType}` : "";
+  if (typeof value === "number" && Number.isFinite(value)) return `$${value.toLocaleString()}${suffix}`;
+  const raw = text(value);
+  if (!raw || /call|inquire/i.test(raw)) return raw;
+  const prefixed = /^\$/.test(raw) ? raw : `$${raw}`;
+  return `${prefixed}${suffix}`.trim();
 }
 
 function suiteRows(listing: ListingRecord) {
-  const arrays = collectArrays(listing, [/^(suites|spaces|availableSpaces|availableSuites|leaseSpaces)$/i]);
+  const verifiedAdminSuites = Array.isArray(listing.admin?.suites) ? listing.admin.suites as unknown[] : [];
+  const explicitArrays = verifiedAdminSuites.length
+    ? [verifiedAdminSuites]
+    : [listing.availableSuites, listing.availableSpaces, listing.leaseSpaces, listing.spaces].filter(Array.isArray) as unknown[][];
+  const discoveredArrays = verifiedAdminSuites.length ? [] : collectArrays(listing, [/^(suites|spaces|availableSpaces|availableSuites|leaseSpaces)$/i]);
+  const arrays = [...explicitArrays, ...discoveredArrays];
   const rows: Array<[string, string]> = [];
+  const seenLabels = new Set<string>();
   const seen = new Set<string>();
   for (const suiteArray of arrays) {
     for (const suiteValue of suiteArray) {
       const suite = record(suiteValue);
       if (!Object.keys(suite).length) continue;
       const label = suiteLabel(suite, rows.length);
-      const details = [suiteSize(suite), suiteRate(suite), text(suite.notes || suite.description || suite.spaceType)].filter(Boolean).join(" · ");
+      const labelKey = label.toLowerCase();
+      if (seenLabels.has(labelKey)) continue;
+      const details = [suiteSize(suite), suiteRate(suite), text(suite.spaceType), text(suite.suiteNotes || suite.notes || suite.description)].filter(Boolean).join(" · ");
       if (!details) continue;
       const key = `${label}|${details}`.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
+      seenLabels.add(labelKey);
       rows.push([label, details]);
     }
   }

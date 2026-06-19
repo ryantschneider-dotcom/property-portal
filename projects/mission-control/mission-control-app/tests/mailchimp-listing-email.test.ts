@@ -244,6 +244,57 @@ test("mailchimp html binds nested live ListingStream media, description, and sui
   assert.doesNotMatch(html, /Institutional Brokerage Advisory/i);
 });
 
+test("mailchimp html binds verified Parrott Plaza schema keys from live ListingStream payload", () => {
+  const html = buildMailchimpListingEmailHtml({
+    listing: {
+      slug: "42-west-montgomery-cross-road",
+      title: "Parrott Plaza",
+      address: "42 West Montgomery Cross Road, Savannah, GA 31406",
+      transactionTypes: ["lease"],
+      media: {
+        images: [
+          { url: "https://s3.amazonaws.com/buildout-production/datas/29775421/5940bb0a6dc7a7f566d8253421eba93578defee5/full.jpg?1714758398", title: "Parrott Plaza photo" },
+        ],
+      },
+      content: {
+        leaseDescription: "The property has one 1,900 SF second-floor office suite available for lease in the back building (no elevator).",
+        locationDescription: "This mixed-use retail, office, and office/flex development is very conveniently located on Montgomery Crossroad Just east of Abercorn Street and west of White Bluff Road.",
+        siteDescription: "The property has very good frontage on Montgomery Crossroad and has two curb-cuts for access.",
+        leaseBullets: ["Great parking", "Road signage available", "Very good natural light", "Very affordable"],
+      },
+      pricing: { leaseRate: "Call for Rate", availableSqFt: 4100, suiteNumbers: "P, M, H" },
+      property: { buildingSizeSf: 53650, lotSizeAcres: 4, zoning: "BC", type: "Office/Retail" },
+      spaces: [
+        { suiteNumber: "Back Building Suite", availableSqFt: "1900", baseRent: "Call", rentType: "Annual" },
+      ],
+      admin: {
+        suites: [
+          { suiteNumber: "P", availableSqFt: "1900", baseRent: "1900", rentType: "Plus Utilities", spaceType: "Office", suiteNotes: "The space is on the 2nd floor, back section of Parrot Plaza." },
+          { suiteNumber: "M", availableSqFt: "1100", baseRent: "1000", rentType: "Plus Utilities", spaceType: "Storage", suiteNotes: "The space is 100% storage and features an overhead drive-in rollup door." },
+          { suiteNumber: "H", availableSqFt: "1100", baseRent: "1600", rentType: "NNN", spaceType: "Office", suiteNotes: "Office/Storage suite." },
+        ],
+      },
+    },
+    listingUrl: "https://listingstream-portal.vercel.app/property/42-west-montgomery-cross-road",
+  });
+
+  assert.match(html, /29775421\/5940bb0a6dc7a7f566d8253421eba93578defee5\/full\.jpg/);
+  assert.match(html, /second-floor office suite available for lease/);
+  assert.match(html, /mixed-use retail, office, and office\/flex development/);
+  assert.match(html, /very good frontage on Montgomery Crossroad/);
+  assert.match(html, /Great parking/);
+  assert.match(html, /Road signage available/);
+  assert.match(html, /Available Suites/);
+  assert.match(html, /Suite P/);
+  assert.match(html, /±1900 SF/);
+  assert.match(html, /\$1900 Plus Utilities/);
+  assert.match(html, /Suite M/);
+  assert.match(html, /\$1000 Plus Utilities/);
+  assert.match(html, /Suite H/);
+  assert.match(html, /\$1600 NNN/);
+  assert.doesNotMatch(html, /Back Building Suite/);
+});
+
 test("mission control exposes direct API email blast controls in UI/auth", async () => {
   const componentSource = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
   const authSource = await readFile("src/lib/auth.ts", "utf8");

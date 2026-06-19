@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
 import {
+  buildPropertyPortalUrl,
+  getPropertyPortalInternalHeaders,
+  getPropertyPortalBaseUrl,
+} from "@/lib/property-portal-client";
+import {
   createMailchimpDraftCampaign,
   getMailchimpCampaign,
   getMailchimpCampaignContent,
@@ -101,6 +106,28 @@ function getFactRows(listing: Record<string, unknown>, includeFinancials?: boole
 function getMailchimpPortalUrl(listing: Record<string, unknown>) {
   return getString(listing, "publicUrl", "previewUrl") || (getString(listing, "slug") ? `https://listingportal.piercommercial.com/property/${encodeURIComponent(getString(listing, "slug"))}` : "https://piercommercial.com");
 }
+
+function listingIdentifier(listing: Record<string, unknown>) {
+  return getString(listing, "slug", "id", "propertyId", "propertyIdOrSlug");
+}
+
+export async function hydrateMailchimpListingPayload(listing: Record<string, unknown> = {}, fetchImpl: typeof fetch = fetch) {
+  const identifier = listingIdentifier(listing);
+  if (!identifier) return listing;
+  try {
+    const response = await fetchImpl(buildPropertyPortalUrl(`/api/properties/${encodeURIComponent(identifier)}`, getPropertyPortalBaseUrl()), {
+      cache: "no-store",
+      headers: getPropertyPortalInternalHeaders(),
+    });
+    if (!response.ok) return listing;
+    const livePayload = await response.json().catch(() => ({})) as Record<string, unknown>;
+    if (!livePayload || typeof livePayload !== "object" || Array.isArray(livePayload) || livePayload.error) return listing;
+    return { ...listing, ...livePayload };
+  } catch {
+    return listing;
+  }
+}
+
 export function buildListingEmailHtml(input: Required<Pick<CampaignRequest, "subjectLine" | "fromName" | "fromEmail">> & Pick<CampaignRequest, "listing" | "includeFinancials">) {
   const listing = input.listing || {};
   return buildMailchimpListingEmailHtml({
@@ -154,7 +181,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Audience, subject, broker name, and broker email are required." }, { status: 400 });
     }
     const title = String(body.title || `${subjectLine} — PIER Manager Draft`).trim();
-    const html = buildListingEmailHtml({ subjectLine, fromName, fromEmail, listing: body.listing, includeFinancials: body.includeFinancials });
+    const richListing = await hydrateMailchimpListingPayload(body.listing || {});
+    const html = buildListingEmailHtml({ subjectLine, fromName, fromEmail, listing: richListing, includeFinancials: body.includeFinancials });
     const campaign = await createMailchimpDraftCampaign({ audienceId, subjectLine, fromName, fromEmail, title, previewText: body.previewText, html });
     const content = await getMailchimpCampaignContent(campaign.id);
     return NextResponse.json({ ok: true, campaign, previewHtml: content.html || html, smokeTestRequired: true });
