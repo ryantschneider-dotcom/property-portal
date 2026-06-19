@@ -1361,6 +1361,13 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     ? selectedListing.publicUrl || normalizePropertyPortalDraftPreviewUrl(`/property/${selectedListing.slug || selectedListing.id}`)
     : "";
   const offeringSiteCanRetry = Boolean(offeringSiteJob && ["blocked", "failed"].includes(String(offeringSiteJob.status)));
+  const offeringSiteLogs = (offeringSiteJob?.logs ?? []).filter((log) => log?.message);
+  const offeringSiteErrorLog = [...offeringSiteLogs].reverse().find((log) => String(log.level || "").toLowerCase() === "error");
+  const offeringSiteRootCause = offeringSiteJob?.error || offeringSiteErrorLog?.message || offeringSiteError;
+  const offeringSiteMissingFields = [
+    ...(offeringSiteJob?.baseline?.validation?.missingRequiredFields ?? []),
+    ...(offeringSiteJob?.baseline?.validation?.missingFields ?? []),
+  ].filter((field, index, fields) => field && fields.indexOf(field) === index);
 
   return (
     <div className="space-y-6">
@@ -1479,7 +1486,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Offering Site Command Center</p>
             <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">PIER Commercial website builds</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Launch or refresh the live PIER offering site for the selected property. Internal build stages stay behind the scenes; brokers see a simple status and live URL.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Launch or refresh the live PIER offering site for the selected property. Broker-visible build logs now expose the exact root cause for Vercel build crashes, schema mismatches, missing required variables, and data-blocking validation errors.</p>
           </div>
           <button type="button" onClick={() => void refreshOfferingSiteJob()} disabled={offeringSiteBusy || !offeringSiteLastJobId} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">
             {offeringSiteBusy ? "Refreshing…" : "Refresh Status"}
@@ -1517,15 +1524,46 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         ) : null}
 
         {offeringSiteJob ? (
-          <div data-testid="offering-site-simple-status" className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
-            {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.routed ? "Offering site is live." : offeringSiteJob.status === "failed" ? "Offering site needs attention." : offeringSiteJob.status === "blocked" ? "Offering site needs listing data before launch." : "Offering site build is in progress."}
+          <div data-testid="offering-site-simple-status" className={`mt-4 rounded-2xl border p-4 text-sm font-semibold ${offeringSiteJob.status === "failed" || offeringSiteJob.status === "blocked" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+            {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.routed ? "Offering site is live." : offeringSiteJob.status === "failed" ? `Offering site failed: ${offeringSiteRootCause || "Root cause not returned by backend."}` : offeringSiteJob.status === "blocked" ? `Offering site blocked: ${offeringSiteMissingFields.length ? `Missing ${offeringSiteMissingFields.join(", ")}` : offeringSiteRootCause || "Listing data is incomplete."}` : "Offering site build is in progress."}
           </div>
         ) : null}
 
         {offeringSiteJob ? (
           <div className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 text-xs leading-5 text-zinc-500">
-            <p><span className="font-bold text-zinc-900">Status:</span> {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl ? "Live" : offeringSiteJob.status === "failed" ? "Needs attention" : offeringSiteJob.status === "blocked" ? "Needs listing data" : "Working"}</p>
+            <p><span className="font-bold text-zinc-900">Status:</span> {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl ? "Live" : offeringSiteJob.status === "failed" ? "Failed — see root cause below" : offeringSiteJob.status === "blocked" ? "Blocked — missing listing data shown below" : "Working"}</p>
+            {offeringSiteRootCause ? <p className="mt-2 break-words text-sm font-bold text-amber-800"><span className="text-zinc-900">Root cause:</span> {offeringSiteRootCause}</p> : null}
+            {offeringSiteMissingFields.length ? <p className="mt-2 text-sm font-semibold text-amber-800"><span className="text-zinc-900">Missing fields:</span> {offeringSiteMissingFields.join(", ")}</p> : null}
             {(offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.customDomain) ? <a data-testid="offering-site-live-url" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-4 py-2 font-extrabold text-white" href={(offeringSiteJob.deployment.publicUrl || offeringSiteJob.deployment.customDomain) as string} target="_blank" rel="noopener noreferrer">Open live offering site</a> : null}
+          </div>
+        ) : null}
+
+        {offeringSiteJob && offeringSiteLogs.length ? (
+          <div data-testid="offering-site-build-logs" className="mt-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm xl:p-5">
+            <div className="flex flex-col gap-1 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#CB521E]">Transparent Build Logs</p>
+                <h4 className="mt-1 text-base font-extrabold text-zinc-950">Actionable pipeline output</h4>
+              </div>
+              <p className="text-xs font-semibold text-zinc-500">Wide-screen log table optimized for desktop review.</p>
+            </div>
+            <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="min-w-[980px] w-full divide-y divide-zinc-200 text-left text-xs">
+                <thead className="bg-zinc-50 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                  <tr><th className="px-3 py-2">Time</th><th className="px-3 py-2">Level</th><th className="px-3 py-2">Stage</th><th className="px-3 py-2">Message</th></tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 bg-white">
+                  {offeringSiteLogs.slice(-12).map((log, index) => (
+                    <tr key={`${log.createdAt || index}-${log.message}`} className={String(log.level || "").toLowerCase() === "error" ? "bg-amber-50 text-amber-950" : "text-zinc-700"}>
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px]">{log.createdAt || "—"}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-black uppercase">{log.level || "info"}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold">{log.stage || "pipeline"}</td>
+                      <td className="px-3 py-2 font-medium leading-5">{log.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : null}
       </section>

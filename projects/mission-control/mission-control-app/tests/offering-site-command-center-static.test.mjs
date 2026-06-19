@@ -27,14 +27,14 @@ test("PIER Manager OM Revision loop surfaces backend/no-change failures instead 
   assert.match(component, /if \(!data\.draftId \|\| !data\.previewHtml\)/);
 });
 
-test("Offering Site Command Center hides internal Gate pipeline cards from brokers", () => {
+test("Offering Site Command Center keeps broker controls simple while exposing root-cause logs", () => {
   assert.doesNotMatch(component, /offeringSiteTimelineSteps/);
   assert.doesNotMatch(component, />\{step\.gate\}<|Gate 1|Gate 2|Gate 3|Gate 5/);
   assert.doesNotMatch(component, /Source Pulled & Scrubbed|Market Context & Copy Enriched|Responsive Layout Compiled|Site Live & Routed/);
-  assert.match(component, /Internal build stages stay behind the scenes/);
+  assert.match(component, /Broker-visible build logs now expose the exact root cause/);
 });
 
-test("Offering Site Command Center surfaces simple blocked and failed states with retry controls", () => {
+test("Offering Site Command Center surfaces transparent root-cause logs with retry controls", () => {
   assert.match(component, /blocked/i);
   assert.match(component, /failed/i);
   assert.match(component, /Retry Build/);
@@ -42,7 +42,10 @@ test("Offering Site Command Center surfaces simple blocked and failed states wit
   assert.match(component, /autoEnrichOfferingSiteData/);
   assert.match(component, /retryOfferingSiteBuild/);
   assert.match(component, /baseline\.validation\.missingFields/);
-  assert.match(component, /offeringSiteError/);
+  assert.match(component, /offeringSiteRootCause/);
+  assert.match(component, /data-testid="offering-site-build-logs"/);
+  assert.match(component, /Transparent Build Logs/);
+  assert.match(component, /Vercel build crashes, schema mismatches, missing required variables/);
 });
 
 test("Mission Control proxy protects and forwards ListingStream offering-site jobs", () => {
