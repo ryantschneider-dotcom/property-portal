@@ -83,6 +83,9 @@ test("listing email html follows institutional PIER template with logo, hero, fa
   assert.doesNotMatch(html, /SPACE FOR LEASE\s*·/i);
   assert.doesNotMatch(html, /LESASE/i);
   assert.match(html, /https:\/\/example\.com\/hero\.jpg/);
+  assert.doesNotMatch(html, /Institutional Brokerage Advisory/i);
+  assert.doesNotMatch(html, /background:#0f1923/i);
+  assert.match(html, /background:#ffffff/);
   assert.match(html, /Available SF/);
   assert.match(html, /Lease Rate/);
   assert.match(html, /Zoning/);
@@ -196,9 +199,49 @@ test("space for lease email renders lease rate and available spaces table", () =
   assert.match(html, /SPACE FOR LEASE/);
   assert.match(html, /Lease Rate/);
   assert.match(html, /\$24\/SF NNN/);
-  assert.match(html, /Highlights/);
+  assert.match(html, /Available Suites/);
+  assert.match(html, /Suite 200/);
+  assert.match(html, /±2,500 SF/);
+  assert.match(html, /Second-generation retail/);
+  assert.match(html, /Suite 310/);
+  assert.match(html, /\$22\/SF NNN/);
   assert.match(html, /View PIER Listing Page/);
   assert.doesNotMatch(html, /ListingStream/);
+});
+
+test("mailchimp html binds nested live ListingStream media, description, and suite data", () => {
+  const html = buildMailchimpListingEmailHtml({
+    listing: {
+      slug: "live-nested-suite-test",
+      title: "Live Nested Suite Test",
+      media: {
+        images: [
+          { urls: { original: "https://cdn.example.com/live-hero.jpg" }, caption: "Hero" },
+        ],
+      },
+      data: {
+        propertyDescription: "This is the actual database property description, not boilerplate.",
+      },
+      admin: {
+        suites: [
+          { suiteNumber: "120", squareFeet: 1840, askingRatePerSf: "$28/SF NNN" },
+          { suite: "240", size: "3,100", baseRent: "$26/SF NNN" },
+        ],
+      },
+    },
+    listingUrl: "https://listingstream-portal.vercel.app/property/live-nested-suite-test",
+  });
+
+  assert.match(html, /https:\/\/cdn\.example\.com\/live-hero\.jpg/);
+  assert.match(html, /actual database property description/);
+  assert.doesNotMatch(html, /pleased to present/i);
+  assert.match(html, /Available Suites/);
+  assert.match(html, /Suite 120/);
+  assert.match(html, /±1,840 SF/);
+  assert.match(html, /\$28\/SF NNN/);
+  assert.match(html, /Suite 240/);
+  assert.match(html, /3,100 SF|±3,100 SF/);
+  assert.doesNotMatch(html, /Institutional Brokerage Advisory/i);
 });
 
 test("mission control exposes direct API email blast controls in UI/auth", async () => {
