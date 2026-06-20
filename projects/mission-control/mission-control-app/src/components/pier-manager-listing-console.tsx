@@ -38,6 +38,7 @@ function getMailchimpFallbackBrokerContext(activeBrokerId: string): MailchimpBro
 
 const MAX_DRAFT_PREVIEW_UPLOAD_BYTES = 850_000;
 const PDFJS_WORKER_VERSION = "6.0.227";
+const PRODUCTION_FACTORY_MESSAGE = "Your site is being built at the PIER Website Production Factory. Check back in 5 minutes, then 10 minutes, then 15 minutes. The link will appear here automatically when it is ready.";
 
 type IntakeFormState = Omit<BrokerHubIntakeInput, "heroPhotoCount" | "suites">;
 
@@ -484,6 +485,10 @@ type OfferingSiteCommandPayload = {
   job?: OfferingSiteGenerationJob;
   baseline?: { validation?: { isValid?: boolean; missingFields?: string[]; missingRequiredFields?: string[] } };
   gate2?: unknown;
+  status?: string;
+  message?: string;
+  task_id?: string;
+  url?: string;
   error?: string;
 };
 
@@ -641,26 +646,26 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
     setOfferingSiteBusy(true);
     setOfferingSiteError("");
-    setOfferingSiteStatus(retryJob ? "Retrying offering site build with autonomous public-record backfill…" : "Launching offering site build. Gathering Public Records and Scraping GIS Data before any blocked state…");
+    setOfferingSiteStatus(retryJob ? "Re-sending this offering site build to Manus at the PIER Website Production Factory…" : "Sending this listing to Manus at the PIER Website Production Factory…");
     try {
       const payload = await fetch("/api/listingstream/offering-sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", gate: "5" }),
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", workflow: "manus-offering-site" }),
       }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
-        setOfferingSiteLastJobId(payload.job.id);
+        setOfferingSiteLastJobId(payload.job.listingId || targetListingId);
         const missingFields = payload.job.baseline?.validation?.missingRequiredFields ?? payload.job.baseline?.validation?.missingFields ?? payload.baseline?.validation?.missingRequiredFields ?? payload.baseline?.validation?.missingFields ?? [];
-        // Gate 4 explicitly surfaces baseline.validation.missingFields from ListingStream blocked states.
+        // Legacy blocked states can still surface validation metadata, but Manus launches should not run the local deterministic pipeline.
         if (payload.job.status === "blocked") {
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
-          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the build.");
+          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the Manus build.");
         } else {
-          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Offering site is live and routed. Copy the public URL below when ready." : "Offering site build is underway. Refresh status for the latest result.");
+          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Manus returned the live offering site URL. Open it below." : payload.message || PRODUCTION_FACTORY_MESSAGE);
         }
       } else {
-        setOfferingSiteError(payload.error || "ListingStream did not return an offering site job.");
+        setOfferingSiteError(payload.error || "Manus did not return an offering site task.");
       }
     } catch (error) {
       setOfferingSiteError(error instanceof Error ? error.message : "Offering site build failed.");
@@ -678,7 +683,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       const payload = await fetch(`/api/listingstream/offering-sites?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
-        setOfferingSiteStatus("Offering site timeline refreshed.");
+        setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Manus returned the live offering site URL. Open it below." : payload.message || "Manus is still building the offering site. The link will appear here automatically when it is ready.");
       } else {
         setOfferingSiteError(payload.error || "No offering site job returned.");
       }
@@ -692,6 +697,17 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   function retryOfferingSiteBuild() {
     void launchOfferingSiteBuild(offeringSiteJob?.listingId || offeringSiteSelectedListingId, offeringSiteJob);
   }
+
+  useEffect(() => {
+    const status = String(offeringSiteJob?.status || "").toLowerCase();
+    const hasLiveUrl = Boolean(offeringSiteJob?.deployment?.publicUrl || offeringSiteJob?.deployment?.customDomain);
+    const shouldPoll = Boolean(offeringSiteLastJobId && offeringSiteJob && !hasLiveUrl && !["deployed", "failed", "blocked"].includes(status));
+    if (!shouldPoll) return;
+    const timer = window.setInterval(() => {
+      void refreshOfferingSiteJob(offeringSiteLastJobId);
+    }, 180_000);
+    return () => window.clearInterval(timer);
+  }, [offeringSiteJob, offeringSiteLastJobId]);
 
   async function autoEnrichOfferingSiteData() {
     const targetListingId = offeringSiteJob?.listingId || offeringSiteSelectedListingId;
