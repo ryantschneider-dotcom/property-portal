@@ -188,3 +188,50 @@ test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued ac
   assert.match(routeSource, /history/);
   assert.match(clientSource, /history/);
 });
+
+test("Mission Control Hermes Console uses the native Hermes API runs and session history surfaces", () => {
+  const consoleSource = readFileSync("src/components/master-copilot-console.tsx", "utf8");
+  const runsRoute = readFileSync("src/app/api/hermes-console/runs/route.ts", "utf8");
+  const runStatusRoute = readFileSync("src/app/api/hermes-console/runs/[runId]/route.ts", "utf8");
+  const sessionsRoute = readFileSync("src/app/api/hermes-console/sessions/route.ts", "utf8");
+  const clientSource = readFileSync("src/lib/hermes-api-client.ts", "utf8");
+
+  assert.match(consoleSource, /Mission Control Hermes Console/);
+  assert.match(consoleSource, /Previous Telegram sessions/);
+  assert.match(consoleSource, /not a PIER-only assistant|Scope\" value=\"General/);
+  assert.match(consoleSource, /\/api\/hermes-console\/runs/);
+  assert.match(consoleSource, /\/api\/hermes-console\/sessions/);
+  assert.match(runsRoute, /createHermesRun/);
+  assert.match(runStatusRoute, /getHermesRun/);
+  assert.match(sessionsRoute, /searchHermesSessions/);
+  assert.match(sessionsRoute, /compactSessionMessages/);
+  assert.match(clientSource, /\/v1\/runs/);
+  assert.match(clientSource, /\/api\/sessions/);
+  assert.match(clientSource, /X-Hermes-Session-Key/);
+  assert.match(clientSource, /DEFAULT_PUBLIC_HERMES_API_URL/);
+});
+
+test("Mission Control OS separates global Hermes chat from the PIER Commercial workspace", () => {
+  const homePage = readFileSync("src/app/page.tsx", "utf8");
+  const pierWorkspace = readFileSync("src/app/pier-workspace/page.tsx", "utf8");
+  const shellSource = readFileSync("src/components/mission-shell.tsx", "utf8");
+  const authSource = readFileSync("src/lib/auth.ts", "utf8");
+
+  assert.match(homePage, /Mission Control OS/);
+  assert.match(homePage, /Global Hermes Master Chat/);
+  assert.match(homePage, /MasterCopilotConsole mode=\"dashboard\"/);
+  assert.match(homePage, /Domain cards/);
+  assert.match(homePage, /href=\"\/pier-workspace\"/);
+  assert.match(pierWorkspace, /PIER Commercial Brokerage/);
+  assert.match(pierWorkspace, /Listing Portal Intake/);
+  assert.match(pierWorkspace, /Listing Revisions/);
+  assert.match(pierWorkspace, /Website Creation/);
+  assert.match(pierWorkspace, /Email Creation/);
+  assert.match(pierWorkspace, /OM Creation/);
+  assert.match(pierWorkspace, /PIER Commercial Company Marketing/);
+  assert.match(pierWorkspace, /WordPress Pulse Drop/);
+  assert.match(pierWorkspace, /Instagram Post Generation/);
+  assert.match(pierWorkspace, /Facebook Post Generation/);
+  assert.match(shellSource, /PIER Workspace/);
+  assert.match(authSource, /\/pier-workspace/);
+});

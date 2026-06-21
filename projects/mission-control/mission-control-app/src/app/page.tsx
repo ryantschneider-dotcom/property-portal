@@ -1,49 +1,44 @@
 import Link from "next/link";
+
+import { MasterCopilotConsole } from "@/components/master-copilot-console";
 import { MissionShell } from "@/components/mission-shell";
-import { Card, Stat } from "@/components/ui";
 import { readStore } from "@/lib/storage";
 
-const modules = [
+const domainCards = [
   {
-    title: "Listing Manager",
-    href: "/projects",
-    description: "The source of truth for private PIER listing intake, facts, files, and next actions.",
-    status: "Build now",
-    statusTone: "orange",
-    step: "01",
+    title: "PIER Commercial",
+    href: "/pier-workspace",
+    eyebrow: "Corporate workspace",
+    description: "Brokerage operations, ListingStream deliverables, PIER Pulse, and company marketing live in a dedicated sandbox away from the global Hermes chat stream.",
+    status: "Active domain",
+    metric: "Brokerage + Marketing",
+    accent: "#CB521E",
   },
   {
-    title: "Offering Summaries",
-    href: "/offering-summaries",
-    description: "Broker-facing summary drafts generated from clean listing records and uploaded source files.",
-    status: "Ready to test",
-    statusTone: "green",
-    step: "02",
+    title: "Personal Operations",
+    href: "/master-console",
+    eyebrow: "General command lane",
+    description: "Life logistics, research, travel-style planning, documents, media, and broad Ryan support stay routed through the general Hermes module.",
+    status: "Hermes routed",
+    metric: "General AI",
+    accent: "#18181b",
   },
   {
-    title: "Listing Agreements",
-    href: "/listing-agreements",
-    description: "Draft-only listing agreement packets with source terms, missing fields, and review notes.",
-    status: "Phase 3 live",
-    statusTone: "green",
-    step: "03",
+    title: "Software + Infrastructure",
+    href: "/activity",
+    eyebrow: "Systems lane",
+    description: "Repo work, Vercel deploys, Mac mini health, OpenClaw/Mack status, and long-running build activity stay visible as system operations.",
+    status: "Command center",
+    metric: "DevOps",
+    accent: "#2563eb",
   },
-  {
-    title: "Sales Contracts",
-    href: "/sales-contracts",
-    description: "Deal-point drafting sheets for buyer, seller, price, diligence, close, and milestone blanks.",
-    status: "Phase 3 live",
-    statusTone: "green",
-    step: "04",
-  },
-  {
-    title: "Daily Task Control",
-    href: "/daily-control",
-    description: "Kanban-style execution board tying listings, deliverables, follow-ups, and Hermes prompts together.",
-    status: "Scaffolded",
-    statusTone: "neutral",
-    step: "06",
-  },
+];
+
+const commandStats = [
+  { label: "Domains online", value: "3" },
+  { label: "PIER zones", value: "2" },
+  { label: "Hermes mode", value: "Global" },
+  { label: "Desktop layout", value: "Wide" },
 ];
 
 export default async function Home() {
@@ -51,141 +46,115 @@ export default async function Home() {
   const listings = store.projects.filter((project) => project.type === "listing");
   const activeListings = listings.filter((project) => project.listingStatus === "Active").length;
   const pipelineListings = listings.filter((project) => !project.listingStatus || project.listingStatus === "Pipeline").length;
-  const latestListing = listings[0];
 
   return (
     <MissionShell
-      title="Executive Dashboard"
-      subtitle="PIER’s private command center for turning listing intake into summaries, agreements, contracts, Gate 5 offering sites, daily tasks, and Hermes-assisted execution."
+      title="Mission Control OS"
+      subtitle="A 30,000-foot multi-domain operating dashboard that keeps the global Hermes Master Chat visually separate from structured PIER Commercial workflows."
       currentPath="/"
       actions={[
-        { href: "/projects", label: "Enter a listing", tone: "primary" },
-        { href: "/uploads", label: "Attach files" },
-        { href: "/daily-control", label: "Task board", tone: "ghost" },
+        { href: "/master-console", label: "Open Hermes Chat", tone: "ghost" },
+        { href: "/pier-workspace", label: "Enter PIER Workspace", tone: "primary" },
       ]}
     >
-      <section className="relative overflow-hidden rounded-[2rem] border border-zinc-200 bg-zinc-950 p-6 text-white shadow-sm lg:p-8">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(203,82,30,0.34),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_42%)]" />
-        <div className="relative grid gap-8 xl:grid-cols-[1.2fr_0.8fr] xl:items-end">
-          <div>
-            <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-[#f6b28d]">
-              Start here
-            </div>
-            <h3 className="mt-5 max-w-3xl text-3xl font-semibold tracking-tight text-white md:text-5xl">
-              Run the listing workflow from one clean source record.
-            </h3>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-300 md:text-base md:leading-7">
-              Enter the listing once, attach the supporting files, then use Mission Control to generate the internal packets that drive marketing, documents, Gate 5 offering sites, and daily follow-up.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <HeroButton href="/projects" label="Add or review listings" primary />
-              <HeroButton href="/pier-manager" label="Open Gate 5 Command Center" />
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Current operating read</p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <MiniStat label="Listings" value={String(listings.length)} />
-              <MiniStat label="Active" value={String(activeListings)} />
-              <MiniStat label="Pipeline" value={String(pipelineListings)} />
-              <MiniStat label="Uploads" value={String(store.uploads.length)} />
-            </div>
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="text-xs text-zinc-400">Latest source record</p>
-              <p className="mt-1 font-medium text-white">{latestListing?.name ?? "No listing entered yet"}</p>
-              <p className="mt-2 text-xs leading-5 text-zinc-400">
-                {latestListing ? "Open Listing Manager to confirm facts, files, and next actions before generating downstream deliverables." : "Create a listing record first, then the Phase 3 modules will have live source data to work from."}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="mt-6 grid gap-4 md:grid-cols-2 2xl:grid-cols-5">
-        <Stat label="Listing records" value={String(listings.length)} />
-        <Stat label="Active listings" value={String(activeListings)} />
-        <Stat label="Pipeline" value={String(pipelineListings)} />
-        <Stat label="Uploads" value={String(store.uploads.length)} />
-        <Stat label="Private mode" value="On" />
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-        <Card title="Recommended flow" description="Use this order when testing the app so each downstream page has useful source data.">
-          <div className="space-y-3">
-            <WorkflowStep href="/projects" eyebrow="Step 1" title="Enter or clean up the listing" detail="Confirm property facts, listing status, ownership notes, pricing, size, and internal next actions." />
-            <WorkflowStep href="/uploads" eyebrow="Step 2" title="Attach source files" detail="Add photos, PDFs, flyers, notes, or source documents that support the listing record." />
-            <WorkflowStep href="/offering-summaries" eyebrow="Step 3" title="Generate broker-facing copy" detail="Use the clean facts to draft offering summaries before documents or public pages." />
-            <WorkflowStep href="/daily-control" eyebrow="Step 4" title="Move the work forward" detail="Turn missing fields and follow-ups into daily tasks instead of leaving them buried in notes." />
-          </div>
-        </Card>
-
-        <Card title="Five-module build map" description="Offering-site activity now lives exclusively in PIER Manager’s Gate 5 Command Center.">
-          <div className="grid gap-3 lg:grid-cols-2">
-            {modules.map((module) => (
-              <Link key={module.href} href={module.href} className="group rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:-translate-y-0.5 hover:border-[#CB521E]/35 hover:bg-white hover:shadow-md">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-2xl border border-zinc-200 bg-white text-xs font-semibold text-zinc-500 shadow-sm">
-                      {module.step}
-                    </span>
-                    <h3 className="font-semibold text-zinc-950">{module.title}</h3>
-                  </div>
-                  <StatusBadge tone={module.statusTone}>{module.status}</StatusBadge>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-zinc-600">{module.description}</p>
-                <p className="mt-4 text-sm font-medium text-[#CB521E] opacity-80 transition group-hover:opacity-100">
-                  Open module →
+      <div className="grid min-h-[calc(100dvh-12rem)] gap-6 2xl:grid-cols-[minmax(0,1fr)_540px]">
+        <section className="min-w-0 space-y-6">
+          <div className="relative overflow-hidden rounded-[2.25rem] border border-zinc-200 bg-zinc-950 p-7 text-white shadow-sm xl:p-9">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(203,82,30,0.38),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(255,255,255,0.18),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_45%)]" />
+            <div className="relative grid gap-8 xl:grid-cols-[1.25fr_0.75fr] xl:items-end">
+              <div>
+                <p className="inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.28em] text-[#f6b28d]">
+                  Global dashboard UI
                 </p>
-              </Link>
+                <h3 className="mt-5 max-w-4xl text-4xl font-semibold tracking-tight text-white xl:text-6xl">
+                  Separate the chat stream from the operating system.
+                </h3>
+                <p className="mt-5 max-w-3xl text-base leading-8 text-zinc-300">
+                  Hermes remains available as a persistent master chat module, while PIER Commercial and future company domains live as structured command cards with their own routed workspaces.
+                </p>
+                <div className="mt-7 flex flex-wrap gap-3">
+                  <Link href="/pier-workspace" className="rounded-2xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318]">
+                    Enter PIER Commercial
+                  </Link>
+                  <Link href="/master-console" className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15">
+                    Full-screen Hermes Chat
+                  </Link>
+                </div>
+              </div>
+              <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 backdrop-blur">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">PIER operating read</p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <MiniReadout label="Listings" value={String(listings.length)} />
+                  <MiniReadout label="Active" value={String(activeListings)} />
+                  <MiniReadout label="Pipeline" value={String(pipelineListings)} />
+                  <MiniReadout label="Uploads" value={String(store.uploads.length)} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-4">
+            {commandStats.map((stat) => (
+              <div key={stat.label} className="rounded-[1.5rem] border border-zinc-200 bg-white p-5 shadow-sm">
+                <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{stat.label}</p>
+                <p className="mt-3 text-2xl font-semibold tracking-tight text-zinc-950">{stat.value}</p>
+              </div>
             ))}
           </div>
-        </Card>
+
+          <section className="rounded-[2rem] border border-zinc-200 bg-white p-5 shadow-sm xl:p-6">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.26em] text-[#CB521E]">Domain cards</p>
+                <h3 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">30,000-foot operating map</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
+                  Each domain is a visual sandbox. Click into PIER Commercial for brokerage and company marketing workflows; keep unrelated AI work in the global Hermes lane.
+                </p>
+              </div>
+              <span className="w-fit rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Desktop command grid</span>
+            </div>
+            <div className="mt-6 grid gap-4 xl:grid-cols-3">
+              {domainCards.map((domain) => (
+                <Link key={domain.title} href={domain.href} className="group flex min-h-72 flex-col rounded-[2rem] border border-zinc-200 bg-zinc-50 p-5 transition hover:-translate-y-1 hover:border-[#CB521E]/35 hover:bg-white hover:shadow-xl">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">{domain.eyebrow}</span>
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: domain.accent }} />
+                  </div>
+                  <div className="mt-8">
+                    <p className="text-sm font-semibold text-zinc-500">{domain.metric}</p>
+                    <h4 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">{domain.title}</h4>
+                    <p className="mt-4 text-sm leading-7 text-zinc-600">{domain.description}</p>
+                  </div>
+                  <div className="mt-auto flex items-center justify-between pt-8">
+                    <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{domain.status}</span>
+                    <span className="text-sm font-semibold text-[#CB521E] transition group-hover:translate-x-1">Open →</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </section>
+
+        <aside className="min-h-0 rounded-[2.25rem] border border-zinc-300/70 bg-[#eee9e1] p-3 shadow-sm 2xl:sticky 2xl:top-[9rem] 2xl:h-[calc(100dvh-10.5rem)]">
+          <div className="mb-3 flex items-center justify-between px-3 pt-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Sandboxed module</p>
+              <h3 className="mt-1 text-lg font-semibold text-zinc-950">Global Hermes Master Chat</h3>
+            </div>
+            <span className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-semibold text-white">Persistent</span>
+          </div>
+          <MasterCopilotConsole mode="dashboard" />
+        </aside>
       </div>
     </MissionShell>
   );
 }
 
-function HeroButton({ href, label, primary = false }: { href: string; label: string; primary?: boolean }) {
+function MiniReadout({ label, value }: { label: string; value: string }) {
   return (
-    <Link
-      href={href}
-      className={
-        primary
-          ? "rounded-xl bg-[#CB521E] px-4 py-3 text-sm font-medium text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318]"
-          : "rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-100 transition hover:bg-white/10"
-      }
-    >
-      {label}
-    </Link>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-3">
       <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
     </div>
   );
-}
-
-function WorkflowStep({ href, eyebrow, title, detail }: { href: string; eyebrow: string; title: string; detail: string }) {
-  return (
-    <Link href={href} className="block rounded-2xl border border-zinc-200 bg-zinc-50 p-4 transition hover:border-[#CB521E]/30 hover:bg-[#CB521E]/5">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-[#CB521E]">{eyebrow}</p>
-      <h3 className="mt-1 font-semibold text-zinc-950">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-zinc-600">{detail}</p>
-    </Link>
-  );
-}
-
-function StatusBadge({ tone, children }: { tone: string; children: string }) {
-  const classes = {
-    orange: "border-[#CB521E]/20 bg-[#CB521E]/10 text-[#CB521E]",
-    green: "border-emerald-500/20 bg-emerald-50 text-emerald-700",
-    neutral: "border-zinc-200 bg-zinc-100 text-zinc-600",
-  }[tone] ?? "border-zinc-200 bg-zinc-100 text-zinc-600";
-
-  return <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${classes}`}>{children}</span>;
 }

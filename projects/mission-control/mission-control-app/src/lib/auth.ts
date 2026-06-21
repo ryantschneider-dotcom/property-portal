@@ -209,9 +209,9 @@ export async function isMasterSession(token?: string | null, now = Date.now()) {
   return (await getAuthSession(token, now))?.role === "master";
 }
 
-const brokerAllowedExactPaths = new Set(["/pier-manager", "/login", "/api/auth/logout"]);
+const brokerAllowedExactPaths = new Set(["/pier-workspace", "/pier-manager", "/login", "/api/auth/logout"]);
 const staffAllowedExactPaths = new Set([...brokerAllowedExactPaths, "/api/auth/impersonation"]);
-const brokerAllowedPrefixes = ["/pier-manager/", "/api/listingstream/", "/api/offering-summaries/", "/api/uploads/file/"];
+const brokerAllowedPrefixes = ["/pier-workspace/", "/pier-manager/", "/api/listingstream/", "/api/offering-summaries/", "/api/uploads/file/"];
 
 export function isBrokerAllowedPath(pathname: string) {
   return brokerAllowedExactPaths.has(pathname) || brokerAllowedPrefixes.some((prefix) => pathname.startsWith(prefix));

@@ -1,5 +1,4 @@
 import { cookies } from "next/headers";
-import Image from "next/image";
 import Link from "next/link";
 import { ReactNode } from "react";
 import { ActivityStream } from "@/components/activity-stream";
@@ -23,9 +22,10 @@ const navGroups: { title: string; items: NavItem[] }[] = [
   {
     title: "Mission Control",
     items: [
-      { href: "/", label: "Executive Dashboard", match: "exact" },
-      { href: "/master-console", label: "Master Co-Pilot Console", match: "prefix" },
-      { href: "/pier-manager", label: "PIER Manager", match: "prefix" },
+      { href: "/", label: "Global Dashboard", match: "exact" },
+      { href: "/master-console", label: "Hermes Master Chat / Master Co-Pilot Console", match: "prefix" },
+      { href: "/pier-workspace", label: "PIER Workspace", match: "prefix" },
+      { href: "/pier-manager", label: "Listing Portal", match: "prefix" },
       { href: "/offering-summaries", label: "Offering Summaries", match: "prefix" },
       { href: "/listing-agreements", label: "Listing Agreements", match: "prefix" },
       { href: "/sales-contracts", label: "Sales Contracts", match: "prefix" },
@@ -111,21 +111,18 @@ export async function MissionShell({
           <div className="p-3">
             <Link href="/" className="block rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-sm backdrop-blur transition hover:bg-white/[0.06]">
               <div className="rounded-2xl bg-[#1a1a1a] p-3 ring-1 ring-white/10">
-                <Image
+                <img
                   src="/brand/pier-logo.png"
                   alt="PIER Commercial Real Estate"
-                  width={800}
-                  height={250}
-                  priority
                   className="h-auto w-full object-contain"
                 />
               </div>
               <p className="mt-4 text-[10px] uppercase tracking-[0.3em] text-[#f6a87f]">
                 Private Mission Control
               </p>
-              <h1 className="mt-2 text-xl font-semibold text-white">PIER Commercial</h1>
+              <h1 className="mt-2 text-xl font-semibold text-white">Mission Control OS</h1>
               <p className="mt-2 text-xs leading-5 text-zinc-400">
-                Listing intake, documents, offering sites, tasks, and Hermes execution.
+                Global Hermes chat, domain sandboxes, PIER workflows, and system operations.
               </p>
             </Link>
 
@@ -185,7 +182,7 @@ export async function MissionShell({
             <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.26em] text-[#CB521E]">
-                  PIER Commercial Mission Control
+                  PIER Commercial / Mission Control OS
                 </p>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">{title}</h2>
                 <p className="mt-1 max-w-4xl text-sm leading-5 text-zinc-600">{subtitle}</p>
