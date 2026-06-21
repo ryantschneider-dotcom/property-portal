@@ -646,26 +646,26 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
     setOfferingSiteBusy(true);
     setOfferingSiteError("");
-    setOfferingSiteStatus(retryJob ? "Re-sending this offering site build to Manus at the PIER Website Production Factory…" : "Sending this listing to Manus at the PIER Website Production Factory…");
+    setOfferingSiteStatus(retryJob ? "Re-sending this offering site build to the PIER/Vercel Website Production Factory…" : "Sending this listing to the PIER/Vercel Website Production Factory…");
     try {
       const payload = await fetch("/api/listingstream/offering-sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", workflow: "manus-offering-site" }),
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", workflow: "vercel-offering-site" }),
       }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
         setOfferingSiteLastJobId(payload.job.listingId || targetListingId);
         const missingFields = payload.job.baseline?.validation?.missingRequiredFields ?? payload.job.baseline?.validation?.missingFields ?? payload.baseline?.validation?.missingRequiredFields ?? payload.baseline?.validation?.missingFields ?? [];
-        // Legacy blocked states can still surface validation metadata, but Manus launches should not run the local deterministic pipeline.
+        // Legacy blocked states can still surface validation metadata, but Vercel launches should not expose obsolete external-hosting workflows.
         if (payload.job.status === "blocked") {
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
-          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the Manus build.");
+          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the PIER/Vercel build.");
         } else {
-          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Manus returned the live offering site URL. Open it below." : payload.message || PRODUCTION_FACTORY_MESSAGE);
+          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "PIER/Vercel returned the live offering site URL. Open it below." : payload.message || PRODUCTION_FACTORY_MESSAGE);
         }
       } else {
-        setOfferingSiteError(payload.error || "Manus did not return an offering site task.");
+        setOfferingSiteError(payload.error || "PIER/Vercel did not return an offering site job.");
       }
     } catch (error) {
       setOfferingSiteError(error instanceof Error ? error.message : "Offering site build failed.");
@@ -683,7 +683,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       const payload = await fetch(`/api/listingstream/offering-sites?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
-        setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "Manus returned the live offering site URL. Open it below." : payload.message || "Manus is still building the offering site. The link will appear here automatically when it is ready.");
+        setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "PIER/Vercel returned the live offering site URL. Open it below." : payload.message || "The PIER/Vercel Website Production Factory is still building the offering site. The link will appear here automatically when it is ready.");
       } else {
         setOfferingSiteError(payload.error || "No offering site job returned.");
       }
