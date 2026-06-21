@@ -58,10 +58,16 @@ const postureItems = [
   "No client-facing access",
 ];
 
-const MISSION_SHELL_HEADER_HEIGHT_CLASS = "[--mission-shell-header-height:112px] md:[--mission-shell-header-height:128px]";
+const MISSION_SHELL_HEADER_HEIGHT_CLASS = "[--mission-shell-header-height:48px] md:[--mission-shell-header-height:52px]";
 const MASTER_CONSOLE_SHELL_CLASS = `flex min-h-screen min-w-0 flex-col bg-[#f6f4f1] scroll-pt-[var(--mission-shell-header-height)] ${MISSION_SHELL_HEADER_HEIGHT_CLASS}`;
-const MASTER_CONSOLE_HEADER_CLASS = "sticky top-0 z-20 flex-none border-b border-zinc-200/80 bg-white/95 px-4 py-2 shadow-sm backdrop-blur-xl lg:px-5";
-const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 bg-[#f6f4f1] px-4 pb-6 pt-[calc(var(--mission-shell-header-height)+1.5rem)] scroll-pt-[var(--mission-shell-header-height)] lg:px-5 xl:px-6";
+const MASTER_CONSOLE_HEADER_CLASS = "sticky top-0 z-20 flex h-[var(--mission-shell-header-height)] flex-none items-center overflow-hidden border-b border-zinc-200/80 bg-white/95 px-3 py-1 shadow-sm backdrop-blur-xl lg:px-4";
+const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 bg-[#f6f4f1] px-3 py-3 scroll-pt-[var(--mission-shell-header-height)] lg:px-4 xl:px-5";
+const compactTopNav: NavItem[] = [
+  { href: "/", label: "Dashboard", match: "exact" },
+  { href: "/pier-workspace", label: "PIER", match: "prefix" },
+  { href: "/pier-manager", label: "Portal", match: "prefix" },
+  { href: "/master-console", label: "Hermes", match: "prefix" },
+];
 
 
 function getBrokerDisplayName(brokerId?: string | null) {
@@ -94,7 +100,7 @@ export async function MissionShell({
   const canSwitchBroker = session?.role === "master" || isStaff;
   const activeBrokerId = session?.brokerId ?? "ryan";
   const activeBrokerName = getBrokerDisplayName(activeBrokerId);
-  const visibleActions = isBroker ? [] : actions;
+  const visibleActions: PageAction[] = [];
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -179,22 +185,42 @@ export async function MissionShell({
 
         <main className={MASTER_CONSOLE_SHELL_CLASS}>
           <header className={MASTER_CONSOLE_HEADER_CLASS}>
-            <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.26em] text-[#CB521E]">
-                  PIER Commercial / Mission Control OS
-                </p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">{title}</h2>
-                <p className="mt-1 max-w-4xl text-sm leading-5 text-zinc-600">{subtitle}</p>
+            <div className="flex w-full min-w-0 items-center gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#CB521E]">
+                    Mission Control OS
+                  </p>
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <h2 className="truncate text-base font-semibold tracking-tight text-zinc-950 xl:text-lg">{title}</h2>
+                    <p className="hidden max-w-[44vw] truncate text-xs text-zinc-500 2xl:block">{subtitle}</p>
+                  </div>
+                </div>
+                <nav aria-label="Primary workspace navigation" className="hidden items-center gap-1 xl:flex">
+                  {compactTopNav.map((item) => {
+                    const active = item.match === "exact" ? currentPath === item.href : currentPath === item.href || currentPath.startsWith(`${item.href}/`);
+                    return (
+                      <Link
+                        key={`top-${item.href}`}
+                        href={item.href}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                          active ? "bg-zinc-950 text-white" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </nav>
               </div>
 
-              <div className="flex flex-col gap-3 xl:items-end">
-                <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                  {!isBroker && (
-                    <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 lg:block">
-                      Search listings, tasks, files…
-                    </div>
-                  )}
+              <div className="flex flex-none items-center justify-end gap-2">
+                <div className="hidden items-center gap-1.5 text-[11px] text-zinc-500 2xl:flex">
+                  <span className="rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-2 py-0.5 text-[#CB521E]">{today}</span>
+                  <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-2 py-0.5 text-emerald-700">{isBroker ? "Broker Console" : "online"}</span>
+                  {canSwitchBroker ? <span className="hidden rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 2xl:inline">as {activeBrokerName}</span> : null}
+                </div>
+                <div className="flex items-center gap-1.5">
                   {visibleActions.map((action) => (
                     <Link
                       key={`${action.href}-${action.label}`}
@@ -206,22 +232,6 @@ export async function MissionShell({
                   ))}
                   {canSwitchBroker ? <ViewAsBrokerControl activeBrokerId={activeBrokerId} /> : null}
                   <SignOutButton />
-                </div>
-                <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-                  <span className="rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-2.5 py-0.5 text-[#CB521E]">
-                    {today}
-                  </span>
-                  <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-2.5 py-0.5 text-emerald-700">
-                    {isBroker ? "Broker Listing Console" : "private system online"}
-                  </span>
-                  {canSwitchBroker ? (
-                    <span className="rounded-full border border-[#CB521E]/30 bg-[#CB521E]/10 px-2.5 py-0.5 text-[#CB521E]">
-                      Impersonation Mode: Viewing as {activeBrokerName}
-                    </span>
-                  ) : null}
-                  <span className="rounded-full border border-zinc-200 bg-zinc-100 px-2.5 py-0.5">
-                    local-first records
-                  </span>
                 </div>
               </div>
             </div>
@@ -275,11 +285,11 @@ export async function MissionShell({
 function actionClassName(tone: "primary" | "secondary" | "ghost") {
   switch (tone) {
     case "primary":
-      return "rounded-xl bg-[#CB521E] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[#a94318]";
+      return "rounded-full bg-[#CB521E] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#a94318]";
     case "ghost":
-      return "rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-600 transition hover:border-[#CB521E]/30 hover:bg-[#CB521E]/5";
+      return "rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:border-[#CB521E]/30 hover:bg-[#CB521E]/5";
     case "secondary":
     default:
-      return "rounded-xl border border-[#CB521E]/20 bg-[#CB521E]/10 px-4 py-2.5 text-sm font-medium text-[#CB521E] transition hover:bg-[#CB521E]/15";
+      return "rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-3 py-1.5 text-xs font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/15";
   }
 }

@@ -43,23 +43,24 @@ export function ViewAsBrokerControl({ activeBrokerId = "ryan" }: { activeBrokerI
   }
 
   return (
-    <div data-testid="view-as-broker-control" className="rounded-2xl border border-[#CB521E]/30 bg-[#CB521E]/10 p-3 text-sm text-zinc-800">
-      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-[#CB521E]">
-        View As Broker
+    <div data-testid="view-as-broker-control" className="flex min-w-0 items-center gap-2 rounded-full border border-[#CB521E]/25 bg-[#CB521E]/10 px-2.5 py-1 text-xs text-zinc-800">
+      <label className="flex min-w-0 items-center gap-2 font-semibold uppercase tracking-[0.16em] text-[#CB521E]">
+        <span className="hidden whitespace-nowrap xl:inline">View as</span>
         <select
+          aria-label="View as broker"
           value={brokerId}
           disabled={saving}
           onChange={(event) => changeBroker(event.target.value)}
-          className="mt-2 w-full rounded-xl border border-[#CB521E]/20 bg-white px-3 py-2 text-sm normal-case tracking-normal text-zinc-950 outline-none focus:border-[#CB521E]"
+          className="h-7 max-w-[210px] rounded-full border border-[#CB521E]/20 bg-white px-2.5 text-xs normal-case tracking-normal text-zinc-950 outline-none focus:border-[#CB521E]"
         >
           {brokerOptions.map((broker) => (
             <option key={broker.id} value={broker.id}>{broker.name}</option>
           ))}
         </select>
       </label>
-      <p className="mt-2 text-xs text-zinc-600">Viewing as {getBrokerDisplayName(brokerId)} ({getBrokerSenderEmail(brokerId)}). Sender identities, PDFs, and broker-scoped listing views use this context.</p>
-      {saving ? <p className="mt-1 text-xs text-[#CB521E]">Switching broker context…</p> : null}
-      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      <span className="hidden max-w-[220px] truncate text-[11px] text-zinc-600 2xl:inline">{getBrokerSenderEmail(brokerId)}</span>
+      {saving ? <span className="text-[11px] text-[#CB521E]">Switching…</span> : null}
+      {error ? <span className="text-[11px] text-red-600">{error}</span> : null}
     </div>
   );
 }

@@ -57,22 +57,22 @@ export default async function Home() {
         { href: "/pier-workspace", label: "Enter PIER Workspace", tone: "primary" },
       ]}
     >
-      <div className="grid min-h-[calc(100dvh-12rem)] gap-6 2xl:grid-cols-[minmax(0,1fr)_540px]">
+      <div className="grid min-h-[calc(100dvh-5rem)] gap-4 2xl:grid-cols-[minmax(0,1fr)_540px]">
         <section className="min-w-0 space-y-6">
-          <div className="relative overflow-hidden rounded-[2.25rem] border border-zinc-200 bg-zinc-950 p-7 text-white shadow-sm xl:p-9">
+          <div className="relative overflow-hidden rounded-[1.75rem] border border-zinc-200 bg-zinc-950 p-5 text-white shadow-sm xl:p-6">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(203,82,30,0.38),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(255,255,255,0.18),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_45%)]" />
-            <div className="relative grid gap-8 xl:grid-cols-[1.25fr_0.75fr] xl:items-end">
+            <div className="relative grid gap-5 xl:grid-cols-[1.25fr_0.75fr] xl:items-end">
               <div>
                 <p className="inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.28em] text-[#f6b28d]">
                   Global dashboard UI
                 </p>
-                <h3 className="mt-5 max-w-4xl text-4xl font-semibold tracking-tight text-white xl:text-6xl">
+                <h3 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight text-white xl:text-5xl">
                   Separate the chat stream from the operating system.
                 </h3>
-                <p className="mt-5 max-w-3xl text-base leading-8 text-zinc-300">
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-300">
                   Hermes remains available as a persistent master chat module, while PIER Commercial and future company domains live as structured command cards with their own routed workspaces.
                 </p>
-                <div className="mt-7 flex flex-wrap gap-3">
+                <div className="mt-5 flex flex-wrap gap-3">
                   <Link href="/pier-workspace" className="rounded-2xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318]">
                     Enter PIER Commercial
                   </Link>
@@ -135,7 +135,7 @@ export default async function Home() {
           </section>
         </section>
 
-        <aside className="min-h-0 rounded-[2.25rem] border border-zinc-300/70 bg-[#eee9e1] p-3 shadow-sm 2xl:sticky 2xl:top-[9rem] 2xl:h-[calc(100dvh-10.5rem)]">
+        <aside className="min-h-0 rounded-[1.75rem] border border-zinc-300/70 bg-[#eee9e1] p-2 shadow-sm 2xl:sticky 2xl:top-[4rem] 2xl:h-[calc(100dvh-5rem)]">
           <div className="mb-3 flex items-center justify-between px-3 pt-2">
             <div>
               <p className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Sandboxed module</p>

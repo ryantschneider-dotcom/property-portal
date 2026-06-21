@@ -75,18 +75,18 @@ export default function PierWorkspacePage() {
         { href: "/pier-manager", label: "Open Listing Portal", tone: "primary" },
       ]}
     >
-      <div className="space-y-6">
-        <section className="relative overflow-hidden rounded-[2.25rem] border border-zinc-200 bg-white p-7 shadow-sm xl:p-9">
+      <div className="space-y-4">
+        <section className="relative overflow-hidden rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm xl:p-6">
           <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_70%_30%,rgba(203,82,30,0.16),transparent_32%),linear-gradient(135deg,transparent,rgba(203,82,30,0.06))]" />
-          <div className="relative grid gap-8 xl:grid-cols-[1.2fr_0.8fr] xl:items-end">
+          <div className="relative grid gap-5 xl:grid-cols-[1.2fr_0.8fr] xl:items-end">
             <div>
               <p className="inline-flex rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#CB521E]">
                 PIER domain sandbox
               </p>
-              <h3 className="mt-5 max-w-4xl text-4xl font-semibold tracking-tight text-zinc-950 xl:text-6xl">
+              <h3 className="mt-3 max-w-4xl text-3xl font-semibold tracking-tight text-zinc-950 xl:text-5xl">
                 Brokerage production on the left. Company marketing on the right.
               </h3>
-              <p className="mt-5 max-w-3xl text-base leading-8 text-zinc-600">
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-600">
                 This workspace keeps listing execution, websites, OMs, emails, and revisions in a dedicated PIER Commercial operations zone while company-level marketing has its own clearly marked lane.
               </p>
             </div>
@@ -98,8 +98,8 @@ export default function PierWorkspacePage() {
           </div>
         </section>
 
-        <div className="grid gap-6 2xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.65fr)]">
-          <section className="rounded-[2rem] border border-zinc-200 bg-white p-5 shadow-sm xl:p-6">
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.65fr)]">
+          <section className="rounded-[1.75rem] border border-zinc-200 bg-white p-5 shadow-sm xl:p-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.28em] text-[#CB521E]">Operational zone 01</p>
@@ -112,14 +112,14 @@ export default function PierWorkspacePage() {
                 Open Listing Portal
               </Link>
             </div>
-            <div className="mt-6 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            <div className="mt-4 grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {brokerageCards.map((card) => (
                 <WorkspaceCard key={card.title} {...card} tone="brokerage" />
               ))}
             </div>
           </section>
 
-          <section className="rounded-[2rem] border border-zinc-900 bg-zinc-950 p-5 text-white shadow-sm xl:p-6">
+          <section className="rounded-[1.75rem] border border-zinc-900 bg-zinc-950 p-5 text-white shadow-sm xl:p-6">
             <div>
               <p className="text-[11px] uppercase tracking-[0.28em] text-[#f6a87f]">Operational zone 02</p>
               <h3 className="mt-2 text-3xl font-semibold tracking-tight text-white">PIER Commercial Company Marketing</h3>
@@ -127,7 +127,7 @@ export default function PierWorkspacePage() {
                 Company-brand marketing lives apart from listing production so Pulse drops, social content, and future channels do not clutter brokerage execution.
               </p>
             </div>
-            <div className="mt-6 grid gap-4">
+            <div className="mt-4 grid gap-4">
               {marketingCards.map((card) => (
                 <WorkspaceCard key={card.title} {...card} tone="marketing" />
               ))}

@@ -49,7 +49,7 @@ function attachmentPromptContext(attachments: CopilotAttachment[]) {
 export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashboard" } = {}) {
   const isDashboardMode = mode === "dashboard";
   const viewportClassName = isDashboardMode
-    ? "grid h-full min-h-0 min-h-[calc(100dvh-14rem)] gap-4"
+    ? "grid h-full min-h-0 min-h-[calc(100dvh-9rem)] gap-3"
     : MASTER_CONSOLE_VIEWPORT_CLEARANCE_CLASS;
   const [sessionId, setSessionId] = useState(createMissionControlSessionId);
   const [messages, setMessages] = useState<CopilotMessage[]>([
