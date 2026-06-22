@@ -17,7 +17,6 @@ import {
   type PierPulseWordPressDraftPayload,
 } from "@/lib/pier-pulse";
 import {
-  extractListingStreamPulseCandidate,
   runPierPulseAgenticHandoff,
   type PierPulseAgenticExtractionResult,
   type PierPulseAgenticExtractionSource,
@@ -96,7 +95,6 @@ export type PierPulseRunArtifact = {
   uploadedImages: PierPulseUploadedImage[];
   socialDrafts: PierPulseSocialDraftSet | null;
   agenticExtractions: PierPulseAgenticExtractionResult[];
-  listingStreamSourceSlugs: string[];
   providerModes: PierPulseProviderModes;
   published: false;
   wordpressDraftUrl: null;
@@ -111,8 +109,6 @@ export type PierPulseDryRunOptions = {
   generatedAt?: string;
   liveCollectorResults?: PierPulseLiveCollectorResult[];
   agenticSources?: PierPulseAgenticExtractionSource[];
-  listingStreamPropertySlugs?: string[];
-  listingStreamEventType?: "new-listing" | "just-leased" | "just-sold" | "listing-update";
   socialArticleUrl?: string;
 };
 
@@ -180,17 +176,10 @@ export async function runPierPulseDryRun(options: PierPulseDryRunOptions): Promi
   const agenticExtractions = options.agenticSources?.length
     ? [await runPierPulseAgenticHandoff({ sources: options.agenticSources, corridorName: corridor.name })]
     : [];
-  const listingStreamSourceSlugs = options.listingStreamPropertySlugs?.map((slug) => slug.trim()).filter(Boolean) ?? [];
-  const listingStreamInputs = await Promise.all(
-    listingStreamSourceSlugs.map((propertyIdOrSlug) =>
-      extractListingStreamPulseCandidate({ propertyIdOrSlug, eventType: options.listingStreamEventType }),
-    ),
-  );
   const sourceInputs = [
     ...fixtureInputs,
     ...mergeLiveCollectorResults(options.liveCollectorResults ?? []),
     ...agenticExtractions.flatMap((result) => result.candidates),
-    ...listingStreamInputs,
   ];
   const extractedInputs = await Promise.all(
     sourceInputs.map(async (candidate) => {
@@ -251,7 +240,6 @@ export async function runPierPulseDryRun(options: PierPulseDryRunOptions): Promi
     uploadedImages: imagePlan.uploadedImages,
     socialDrafts,
     agenticExtractions,
-    listingStreamSourceSlugs,
     providerModes: {
       extractor: options.providerModes?.extractor ?? (options.providers?.extract ? "mock" : "fallback"),
       writer: options.providerModes?.writer ?? (options.providers?.write ? "mock" : "fallback"),
@@ -288,7 +276,6 @@ export function buildPierPulseRunArtifact(input: {
   uploadedImages?: PierPulseUploadedImage[];
   socialDrafts?: PierPulseSocialDraftSet | null;
   agenticExtractions?: PierPulseAgenticExtractionResult[];
-  listingStreamSourceSlugs?: string[];
   providerModes: PierPulseProviderModes;
 }): PierPulseRunArtifact {
   return {
@@ -300,7 +287,6 @@ export function buildPierPulseRunArtifact(input: {
     uploadedImages: input.uploadedImages ?? [],
     socialDrafts: input.socialDrafts ?? null,
     agenticExtractions: input.agenticExtractions ?? [],
-    listingStreamSourceSlugs: input.listingStreamSourceSlugs ?? [],
     providerModes: input.providerModes,
     published: false,
     wordpressDraftUrl: null,

@@ -45,14 +45,15 @@ const marketingCards = [
     title: "WordPress Pulse Drop",
     href: "/workflows",
     kicker: "PIER Pulse",
-    description: "Company-level CRE intelligence publishing lane for WordPress drops, corridor research, and premium local market story packaging.",
+    description: "Company-level external CRE intelligence publishing lane for WordPress drops, corridor research, municipal stories, zoning activity, and project announcements.",
     status: "Live workflow",
+    postTypes: ["Market Update", "Zoning News", "Project Announcement"],
   },
   {
     title: "Instagram Post Generation",
     href: "/pier-workspace",
     kicker: "Coming next",
-    description: "Placeholder lane for PIER-branded Instagram visuals and captions generated from approved Pulse and listing content.",
+    description: "Placeholder lane for PIER-branded Instagram visuals and captions generated from approved Pulse and market-intelligence content.",
     status: "Placeholder",
   },
   {
@@ -154,6 +155,7 @@ function WorkspaceCard({
   kicker,
   description,
   status,
+  postTypes,
   tone,
 }: {
   title: string;
@@ -161,6 +163,7 @@ function WorkspaceCard({
   kicker: string;
   description: string;
   status: string;
+  postTypes?: string[];
   tone: "brokerage" | "marketing";
 }) {
   const isMarketing = tone === "marketing";
@@ -179,6 +182,18 @@ function WorkspaceCard({
       </div>
       <h4 className={`mt-5 text-xl font-semibold tracking-tight ${isMarketing ? "text-white" : "text-zinc-950"}`}>{title}</h4>
       <p className={`mt-3 text-sm leading-6 ${isMarketing ? "text-zinc-300" : "text-zinc-600"}`}>{description}</p>
+      {postTypes?.length ? (
+        <div className="mt-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-400">Post type inputs</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {postTypes.map((postType) => (
+              <span key={postType} className="rounded-full border border-[#f6a87f]/25 bg-[#CB521E]/15 px-3 py-1 text-[11px] font-semibold text-[#f6a87f]">
+                {postType}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <p className={`mt-6 text-sm font-semibold transition group-hover:translate-x-1 ${isMarketing ? "text-[#f6a87f]" : "text-[#CB521E]"}`}>Open card →</p>
     </Link>
   );

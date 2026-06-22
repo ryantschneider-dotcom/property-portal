@@ -57,8 +57,6 @@ async function main() {
   const useLiveCollectors = args.get("live-collectors") === "true" || process.env.PIER_PULSE_USE_LIVE_COLLECTORS === "true";
   const useSocialDrafts = args.get("social-drafts") !== "false" && process.env.PIER_PULSE_USE_SOCIAL_DRAFTS !== "false";
   const agenticUrl = args.get("agentic-url") ?? process.env.PIER_PULSE_AGENTIC_URL;
-  const listingStreamSlug = args.get("listingstream-slug") ?? process.env.PIER_PULSE_LISTINGSTREAM_SLUG;
-  const listingStreamEventType = (args.get("listingstream-event-type") ?? process.env.PIER_PULSE_LISTINGSTREAM_EVENT_TYPE ?? "new-listing") as "new-listing" | "just-leased" | "just-sold" | "listing-update";
   const liveCollectorsConfigPath = args.get("collector-config") ?? process.env.PIER_PULSE_LIVE_COLLECTOR_CONFIG ?? "data/pier-pulse/live-sources.json";
   const articleUrl = args.get("article-url") ?? process.env.PIER_PULSE_ARTICLE_URL ?? "https://www.piercommercial.com/";
   const wordpressConfig = getPrivatePierPulseWordPressConfigFromEnv();
@@ -67,7 +65,7 @@ async function main() {
 
   const result = await runPierPulseDryRun({
     runIndex,
-    sourceFixturePath: useLiveCollectors || agenticUrl || listingStreamSlug ? undefined : sourceFixturePath,
+    sourceFixturePath: useLiveCollectors || agenticUrl ? undefined : sourceFixturePath,
     liveCollectorResults,
     agenticSources: agenticUrl
       ? [
@@ -81,8 +79,6 @@ async function main() {
           },
         ]
       : undefined,
-    listingStreamPropertySlugs: listingStreamSlug ? [listingStreamSlug] : undefined,
-    listingStreamEventType,
     socialArticleUrl: articleUrl,
     artifactsDir,
     providers: {
@@ -123,7 +119,6 @@ async function main() {
       {
         ...buildPierPulseRunSummary(result),
         agenticExtractions: result.agenticExtractions.length,
-        listingStreamSourceSlugs: result.listingStreamSourceSlugs,
         wordpressDraft: wpDraft,
         wordpressConfigured: Boolean(wordpressConfig),
       },

@@ -16,7 +16,7 @@ export async function GET() {
     ok: true,
     workflow: "pier-pulse-drop",
     phase: "agentic-handoff-ready",
-    capabilities: ["cloud-agent-url-pdf-extraction", "listingstream-property-payload-extraction", "draft-only-wordpress-staging"],
+    capabilities: ["cloud-agent-url-pdf-extraction", "external-market-intelligence", "draft-only-wordpress-staging"],
     wordpress: getPierPulseWordPressConfigFromEnv(),
     defaults: {
       sourceFixturePath: "data/pier-pulse/sample-sources.json",
@@ -39,8 +39,6 @@ export async function POST(request: NextRequest) {
     useSocialDrafts?: boolean;
     articleUrl?: string;
     agenticSources?: Array<{ url: string; title?: string; sourceName?: string; corridorHint?: string; sourceType?: "municipal_url" | "municipal_pdf" | "agenda" | "news" | "other"; instructions?: string }>;
-    listingStreamPropertySlugs?: string[];
-    listingStreamEventType?: "new-listing" | "just-leased" | "just-sold" | "listing-update";
   };
 
   const useOllama = body.useOllama ?? process.env.PIER_PULSE_USE_OLLAMA === "true";
@@ -59,11 +57,9 @@ export async function POST(request: NextRequest) {
 
   const result = await runPierPulseDryRun({
     runIndex,
-    sourceFixturePath: useLiveCollectors || body.agenticSources?.length || body.listingStreamPropertySlugs?.length ? undefined : body.sourceFixturePath ?? "data/pier-pulse/sample-sources.json",
+    sourceFixturePath: useLiveCollectors || body.agenticSources?.length ? undefined : body.sourceFixturePath ?? "data/pier-pulse/sample-sources.json",
     liveCollectorResults,
     agenticSources: body.agenticSources,
-    listingStreamPropertySlugs: body.listingStreamPropertySlugs,
-    listingStreamEventType: body.listingStreamEventType,
     socialArticleUrl: body.articleUrl ?? process.env.PIER_PULSE_ARTICLE_URL ?? "https://www.piercommercial.com/",
     artifactsDir: body.artifactsDir ?? "data/pier-pulse/artifacts",
     providers: {

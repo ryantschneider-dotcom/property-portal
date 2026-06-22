@@ -2,10 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildAgenticExtractionPrompt,
-  buildListingStreamPulseCandidate,
   parseAgenticExtractionJson,
   runPierPulseAgenticHandoff,
-  extractListingStreamPulseCandidate,
 } from "../src/lib/pier-pulse-agentic-handoff";
 
 test("PIER Pulse agentic handoff prompt commands cloud agent to inspect municipal URLs and return JSON", () => {
@@ -61,56 +59,6 @@ test("PIER Pulse OpenAI handoff posts to Responses API with web-search tool and 
   assert.equal(result.provider, "openai");
   assert.equal(result.candidates[0].sourceName, "City Planning Commission");
   assert.match(result.candidates[0].summary ?? "", /site plan review/i);
-});
-
-test("PIER Pulse ListingStream extraction converts verified property payload into Pulse candidate", () => {
-  const candidate = buildListingStreamPulseCandidate({
-    propertyIdOrSlug: "1539-pooler-parkway",
-    eventType: "new-listing",
-    generatedAt: "2026-06-02T00:00:00.000Z",
-    payload: {
-      title: "1539 Pooler Parkway",
-      address: "1539 Pooler Parkway, Pooler, GA 31322",
-      propertyType: "Retail",
-      transactionLabel: "For Lease",
-      publicUrl: "https://listingstream-portal.vercel.app/properties/1539-pooler-parkway",
-      pricing: { leaseRate: "$12/SF/YR" },
-      details: { squareFeet: "6,542", acreage: "1.19" },
-      highlights: ["Pooler Parkway frontage", "C-2 Heavy Commercial zoning"],
-      location: { city: "Pooler" },
-    },
-  });
-
-  assert.equal(candidate.sourceName, "ListingStream verified property payload");
-  assert.match(candidate.title, /^New Listing:/);
-  assert.match(candidate.summary ?? "", /PIER's active ListingStream database/);
-  assert.ok(candidate.facts?.some((fact) => /6,542 SF/.test(fact)));
-  assert.ok(candidate.facts?.some((fact) => /1.19 acres/.test(fact)));
-});
-
-test("PIER Pulse can pull a ListingStream property through the live-property endpoint boundary", async () => {
-  const fetchImpl = async (url: string | URL | Request) => {
-    assert.match(String(url), /\/api\/properties\/1539-pooler-parkway/);
-    return new Response(
-      JSON.stringify({
-        title: "1539 Pooler Parkway",
-        address: "1539 Pooler Parkway, Pooler, GA 31322",
-        propertyType: "Retail",
-        transactionLabel: "For Lease",
-        details: { squareFeet: "6,542" },
-      }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
-  };
-
-  const candidate = await extractListingStreamPulseCandidate({
-    propertyIdOrSlug: "1539-pooler-parkway",
-    fetchImpl: fetchImpl as typeof fetch,
-    now: () => new Date("2026-06-02T00:00:00.000Z"),
-  });
-
-  assert.match(candidate.title, /1539 Pooler Parkway/);
-  assert.ok(candidate.facts?.some((fact) => /6,542 SF/.test(fact)));
 });
 
 test("PIER Pulse agentic parser rejects non-JSON cloud output instead of fabricating facts", () => {
