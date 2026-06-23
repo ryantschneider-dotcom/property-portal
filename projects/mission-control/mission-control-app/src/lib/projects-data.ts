@@ -35,6 +35,10 @@ export type ProjectRecord = {
   yearBuilt?: number;
   buildoutPropertyId?: string;
   customListingUrl?: string;
+  offeringWebsiteUrl?: string;
+  useManualCoordinates?: boolean;
+  manualLatitude?: number;
+  manualLongitude?: number;
   listingAgent?: ListingAgent;
   ownerContact?: string;
   mediaAssetNotes?: string;

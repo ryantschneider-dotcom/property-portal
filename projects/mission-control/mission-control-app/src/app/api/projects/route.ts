@@ -32,6 +32,10 @@ type ProjectMutationBody = {
   yearBuilt?: number;
   buildoutPropertyId?: string;
   customListingUrl?: string;
+  offeringWebsiteUrl?: string;
+  useManualCoordinates?: boolean;
+  manualLatitude?: number;
+  manualLongitude?: number;
   listingAgent?: ListingAgent;
   ownerContact?: string;
   mediaAssetNotes?: string;
@@ -91,6 +95,10 @@ export async function POST(request: NextRequest) {
     yearBuilt: cleanNumber(body.yearBuilt),
     buildoutPropertyId: clean(body.buildoutPropertyId),
     customListingUrl: clean(body.customListingUrl),
+    offeringWebsiteUrl: clean(body.offeringWebsiteUrl),
+    useManualCoordinates: Boolean(body.useManualCoordinates),
+    manualLatitude: cleanNumber(body.manualLatitude),
+    manualLongitude: cleanNumber(body.manualLongitude),
     listingAgent: cleanListingAgent(body.listingAgent),
     ownerContact: clean(body.ownerContact),
     mediaAssetNotes: clean(body.mediaAssetNotes),
@@ -156,6 +164,10 @@ export async function PATCH(request: NextRequest) {
           yearBuilt: cleanNumber(body.yearBuilt) ?? project.yearBuilt,
           buildoutPropertyId: clean(body.buildoutPropertyId) ?? project.buildoutPropertyId,
           customListingUrl: clean(body.customListingUrl) ?? project.customListingUrl,
+          offeringWebsiteUrl: body.offeringWebsiteUrl === undefined ? project.offeringWebsiteUrl : clean(body.offeringWebsiteUrl),
+          useManualCoordinates: body.useManualCoordinates ?? project.useManualCoordinates,
+          manualLatitude: body.manualLatitude === undefined ? project.manualLatitude : cleanNumber(body.manualLatitude),
+          manualLongitude: body.manualLongitude === undefined ? project.manualLongitude : cleanNumber(body.manualLongitude),
           listingAgent: cleanListingAgent(body.listingAgent) ?? project.listingAgent,
           ownerContact: clean(body.ownerContact) ?? project.ownerContact,
           mediaAssetNotes: clean(body.mediaAssetNotes) ?? project.mediaAssetNotes,

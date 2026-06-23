@@ -38,6 +38,10 @@ export function ListingEditPanel({ project }: { project: ProjectRecord }) {
   const [capRate, setCapRate] = useState(project.capRate ?? "");
   const [buildoutPropertyId, setBuildoutPropertyId] = useState(project.buildoutPropertyId ?? "");
   const [customListingUrl, setCustomListingUrl] = useState(project.customListingUrl ?? "");
+  const [offeringWebsiteUrl, setOfferingWebsiteUrl] = useState(project.offeringWebsiteUrl ?? "");
+  const [useManualCoordinates, setUseManualCoordinates] = useState(Boolean(project.useManualCoordinates));
+  const [manualLatitude, setManualLatitude] = useState(numberValue(project.manualLatitude));
+  const [manualLongitude, setManualLongitude] = useState(numberValue(project.manualLongitude));
   const [listingAgent, setListingAgent] = useState<ListingAgent>(project.listingAgent ?? "Ryan");
   const [owner, setOwner] = useState(project.owner ?? "");
   const [ownerContact, setOwnerContact] = useState(project.ownerContact ?? "");
@@ -75,6 +79,10 @@ export function ListingEditPanel({ project }: { project: ProjectRecord }) {
         capRate,
         buildoutPropertyId,
         customListingUrl,
+        offeringWebsiteUrl,
+        useManualCoordinates,
+        manualLatitude: numberOrUndefined(manualLatitude),
+        manualLongitude: numberOrUndefined(manualLongitude),
         listingAgent,
         owner,
         ownerContact,
@@ -135,6 +143,17 @@ export function ListingEditPanel({ project }: { project: ProjectRecord }) {
       <div className="grid gap-4 md:grid-cols-2">
         <input value={buildoutPropertyId} onChange={(event) => setBuildoutPropertyId(event.target.value)} className={inputClass} placeholder="Buildout property ID" />
         <input value={customListingUrl} onChange={(event) => setCustomListingUrl(event.target.value)} className={inputClass} placeholder="Custom listing URL" />
+      </div>
+      <input value={offeringWebsiteUrl} onChange={(event) => setOfferingWebsiteUrl(event.target.value)} className={inputClass} placeholder="Offering Website URL" />
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+        <label className="flex items-center gap-3 text-sm font-semibold text-zinc-800">
+          <input type="checkbox" checked={useManualCoordinates} onChange={(event) => setUseManualCoordinates(event.target.checked)} className="h-4 w-4 accent-[#CB521E]" />
+          Use Manual Coordinates
+        </label>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <input value={manualLatitude} onChange={(event) => setManualLatitude(event.target.value)} className={inputClass} placeholder="Latitude" inputMode="decimal" />
+          <input value={manualLongitude} onChange={(event) => setManualLongitude(event.target.value)} className={inputClass} placeholder="Longitude" inputMode="decimal" />
+        </div>
       </div>
       <input value={owner} onChange={(event) => setOwner(event.target.value)} className={inputClass} placeholder="Owner / seller" />
       <textarea value={ownerContact} onChange={(event) => setOwnerContact(event.target.value)} className={textareaClass} placeholder="Private owner contact" />
