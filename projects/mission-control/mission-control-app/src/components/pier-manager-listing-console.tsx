@@ -418,6 +418,8 @@ const initialIntakeState: IntakeFormState = {
   state: "",
   county: "",
   parcelId: "",
+  latitude: "",
+  longitude: "",
   propertyType: "",
   leadBroker: "",
   transactionType: "" as BrokerHubTransactionType,
@@ -1669,6 +1671,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               <label className="space-y-2">{requiredLabel("State")}<select value={intakeForm.state} onChange={(event) => updateIntake("state", event.target.value)} className={inputClass} required><option value="">Select state</option><option value="GA">GA</option><option value="SC">SC</option></select></label>
               <label className="space-y-2">{requiredLabel("County")}<select value={intakeForm.county} onChange={(event) => updateIntake("county", event.target.value)} className={inputClass} required><option value="">Select county</option>{counties.map((county) => <option key={county}>{county}</option>)}</select></label>
               <label className="space-y-2">{requiredLabel("Parcel ID")}<input value={intakeForm.parcelId} onChange={(event) => updateIntake("parcelId", event.target.value)} className={inputClass} required /></label>
+              <label className="space-y-2">{requiredLabel("Latitude", false)}<input value={intakeForm.latitude || ""} onChange={(event) => updateIntake("latitude", event.target.value)} className={inputClass} inputMode="decimal" placeholder="32.043014" aria-label="Manual latitude" /></label>
+              <label className="space-y-2">{requiredLabel("Longitude", false)}<input value={intakeForm.longitude || ""} onChange={(event) => updateIntake("longitude", event.target.value)} className={inputClass} inputMode="decimal" placeholder="-81.294012" aria-label="Manual longitude" /></label>
               <label className="space-y-2">{requiredLabel("Property Type")}<select value={intakeForm.propertyType} onChange={(event) => updateIntake("propertyType", event.target.value)} className={inputClass} required><option value="">Select property type</option>{propertyTypes.map((propertyType) => <option key={propertyType}>{propertyType}</option>)}</select></label>
               <label className="space-y-2">{requiredLabel("Lead Broker")}<select value={intakeForm.leadBroker} onChange={(event) => updateIntake("leadBroker", event.target.value)} className={inputClass} required><option value="">Select lead broker</option>{brokers.map((broker) => <option key={broker}>{broker}</option>)}</select></label>
             </div>

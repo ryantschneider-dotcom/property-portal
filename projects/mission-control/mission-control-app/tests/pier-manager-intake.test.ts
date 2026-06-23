@@ -15,6 +15,8 @@ const baseInput: BrokerHubIntakeInput = {
   state: "GA",
   county: "Chatham",
   parcelId: "20000 01001",
+  latitude: "32.043014",
+  longitude: "-81.294012",
   propertyType: "Industrial",
   leadBroker: "Ryan T. Schneider",
   transactionType: "Sale",
@@ -76,6 +78,8 @@ test("Broker Hub payload preserves narrative seeds but keeps them optional", () 
   assert.equal(payload.requestedWorkflow, "listingstream-draft-enrich-review");
   assert.equal(payload.transactionType, "Sale");
   assert.equal(payload.salePrice, "1250000");
+  assert.equal(payload.latitude, "32.043014");
+  assert.equal(payload.longitude, "-81.294012");
   assert.deepEqual(payload.narrativeSeeds.bulletPoints, ["Visibility", "Access"]);
   assert.equal(payload.narrativeSeeds.propertyDescription, "");
 });
@@ -94,6 +98,15 @@ test("Broker Hub FormData forwards rich payload and hero/media assets without Wo
   assert.equal(formData.getAll("heroPhoto").length, 1);
   assert.equal(formData.getAll("assets").length, 1);
   assert.doesNotMatch(JSON.stringify(payload), /wordpress|wp-json|wp-admin/i);
+});
+
+test("PIER Manager intake exposes mobile-safe manual coordinate fields", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /Latitude/);
+  assert.match(source, /Longitude/);
+  assert.match(source, /updateIntake\("latitude"/);
+  assert.match(source, /updateIntake\("longitude"/);
+  assert.match(source, /inputMode="decimal"/);
 });
 
 

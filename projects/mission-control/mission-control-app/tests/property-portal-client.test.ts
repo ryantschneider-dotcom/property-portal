@@ -97,6 +97,33 @@ test("draft preview URL builder targets the dedicated preview route", () => {
   );
 });
 
+test("new-listing approval payload binds intake manual coordinates as the map override", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "publish-live",
+    slug: "0-bush-road-smoke",
+    draft: {
+      kind: "new-listing",
+      title: "0 Bush Road",
+      descriptionHtml: "Raw land positioned near Scott Stell Park with I-95 access.",
+      highlights: ["Manual intake coordinates provided"],
+      sourceInput: { addressStreet: "0 Bush Road", parcelId: "11026 02007", latitude: "32.043014", longitude: "-81.294012" },
+      structuredUpdates: {
+        title: "0 Bush Road",
+        location: { lat: 0, lng: 0, source: "placeholder" },
+        property: { parcelId: "11026 02007" },
+      },
+    },
+  });
+
+  assert.equal(payload.useManualCoordinates, true);
+  assert.equal(payload.manualLatitude, 32.043014);
+  assert.equal(payload.manualLongitude, -81.294012);
+  assert.deepEqual(payload.manualCoordinates, { enabled: true, lat: 32.043014, lng: -81.294012, source: "pier-manager-intake" });
+  assert.equal(payload.location.lat, 32.043014);
+  assert.equal(payload.location.lng, -81.294012);
+  assert.equal(payload.location.source, "manual-intake-override");
+});
+
 test("modification approval payload preserves canonical title, media, and unchanged fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",

@@ -121,8 +121,13 @@ export async function safePropertyPortalFetch(fetchImpl: PropertyPortalFetch, ur
   }
 }
 
-function clean(value: string | undefined | null) {
+function clean(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function parseCoordinate(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(clean(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -471,6 +476,10 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     isRecord(updates.visibility) ? updates.visibility : {},
   );
   const propertyUseFields = resolvePropertyUseFields(merged, existing, updates);
+  const manualLatitude = parseCoordinate(input.draft.sourceInput?.latitude ?? input.draft.sourceInput?.manualLatitude);
+  const manualLongitude = parseCoordinate(input.draft.sourceInput?.longitude ?? input.draft.sourceInput?.manualLongitude);
+  const hasManualCoordinates = manualLatitude !== null && manualLongitude !== null && Math.abs(manualLatitude) <= 90 && Math.abs(manualLongitude) <= 180;
+  const mergedLocation = isRecord(merged.location) ? merged.location : {};
 
   return {
     ...merged,
@@ -480,6 +489,13 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     leadBroker: brokerProfile?.name || clean(merged.leadBroker as string | undefined) || clean(existing.leadBroker as string | undefined) || undefined,
     ownerEmail: brokerProfile?.email || clean(merged.ownerEmail as string | undefined) || clean(existing.ownerEmail as string | undefined) || undefined,
     brokerProfile: brokerProfile ? deepMergeRecords(isRecord(merged.brokerProfile) ? merged.brokerProfile : {}, brokerProfile) : merged.brokerProfile,
+    ...(hasManualCoordinates ? {
+      useManualCoordinates: true,
+      manualLatitude,
+      manualLongitude,
+      manualCoordinates: { enabled: true, lat: manualLatitude, lng: manualLongitude, source: "pier-manager-intake" },
+      location: { ...mergedLocation, lat: manualLatitude, lng: manualLongitude, source: "manual-intake-override" },
+    } : {}),
     pricing: finalPricing,
     visibility: finalVisibility,
     transactionTypes: finalVisibility.saleActive === true ? ["sale"] : finalVisibility.leaseActive === true ? ["lease"] : merged.transactionTypes,

@@ -14,6 +14,8 @@ export type BrokerHubIntakeInput = {
   state: "GA" | "SC" | string;
   county: string;
   parcelId: string;
+  latitude?: string;
+  longitude?: string;
   propertyType: string;
   leadBroker: string;
   transactionType: BrokerHubTransactionType;
@@ -40,6 +42,8 @@ export type BrokerHubIntakePayload = {
   state: string;
   county: string;
   parcelId: string;
+  latitude?: string;
+  longitude?: string;
   propertyType: string;
   leadBroker: string;
   transactionType: BrokerHubTransactionType;
@@ -129,6 +133,8 @@ export function buildBrokerHubIntakePayload(input: BrokerHubIntakeInput): Broker
     state: clean(input.state),
     county: clean(input.county),
     parcelId: clean(input.parcelId),
+    latitude: clean(input.latitude) || undefined,
+    longitude: clean(input.longitude) || undefined,
     propertyType: clean(input.propertyType),
     leadBroker: clean(input.leadBroker),
     transactionType,
