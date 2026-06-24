@@ -126,12 +126,33 @@ function clean(value: unknown) {
 }
 
 function parseCoordinate(value: unknown) {
+  if (typeof value !== "number" && !clean(value)) return null;
   const parsed = typeof value === "number" ? value : Number(clean(value).replace(/[^\d.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function composeListingAddress(...records: Array<Record<string, unknown> | undefined>) {
+  for (const record of records) {
+    if (!record) continue;
+    const address = clean(record.address);
+    if (address) return address;
+  }
+
+  for (const record of records) {
+    if (!record) continue;
+    const street = clean(record.addressStreet) || clean(record.streetAddress) || clean(record.street);
+    const city = clean(record.city);
+    const state = clean(record.state);
+    const zip = clean(record.zip) || clean(record.zipCode) || clean(record.postalCode);
+    const composed = [street, city, [state, zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    if (street && (city || state || zip)) return composed;
+  }
+
+  return "";
 }
 
 const DANGEROUS_TRANSIT_PAYLOAD_KEYS = new Set([
@@ -472,6 +493,13 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
   const rawUpdates = isRecord(input.draft.structuredUpdates) ? input.draft.structuredUpdates : {};
   const existing = isRecord(input.draft.currentListing) ? input.draft.currentListing : {};
   const updates = { ...rawUpdates };
+  if (input.draft.kind === "new-listing") {
+    // New Broker Hub intake should follow the legacy ListingStream path: submit a
+    // single geocodeable address and let ListingStream populate coordinates. The
+    // enrichment model may return parcel/placeholder coordinates, but those can
+    // override geocoding and drop the public map on the wrong tract.
+    delete updates.location;
+  }
   if (input.draft.kind === "modification" && hasMeaningfulValue(updates.media) && !isValidMediaPayload(updates.media)) {
     delete updates.media;
   }
@@ -566,6 +594,15 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     isRecord(updates.visibility) ? updates.visibility : {},
   );
   const propertyUseFields = resolvePropertyUseFields(merged, existing, updates);
+  const canonicalAddress = composeListingAddress(
+    updates,
+    isRecord(updates.property) ? updates.property : undefined,
+    input.draft.sourceInput,
+    merged,
+    isRecord(merged.property) ? merged.property : undefined,
+    existing,
+    isRecord(existing.property) ? existing.property : undefined,
+  );
   const manualLatitude = parseCoordinate(input.draft.sourceInput?.latitude ?? input.draft.sourceInput?.manualLatitude);
   const manualLongitude = parseCoordinate(input.draft.sourceInput?.longitude ?? input.draft.sourceInput?.manualLongitude);
   const hasManualCoordinates = manualLatitude !== null && manualLongitude !== null && Math.abs(manualLatitude) <= 90 && Math.abs(manualLongitude) <= 180;
@@ -576,6 +613,7 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     ...propertyUseFields,
     slug: input.slug || clean(merged.slug as string | undefined) || clean(existing.slug as string | undefined) || undefined,
     title: finalTitle,
+    ...(canonicalAddress ? { address: canonicalAddress } : {}),
     leadBroker: brokerProfile?.name || clean(merged.leadBroker as string | undefined) || clean(existing.leadBroker as string | undefined) || undefined,
     ownerEmail: brokerProfile?.email || clean(merged.ownerEmail as string | undefined) || clean(existing.ownerEmail as string | undefined) || undefined,
     brokerProfile: brokerProfile ? deepMergeRecords(isRecord(merged.brokerProfile) ? merged.brokerProfile : {}, brokerProfile) : merged.brokerProfile,

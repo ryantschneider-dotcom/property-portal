@@ -202,6 +202,27 @@ test("draft preview URL builder targets the dedicated preview route", () => {
   );
 });
 
+test("new-listing approval payload composes Broker Hub split address for ListingStream geocoding", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "publish-live",
+    slug: "42-west-montgomery-cross-road",
+    draft: {
+      kind: "new-listing",
+      title: "42 W. Montgomery Cross Road",
+      descriptionHtml: "Southside Savannah retail suite near White Bluff Road.",
+      highlights: ["Broker Hub split address should still geocode"],
+      sourceInput: { addressStreet: "42 W. Montgomery Cross Road", city: "Savannah", state: "GA" },
+      structuredUpdates: {
+        title: "42 W. Montgomery Cross Road",
+        property: { buildingSizeSf: 6542 },
+      },
+    },
+  });
+
+  assert.equal(payload.address, "42 W. Montgomery Cross Road, Savannah, GA");
+  assert.equal(payload.location, undefined);
+});
+
 test("new-listing approval payload binds intake manual coordinates as the map override", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "publish-live",
@@ -211,7 +232,7 @@ test("new-listing approval payload binds intake manual coordinates as the map ov
       title: "0 Bush Road",
       descriptionHtml: "Raw land positioned near Scott Stell Park with I-95 access.",
       highlights: ["Manual intake coordinates provided"],
-      sourceInput: { addressStreet: "0 Bush Road", parcelId: "11026 02007", latitude: "32.043014", longitude: "-81.294012" },
+      sourceInput: { addressStreet: "0 Bush Road", city: "Savannah", state: "GA", parcelId: "11026 02007", latitude: "32.043014", longitude: "-81.294012" },
       structuredUpdates: {
         title: "0 Bush Road",
         location: { lat: 0, lng: 0, source: "placeholder" },
@@ -220,6 +241,7 @@ test("new-listing approval payload binds intake manual coordinates as the map ov
     },
   });
 
+  assert.equal(payload.address, "0 Bush Road, Savannah, GA");
   assert.equal(payload.useManualCoordinates, true);
   assert.equal(payload.manualLatitude, 32.043014);
   assert.equal(payload.manualLongitude, -81.294012);
