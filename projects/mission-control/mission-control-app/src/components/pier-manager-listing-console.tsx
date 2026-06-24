@@ -81,6 +81,18 @@ function isPdfFile(file: File) {
   return /pdf/i.test(file.type || "") || /\.pdf$/i.test(file.name || "");
 }
 
+function isImageFile(file: File) {
+  return /^image\//i.test(file.type || "") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+}
+
+type ClientListingMediaUpload = {
+  url: string;
+  path?: string;
+  contentType?: string;
+  size?: number;
+  originalName?: string;
+};
+
 function configurePdfJsWorker(pdfjs: { GlobalWorkerOptions?: { workerSrc?: string } }) {
   if (typeof window === "undefined") return;
   const workerSrc = `https://unpkg.com/pdfjs-dist@${PDFJS_WORKER_VERSION}/build/pdf.worker.mjs`;
@@ -171,6 +183,60 @@ async function uploadClientFloorPlanImageViaMissionControl(file: File, context: 
   return data.url;
 }
 
+async function uploadClientListingImageViaMissionControl(file: File, context: { slug: string; index: number }) {
+  const formData = new FormData();
+  formData.set("file", file);
+  formData.set("slug", context.slug);
+  formData.set("index", String(context.index));
+  const response = await fetch("/api/listingstream/client-media-upload", {
+    method: "POST",
+    body: formData,
+  });
+  const data = await parseJsonResponse(response) as ClientListingMediaUpload;
+  if (!data.url) throw new Error("Mission Control listing photo upload did not return a Firebase download URL.");
+  return data;
+}
+
+function addPropertyMediaUploadToDraft(draft: BrokerReviewDraft, upload: ClientListingMediaUpload, index: number, slug: string): BrokerReviewDraft {
+  const clone = JSON.parse(JSON.stringify(draft)) as BrokerReviewDraft;
+  const structuredUpdates = isRecord(clone.structuredUpdates) ? clone.structuredUpdates as Record<string, unknown> : {};
+  const existingMedia = isRecord(structuredUpdates.media) ? structuredUpdates.media as Record<string, unknown> : {};
+  const existingImages = Array.isArray(existingMedia.images) ? existingMedia.images : [];
+  const existingPhotos = Array.isArray(existingMedia.photos) ? existingMedia.photos : [];
+  const photo = {
+    id: `pier-manager-client-media-${index}`,
+    title: index === 1 ? "Hero Photo" : `Photo ${index}`,
+    source: "pier-manager-client-firebase-upload",
+    url: upload.url,
+    href: upload.url,
+    downloadUrl: upload.url,
+    storagePath: upload.path,
+    contentType: upload.contentType,
+    size: upload.size,
+    originalName: upload.originalName,
+  };
+  const image = {
+    id: upload.path ? `pier-manager-${upload.path}` : `pier-manager-client-media-${index}`,
+    title: upload.originalName || (index === 1 ? "Hero Photo" : `Photo ${index}`),
+    source: "pier-manager-client-firebase-upload",
+    boundPropertySlug: slug,
+    storagePath: upload.path,
+    contentType: upload.contentType,
+    size: upload.size,
+    uploadedAt: new Date().toISOString(),
+    urls: { original: upload.url, full: upload.url, xlarge: upload.url, large: upload.url, medium: upload.url, thumb: upload.url },
+  };
+  const nextMedia = {
+    ...existingMedia,
+    heroImageUrl: index === 1 ? upload.url : existingMedia.heroImageUrl || upload.url,
+    heroPhoto: index === 1 ? upload.url : existingMedia.heroPhoto || upload.url,
+    photos: [...existingPhotos, photo],
+    images: [...existingImages, image],
+  };
+  clone.structuredUpdates = { ...structuredUpdates, media: nextMedia } as BrokerReviewDraft["structuredUpdates"];
+  return clone;
+}
+
 function extractSuiteTargetFromDraft(draft: BrokerReviewDraft, fileName: string) {
   const sourceInput = isRecord(draft.sourceInput) ? draft.sourceInput : {};
   const text = [sourceInput.instructions, fileName, draft.title].filter(Boolean).join(" ");
@@ -207,7 +273,14 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
   let draft = input.draft;
   const assetsForApi: File[] = [];
   let convertedCount = 0;
+  let uploadedImageCount = 0;
   for (const asset of input.assets) {
+    if (isImageFile(asset)) {
+      uploadedImageCount += 1;
+      const upload = await uploadClientListingImageViaMissionControl(asset, { slug: input.slug, index: uploadedImageCount });
+      draft = addPropertyMediaUploadToDraft(draft, upload, uploadedImageCount, input.slug);
+      continue;
+    }
     if (!isPdfFile(asset)) {
       assetsForApi.push(asset);
       continue;
@@ -217,7 +290,7 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
     draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
     convertedCount += 1;
   }
-  return { draft, assetsForApi, convertedCount };
+  return { draft, assetsForApi, convertedCount, uploadedImageCount };
 }
 
 function createSuite(): BrokerHubSuiteInput {

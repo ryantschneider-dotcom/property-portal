@@ -890,6 +890,22 @@ test("approve route uploads staged PDF media to Firebase before ListingStream JS
   assert.match(routeSource, /uploadStagedImage:\s*\(file, options\) => uploadStagedAssetToFirebase\(file, options\)/);
 });
 
+test("pier-manager client uploads listing photos to Firebase before final draft approval", async () => {
+  const componentSource = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+  const routeSource = await readFile("src/app/api/listingstream/client-media-upload/route.ts", "utf8");
+  const firebaseSource = await readFile("src/lib/mission-control-firebase-storage.ts", "utf8");
+
+  assert.match(componentSource, /uploadClientListingImageViaMissionControl/);
+  assert.match(componentSource, /addPropertyMediaUploadToDraft/);
+  assert.match(componentSource, /\/api\/listingstream\/client-media-upload/);
+  assert.match(componentSource, /assetsForApi\.push\(asset\)/);
+  assert.match(componentSource, /if \(isImageFile\(asset\)\)/);
+  assert.match(routeSource, /uploadMissionControlFirebaseFile/);
+  assert.match(routeSource, /folder:\s*\["property-intake", "listing-media", slug\]/);
+  assert.match(routeSource, /heroImageUrl/);
+  assert.match(firebaseSource, /firebasestorage\.googleapis\.com\/v0\/b/);
+});
+
 test("client floor plan upload route stores browser-rasterized images through Admin credentials and returns public media URL", async () => {
   const routeSource = await readFile("src/app/api/listingstream/client-floorplan-upload/route.ts", "utf8");
   const firebaseSource = await readFile("src/lib/mission-control-firebase-storage.ts", "utf8");
