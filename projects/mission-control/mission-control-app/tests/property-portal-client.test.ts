@@ -30,6 +30,110 @@ test("minimal listing intake requires only address, basic specs, price context, 
   assert.deepEqual(getMinimalIntakeMissingFields({ ...complete, priceContext: "", unpriced: true }), []);
 });
 
+test("batch modification payload preserves media, description, rent, and suite CRUD in one Firestore update", () => {
+  const existingPhoto = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/existing-front.jpg?alt=media&token=old";
+  const keptPhoto = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/existing-side.jpg?alt=media&token=keep";
+  const newPhoto = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/new-hero.jpg?alt=media&token=new";
+  const payload = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "batch-smoke-listing",
+    draft: {
+      kind: "modification",
+      title: "Batch Smoke Listing",
+      descriptionHtml: "Updated batch smoke description for the mobile ListingStream view.",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "batch-smoke-listing", instructions: "Add a new photo, remove the old front photo, update the description, set Suite A rent to $24/SF NNN, delete Suite B, and add Suite C at 1,500 SF for $18/SF NNN." },
+      currentListing: {
+        slug: "batch-smoke-listing",
+        title: "Batch Smoke Listing",
+        content: { saleDescription: "Original description", saleBullets: ["Keep this bullet"] },
+        pricing: { leaseRate: 19, ratePerSf: 19, hiddenPriceLabel: null },
+        media: {
+          heroImageUrl: existingPhoto,
+          images: [
+            { id: "old-front", urls: { original: existingPhoto, large: existingPhoto } },
+            { id: "keep-side", urls: { original: keptPhoto, large: keptPhoto } },
+          ],
+        },
+        admin: {
+          suites: [
+            { suiteNumber: "A", availableSqFt: "1200", baseRent: "19", rentType: "NNN", monthlyBaseRent: "legacy-preserved" },
+            { suiteNumber: "B", availableSqFt: "900", baseRent: "17", rentType: "NNN" },
+          ],
+        },
+      },
+      structuredUpdates: {
+        content: { saleDescription: "Updated batch smoke description for the mobile ListingStream view." },
+        media: {
+          heroImageUrl: newPhoto,
+          images: [
+            { id: "keep-side", urls: { original: keptPhoto, large: keptPhoto } },
+            { id: "new-hero", urls: { original: newPhoto, large: newPhoto } },
+          ],
+          photos: [
+            { id: "keep-side", url: keptPhoto },
+            { id: "new-hero", url: newPhoto },
+          ],
+        },
+        admin: {
+          suites: [
+            { suiteNumber: "A", availableSqFt: "1200", baseRent: "24", rentType: "NNN", monthlyBaseRent: "legacy-preserved" },
+            { suiteNumber: "C", availableSqFt: "1500", baseRent: "18", rentType: "NNN" },
+          ],
+        },
+        pricing: { leaseRate: 24, ratePerSf: 24, askingPriceRatePerSf: 24, hiddenPriceLabel: null },
+      },
+    },
+  }) as Record<string, any>;
+
+  assert.equal(payload.content.saleDescription, "Updated batch smoke description for the mobile ListingStream view.");
+  assert.deepEqual(payload.content.saleBullets, ["Keep this bullet"]);
+  assert.equal(payload.pricing.leaseRate, 24);
+  assert.equal(payload.pricing.ratePerSf, 24);
+  assert.notEqual(payload.pricing.hiddenPriceLabel, "Call for Rate");
+  const imageUrls = JSON.stringify(payload.media.images);
+  assert.match(imageUrls, /new-hero/);
+  assert.match(imageUrls, /existing-side/);
+  assert.doesNotMatch(imageUrls, /existing-front/);
+  const suites = payload.admin.suites;
+  assert.deepEqual(suites.map((suite: Record<string, unknown>) => suite.suiteNumber), ["A", "C"]);
+  assert.equal(suites[0].baseRent, 24);
+  assert.equal(suites[0].monthlyBaseRent, "legacy-preserved");
+  assert.equal(suites[1].availableSqFt, "1500");
+  assert.equal(suites[1].baseRent, 18);
+});
+
+test("modification interpreter merge keeps writer suite additions when deterministic suite update only captures the first suite", async () => {
+  const { createModificationReviewDraft } = await import("../src/lib/property-portal-ai");
+  const currentListing = {
+    slug: "batch-smoke-listing",
+    title: "Batch Smoke Listing",
+    admin: { suites: [{ suiteNumber: "A", availableSqFt: "1200", baseRent: "19", rentType: "NNN", monthlyBaseRent: "legacy-preserved" }, { suiteNumber: "B", availableSqFt: "900", baseRent: "17", rentType: "NNN" }] },
+  };
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "batch-smoke-listing",
+    instructions: "Change Suite A to $24/SF NNN, delete Suite B, and add Suite C at 1,500 SF for $18/SF NNN.",
+    fetchImpl: async () => Response.json(currentListing),
+    interpreter: async () => ({
+      summary: ["Updated Suite A and deleted Suite B."],
+      flags: [],
+      confidence: "high",
+      updatePayload: { admin: { suites: [{ suiteNumber: "A", baseRent: "24", rentType: "NNN" }] }, pricing: { leaseRate: 24 } },
+    }),
+    writer: async () => ({
+      title: "Batch Smoke Listing",
+      descriptionHtml: "",
+      highlights: [],
+      mediaNotes: [],
+      structuredUpdates: { admin: { suites: [{ suiteNumber: "A", baseRent: "24", rentType: "NNN" }, { suiteNumber: "C", availableSqFt: "1500", baseRent: "18", rentType: "NNN" }] } },
+    }),
+  });
+  const suites = ((draft.structuredUpdates.admin as Record<string, any>).suites as Record<string, unknown>[]);
+  assert.deepEqual(suites.map((suite) => suite.suiteNumber), ["A", "C"]);
+  assert.equal(suites[0].monthlyBaseRent, "legacy-preserved");
+  assert.equal(suites[1].baseRent, "18");
+});
+
 test("new listing intake form data stays review-only and carries minimal broker payload", async () => {
   const formData = buildPortalFormData({
     payload: {

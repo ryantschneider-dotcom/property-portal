@@ -267,34 +267,54 @@ function suiteKey(value: unknown) {
   return asString(record.suiteNumber || record.suite || record.name).toLowerCase();
 }
 
+function removeAllSuitesRequested(instructions: string) {
+  return /\b(?:remove|delete|drop|clear)\s+all\s+suites?\b/i.test(instructions);
+}
+
+function collectSuiteRemovalKeys(instructions: string) {
+  const keys = new Set<string>();
+  const patterns = [
+    /\b(?:remove|delete|drop)\s+suite\s+([A-Za-z0-9-]+)\b/gi,
+    /\bsuite\s+([A-Za-z0-9-]+)\s+(?:is\s+)?(?:leased|removed|deleted|dropped)\b/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of instructions.matchAll(pattern)) {
+      const key = asString(match[1]).toLowerCase();
+      if (key) keys.add(key);
+    }
+  }
+  return keys;
+}
+
 function instructionAllowsSuiteOmission(instructions: string) {
-  return /\b(?:remove|delete|drop|clear)\s+(?:all\s+)?suites?\b/i.test(instructions)
-    || /\bsuite\s+[A-Za-z0-9-]+\s+(?:is\s+)?(?:leased|removed|deleted|dropped)\b/i.test(instructions)
-    || /\b(?:remove|delete|drop)\s+suite\s+[A-Za-z0-9-]+\b/i.test(instructions);
+  return removeAllSuitesRequested(instructions);
 }
 
 function mergePartialSuiteUpdates(currentListing: Record<string, unknown>, updates: Record<string, unknown>, instructions: string) {
   if (instructionAllowsSuiteOmission(instructions)) return updates;
 
   const updateAdmin = normalizeRecord(updates.admin);
-  const updateSuites = updateAdmin.suites;
-  if (!Array.isArray(updateSuites) || updateSuites.length === 0) return updates;
+  const updateSuites = Array.isArray(updateAdmin.suites) ? [...updateAdmin.suites] : [];
+  const removedSuiteKeys = collectSuiteRemovalKeys(instructions);
+  if (!updateSuites.length && !removedSuiteKeys.size) return updates;
 
   const currentAdmin = normalizeRecord(currentListing.admin);
   const currentSuites = Array.isArray(currentAdmin.suites) ? currentAdmin.suites : [];
   if (!currentSuites.length) return updates;
 
   const remainingAdditions: unknown[] = [];
-  const mergedSuites = currentSuites.map((currentSuite) => {
+  const mergedSuites = currentSuites.flatMap((currentSuite) => {
     const currentKey = suiteKey(currentSuite);
+    if (currentKey && removedSuiteKeys.has(currentKey)) return [];
     const updateIndex = updateSuites.findIndex((suite) => currentKey && suiteKey(suite) === currentKey);
-    if (updateIndex === -1) return currentSuite;
+    if (updateIndex === -1) return [currentSuite];
     const [suiteUpdate] = updateSuites.splice(updateIndex, 1);
-    return deepMergeRecords(normalizeRecord(currentSuite), normalizeRecord(suiteUpdate));
+    return [deepMergeRecords(normalizeRecord(currentSuite), normalizeRecord(suiteUpdate))];
   });
 
   for (const suiteUpdate of updateSuites) {
-    if (suiteKey(suiteUpdate)) remainingAdditions.push(suiteUpdate);
+    const key = suiteKey(suiteUpdate);
+    if (key && !removedSuiteKeys.has(key)) remainingAdditions.push(suiteUpdate);
   }
 
   return deepMergeRecords(updates, {
@@ -302,6 +322,39 @@ function mergePartialSuiteUpdates(currentListing: Record<string, unknown>, updat
       suites: [...mergedSuites, ...remainingAdditions],
     },
   });
+}
+
+function mergeSuiteArraysByKey(primary: unknown, secondary: unknown, instructions: string) {
+  const removedSuiteKeys = collectSuiteRemovalKeys(instructions);
+  const suites = new Map<string, Record<string, unknown>>();
+  const append = (items: unknown, overwrite: boolean) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      const key = suiteKey(item);
+      if (!key || removedSuiteKeys.has(key)) continue;
+      const record = normalizeRecord(item);
+      suites.set(key, overwrite && suites.has(key) ? deepMergeRecords(suites.get(key) || {}, record) : suites.get(key) || record);
+    }
+  };
+  append(primary, false);
+  append(secondary, true);
+  return [...suites.values()];
+}
+
+function mergeStructuredUpdatesPreservingSuites(currentListing: Record<string, unknown>, primary: Record<string, unknown>, secondary: Record<string, unknown>, instructions: string) {
+  const primaryWithSuites = mergePartialSuiteUpdates(currentListing, primary, instructions);
+  const secondaryWithSuites = mergePartialSuiteUpdates(currentListing, secondary, instructions);
+  const merged = deepMergeRecords(primaryWithSuites, secondaryWithSuites);
+  const primaryAdmin = normalizeRecord(primaryWithSuites.admin);
+  const secondaryAdmin = normalizeRecord(secondaryWithSuites.admin);
+  if (Array.isArray(primaryAdmin.suites) || Array.isArray(secondaryAdmin.suites)) {
+    return deepMergeRecords(merged, {
+      admin: {
+        suites: mergeSuiteArraysByKey(primaryAdmin.suites, secondaryAdmin.suites, instructions),
+      },
+    });
+  }
+  return merged;
 }
 
 function pickDeltaPreviewFields(property: Record<string, unknown>) {
@@ -494,8 +547,7 @@ export async function createModificationReviewDraft(input: {
 
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
-  const writerStructuredUpdates = mergePartialSuiteUpdates(currentListing, writerResult.structuredUpdates, input.instructions);
-  const mergedStructuredUpdates = deepMergeRecords(writerStructuredUpdates, interpreter.updatePayload);
+  const mergedStructuredUpdates = mergeStructuredUpdatesPreservingSuites(currentListing, writerResult.structuredUpdates, interpreter.updatePayload, input.instructions);
   const revisionQa = verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.instructions);
   const structuredUpdates = attachRevisionQa(mergedStructuredUpdates, revisionQa);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
@@ -516,12 +568,24 @@ export async function createModificationReviewDraft(input: {
 
 export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft; feedback: string; writer?: PropertyPortalCloudWriter }) {
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
+  const currentListing = normalizeRecord(input.draft.currentListing);
+  const interpreter = input.draft.kind === "modification"
+    ? await interpretBrokerEditRequest(currentListing, input.feedback)
+    : null;
   const writerResult = await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback }));
+  const writerStructuredUpdates = normalizeRecord(writerResult.structuredUpdates);
+  const mergedStructuredUpdates = input.draft.kind === "modification" && interpreter
+    ? mergeStructuredUpdatesPreservingSuites(currentListing, writerStructuredUpdates, interpreter.updatePayload, input.feedback)
+    : writerStructuredUpdates;
+  const structuredUpdates = input.draft.kind === "modification" && interpreter
+    ? attachRevisionQa(mergedStructuredUpdates, verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.feedback))
+    : mergedStructuredUpdates;
   return buildBrokerReviewState({
     kind: input.draft.kind,
     sourceInput: input.draft.sourceInput,
-    currentListing: input.draft.currentListing,
-    writerResult,
+    currentListing,
+    writerResult: { ...writerResult, structuredUpdates },
+    interpreter: interpreter || undefined,
     revisionCount: input.draft.review.revisionCount + 1,
     feedbackHistory: [...input.draft.review.feedbackHistory, input.feedback],
   });

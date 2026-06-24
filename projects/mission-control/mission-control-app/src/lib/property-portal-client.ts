@@ -347,6 +347,21 @@ function buildLeasePricingFromSuites(suites: Record<string, unknown>[], fallback
   return pricing;
 }
 
+function suitePricingHasNumericRate(pricing: Record<string, unknown>) {
+  return parsePositiveNumber(pricing.leaseRate)
+    || parsePositiveNumber(pricing.monthlyRate)
+    || parsePositiveNumber(pricing.monthlyRent)
+    || parsePositiveNumber(pricing.askingPriceRatePerSf)
+    || parsePositiveNumber(pricing.leaseRatePerSf)
+    || parsePositiveNumber(pricing.ratePerSf);
+}
+
+function shouldApplySuitePricing(pricing: Record<string, unknown>, existingPricing: Record<string, unknown>) {
+  if (suitePricingHasNumericRate(pricing)) return true;
+  if (!hasMeaningfulValue(existingPricing)) return hasMeaningfulValue(pricing);
+  return false;
+}
+
 function buildPricingFromSourceInput(source: Record<string, unknown>) {
   const pricing: Record<string, unknown> = {};
   const visibility: Record<string, unknown> = {};
@@ -484,13 +499,23 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     || clean(updates.descriptionHtml as string | undefined)
     || clean(updates.description as string | undefined);
   if (rootDescription) finalContent.saleDescription = rootDescription;
+  const structuredDescriptionWasExplicitlyUpdated = hasMeaningfulValue(updateContent.saleDescription)
+    || hasMeaningfulValue(updateContent.leaseDescription)
+    || hasMeaningfulValue(updates.saleDescription)
+    || hasMeaningfulValue(updates.leaseDescription)
+    || hasMeaningfulValue(updates.descriptionHtml)
+    || hasMeaningfulValue(updates.description);
   const draftDescription = clean(input.draft.descriptionHtml);
   const safeDraftDescription = isNormalizerFallbackDescription(draftDescription) ? "" : draftDescription;
-  if (input.draft.kind !== "modification" || hasMeaningfulValue(safeDraftDescription)) {
-    finalContent.saleDescription = safeDraftDescription;
+  if (input.draft.kind !== "modification" || structuredDescriptionWasExplicitlyUpdated) {
+    if (hasMeaningfulValue(safeDraftDescription)) finalContent.saleDescription = safeDraftDescription;
   }
-  if (input.draft.kind !== "modification" || input.draft.highlights.length) {
-    finalContent.saleBullets = input.draft.highlights;
+  const structuredBulletsWereExplicitlyUpdated = hasMeaningfulValue(updateContent.saleBullets)
+    || hasMeaningfulValue(updateContent.leaseBullets)
+    || hasMeaningfulValue(updates.saleBullets)
+    || hasMeaningfulValue(updates.leaseBullets);
+  if (input.draft.kind !== "modification" || structuredBulletsWereExplicitlyUpdated) {
+    finalContent.saleBullets = input.draft.highlights.length ? input.draft.highlights : (Array.isArray(updateContent.saleBullets) ? updateContent.saleBullets : finalContent.saleBullets);
   }
   if (input.draft.kind !== "modification" || titleWasExplicitlyUpdated) {
     finalContent.saleTitle = finalTitle;
@@ -515,11 +540,12 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     : null;
   if (finalAdmin && finalAdminSuites) finalAdmin.suites = finalAdminSuites;
   const suitePricing = finalAdminSuites ? buildLeasePricingFromSuites(finalAdminSuites) : {};
+  const existingPricingForSuiteGuard = isRecord(merged.pricing) ? merged.pricing : {};
   const finalPricing = deepMergeRecords(
-    isRecord(merged.pricing) ? merged.pricing : {},
+    existingPricingForSuiteGuard,
     sourcePricing.pricing,
     isRecord(updates.pricing) ? updates.pricing : {},
-    suitePricing,
+    shouldApplySuitePricing(suitePricing, existingPricingForSuiteGuard) ? suitePricing : {},
   );
   const finalVisibility = deepMergeRecords(
     isRecord(merged.visibility) ? merged.visibility : {},

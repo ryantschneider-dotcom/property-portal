@@ -1,6 +1,7 @@
 type UnknownRecord = Record<string, unknown>;
 
 type SuiteRecord = {
+  [key: string]: unknown;
   suiteNumber: string;
   availableSqFt: string;
   baseRent: string;
@@ -106,6 +107,7 @@ function normalizeSuiteRows(value: unknown): SuiteRecord[] {
     .map((row) => {
       const suite = asRecord(row);
       const normalized: SuiteRecord = {
+        ...suite,
         suiteNumber: asString(suite.suiteNumber),
         availableSqFt: asString(suite.availableSqFt),
         baseRent: asString(suite.baseRent),
