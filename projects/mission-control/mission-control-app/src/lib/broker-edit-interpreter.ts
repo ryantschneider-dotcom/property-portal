@@ -470,13 +470,16 @@ function extractLabeledFieldBlock(instructions: string, alias: string) {
 }
 
 function extractFieldText(instructions: string, aliases: string[]) {
+  const verbatim = isExplicitVerbatimInstruction(instructions);
   for (const alias of aliases) {
+    const exact = extractQuotedOrPlain(instructions, new RegExp(`(?:put|write|use|copy|transcribe)\\s+(?:this|the following|it)?\\s*(?:${alias})\\s+(?:in\\s+)?exactly\\s*:?\\s*["“]?([^"”\\n]{8,800})`, "i"));
+    if (exact) return cleanNarrativeCopy(exact, { verbatim: true });
     const block = extractLabeledFieldBlock(instructions, alias);
     if (block) return block;
     const quoted = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*(?:say(?:s)?|read(?:s)?|that\\s+says?|that\\s+reads?)?\\s*["“]([^"”]+)["”]`, "i"));
-    if (quoted) return cleanNarrativeCopy(quoted);
+    if (quoted) return cleanNarrativeCopy(quoted, { verbatim });
     const plain = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*(?:say(?:s)?|read(?:s)?|that\\s+says?|that\\s+reads?)?\\s*([^\\n]{8,400})`, "i"));
-    if (plain) return cleanNarrativeCopy(plain);
+    if (plain) return cleanNarrativeCopy(plain, { verbatim });
   }
   return null;
 }
@@ -1101,7 +1104,17 @@ function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, i
       .map(asString)
       .filter(Boolean);
     const expected = normalizeTextForMatching(requestedDescription);
-    if (!descriptionValues.some((value) => normalizeTextForMatching(value).includes(expected) || expected.includes(normalizeTextForMatching(value)))) {
+    const exactRequired = isExplicitVerbatimInstruction(instructions);
+    const hasRequestedDescription = descriptionValues.some((value) => {
+      const normalizedValue = normalizeTextForMatching(value);
+      if (normalizedValue.includes(expected) || expected.includes(normalizedValue)) return true;
+      if (exactRequired) return false;
+      const expectedTokens = meaningfulTokens(requestedDescription);
+      if (!expectedTokens.length) return false;
+      const matchedTokens = expectedTokens.filter((token) => normalizedValue.includes(token));
+      return matchedTokens.length >= Math.min(expectedTokens.length, Math.max(3, Math.ceil(expectedTokens.length * 0.4)));
+    });
+    if (!hasRequestedDescription) {
       failures.push(`Frontier cross-check failed: requested description text was summarized but missing from updatePayload.content or root description fields.`);
     }
   }

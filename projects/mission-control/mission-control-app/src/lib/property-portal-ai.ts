@@ -376,6 +376,39 @@ function mergeStructuredUpdatesPreservingSuites(currentListing: Record<string, u
   return merged;
 }
 
+function isExplicitVerbatimNarrativeInstruction(instructions: string) {
+  return /\b(?:put|write|use|copy|transcribe)\s+(?:this|the following|it)?\s*(?:in\s+)?exactly\b/i.test(instructions)
+    || /\b(?:put|write|use|copy|transcribe)\s+(?:this|the following|it)?\s*(?:property\s+description|lease\s+description|sale\s+description|location\s+description|neighborhood\s+description|area\s+description|description)\s+(?:in\s+)?exactly\b/i.test(instructions);
+}
+
+const POLISHED_NARRATIVE_CONTENT_FIELDS = new Set([
+  "propertyDescription",
+  "saleDescription",
+  "leaseDescription",
+  "locationDescription",
+  "neighborhoodDescription",
+  "areaDescription",
+  "description",
+  "descriptionHtml",
+  "highlights",
+  "bullets",
+]);
+
+function preserveFrontierNarrativeUpdates(merged: Record<string, unknown>, frontierUpdates: Record<string, unknown>, instructions: string) {
+  if (isExplicitVerbatimNarrativeInstruction(instructions)) return merged;
+  const frontierContent = normalizeRecord(frontierUpdates.content);
+  if (!Object.keys(frontierContent).length) return merged;
+
+  const polishedContent: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(frontierContent)) {
+    if (!POLISHED_NARRATIVE_CONTENT_FIELDS.has(key)) continue;
+    if (Array.isArray(value) ? value.length : asString(value)) polishedContent[key] = value;
+  }
+  if (!Object.keys(polishedContent).length) return merged;
+
+  return deepMergeRecords(merged, { content: polishedContent });
+}
+
 function pickDeltaPreviewFields(property: Record<string, unknown>) {
   const preview: Record<string, unknown> = {};
   for (const key of [
@@ -567,7 +600,11 @@ export async function createModificationReviewDraft(input: {
 
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
-  const mergedStructuredUpdates = mergeStructuredUpdatesPreservingSuites(currentListing, writerResult.structuredUpdates, interpreter.updatePayload, input.instructions);
+  const mergedStructuredUpdates = preserveFrontierNarrativeUpdates(
+    mergeStructuredUpdatesPreservingSuites(currentListing, writerResult.structuredUpdates, interpreter.updatePayload, input.instructions),
+    writerResult.structuredUpdates,
+    input.instructions,
+  );
   const revisionQa = verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.instructions);
   const structuredUpdates = attachRevisionQa(mergedStructuredUpdates, revisionQa);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
@@ -595,7 +632,11 @@ export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft;
   const writerResult = await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback }));
   const writerStructuredUpdates = normalizeRecord(writerResult.structuredUpdates);
   const mergedStructuredUpdates = input.draft.kind === "modification" && interpreter
-    ? mergeStructuredUpdatesPreservingSuites(currentListing, writerStructuredUpdates, interpreter.updatePayload, input.feedback)
+    ? preserveFrontierNarrativeUpdates(
+      mergeStructuredUpdatesPreservingSuites(currentListing, writerStructuredUpdates, interpreter.updatePayload, input.feedback),
+      writerStructuredUpdates,
+      input.feedback,
+    )
     : writerStructuredUpdates;
   const structuredUpdates = input.draft.kind === "modification" && interpreter
     ? attachRevisionQa(mergedStructuredUpdates, verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.feedback))

@@ -44,6 +44,94 @@ Located in the immediate area of dining and shopping.  New apartments, a regiona
 });
 
 
+test("frontier writer polished narrative wins over broker vibe copy unless exact wording is requested", async () => {
+  const instruction = "Update the property description to say this is newly refeshed office space in a re-devloping area with good access";
+  const fakeFetch = async () => Response.json({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          summary: ["Polished the broker's property-description direction for review."],
+          flags: [],
+          confidence: "high",
+          updatePayload: {
+            content: {
+              leaseDescription: "Newly refreshed office space in a redeveloping Savannah corridor with convenient access to nearby roadways and amenities.",
+            },
+          },
+        }),
+      },
+    }],
+  });
+
+  const result = await interpretBrokerEditRequest(
+    { visibility: { transactionLabel: "For Lease" }, content: { leaseDescription: "Old copy" } },
+    instruction,
+    { provider: "openai", model: "gpt-4.1", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+  );
+
+  const content = result.updatePayload.content as Record<string, unknown>;
+  assert.equal(
+    content.leaseDescription,
+    "Newly refreshed office space in a redeveloping Savannah corridor with convenient access to nearby roadways and amenities.",
+  );
+});
+
+test("modification draft uses frontier-polished narrative for broker vibe code before review", async () => {
+  const instruction = "Change property description to say newly refeshed office in a re-devloping area with good access";
+  const currentListing = { visibility: { transactionLabel: "For Lease" }, content: { leaseDescription: "Old copy" } };
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "42 W. Montgomery Cross Road",
+    descriptionHtml: "<p>Review-ready draft.</p>",
+    highlights: [],
+    structuredUpdates: {
+      content: {
+        leaseDescription: "Newly refreshed office space in a redeveloping Savannah corridor with convenient access.",
+      },
+    },
+    mediaNotes: [],
+  });
+  const fetchImpl = async () => Response.json(currentListing);
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: instruction,
+    writer,
+    fetchImpl: fetchImpl as typeof fetch,
+    interpreter: deterministicInterpreter,
+  });
+
+  const content = draft.structuredUpdates.content as Record<string, unknown>;
+  assert.equal(content.leaseDescription, "Newly refreshed office space in a redeveloping Savannah corridor with convenient access.");
+});
+
+test("modification draft preserves exact broker wording only for explicit exact instructions", async () => {
+  const instruction = "Put this property description in exactly: Newly refeshed office space in a re-devloping area";
+  const currentListing = { visibility: { transactionLabel: "For Lease" }, content: { leaseDescription: "Old copy" } };
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "42 W. Montgomery Cross Road",
+    descriptionHtml: "<p>Review-ready draft.</p>",
+    highlights: [],
+    structuredUpdates: {
+      content: {
+        leaseDescription: "Newly refreshed office space in a redeveloping area.",
+      },
+    },
+    mediaNotes: [],
+  });
+  const fetchImpl = async () => Response.json(currentListing);
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: instruction,
+    writer,
+    fetchImpl: fetchImpl as typeof fetch,
+    interpreter: deterministicInterpreter,
+  });
+
+  const content = draft.structuredUpdates.content as Record<string, unknown>;
+  assert.equal(content.leaseDescription, "Newly refeshed office space in a re-devloping area");
+});
+
 test("frontier broker-edit-interpreter fortifies batch rent plus description when LLM summary drops string payload", async () => {
   const instruction = "Change rent to $8 and update description to say it hasn't been rented for years";
   const fakeFetch = async () => Response.json({
