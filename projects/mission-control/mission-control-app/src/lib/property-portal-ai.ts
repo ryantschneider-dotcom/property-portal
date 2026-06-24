@@ -286,6 +286,23 @@ function collectSuiteRemovalKeys(instructions: string) {
   return keys;
 }
 
+function instructionTargetsEmptySuite(instructions: string) {
+  return /\b(?:remove|delete|drop|clear)\b/i.test(instructions)
+    && /\b(?:no\s+data|empty|blank|mistake|accidental|put\s+in\s+by\s+mistake|one\s+with\s+no\s+data)\b/i.test(instructions)
+    && /\b(?:suite|space|unit|row|one)\b/i.test(instructions);
+}
+
+function suiteHasMeaningfulDataForMerge(value: unknown) {
+  const suite = normalizeRecord(value);
+  return Boolean(asString(suite.availableSqFt)
+    || asString(suite.baseRent)
+    || asString(suite.rentType)
+    || asString(suite.spaceType)
+    || asString(suite.suiteNotes || suite.notes || suite.description)
+    || (Array.isArray(suite.suitePhotos) && suite.suitePhotos.length)
+    || (Array.isArray(suite.suiteFloorPlans) && suite.suiteFloorPlans.length));
+}
+
 function instructionAllowsSuiteOmission(instructions: string) {
   return removeAllSuitesRequested(instructions);
 }
@@ -296,7 +313,8 @@ function mergePartialSuiteUpdates(currentListing: Record<string, unknown>, updat
   const updateAdmin = normalizeRecord(updates.admin);
   const updateSuites = Array.isArray(updateAdmin.suites) ? [...updateAdmin.suites] : [];
   const removedSuiteKeys = collectSuiteRemovalKeys(instructions);
-  if (!updateSuites.length && !removedSuiteKeys.size) return updates;
+  const removeEmptySuites = instructionTargetsEmptySuite(instructions);
+  if (!updateSuites.length && !removedSuiteKeys.size && !removeEmptySuites) return updates;
 
   const currentAdmin = normalizeRecord(currentListing.admin);
   const currentSuites = Array.isArray(currentAdmin.suites) ? currentAdmin.suites : [];
@@ -306,6 +324,7 @@ function mergePartialSuiteUpdates(currentListing: Record<string, unknown>, updat
   const mergedSuites = currentSuites.flatMap((currentSuite) => {
     const currentKey = suiteKey(currentSuite);
     if (currentKey && removedSuiteKeys.has(currentKey)) return [];
+    if (removeEmptySuites && !suiteHasMeaningfulDataForMerge(currentSuite)) return [];
     const updateIndex = updateSuites.findIndex((suite) => currentKey && suiteKey(suite) === currentKey);
     if (updateIndex === -1) return [currentSuite];
     const [suiteUpdate] = updateSuites.splice(updateIndex, 1);

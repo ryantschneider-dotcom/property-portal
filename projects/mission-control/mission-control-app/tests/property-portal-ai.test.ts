@@ -19,6 +19,66 @@ const deterministicInterpreter = async (currentListing: Record<string, unknown>,
 process.env.OPENAI_API_KEY ||= "test-openai-key";
 
 
+test("frontier broker-edit-interpreter fortifies batch rent plus description when LLM summary drops string payload", async () => {
+  const instruction = "Change rent to $8 and update description to say it hasn't been rented for years";
+  const fakeFetch = async () => Response.json({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          summary: ["Updated asking rent to $8/SF.", "Description updated to say it hasn't been rented for years."],
+          flags: [],
+          confidence: "high",
+          updatePayload: { pricing: { askingPriceRatePerSf: 8, listingPriceVisibility: "per_sf" } },
+        }),
+      },
+    }],
+  });
+
+  const result = await interpretBrokerEditRequest(
+    { visibility: { transactionLabel: "For Lease" }, content: { saleDescription: "Old copy" }, pricing: { askingPriceRatePerSf: 12 } },
+    instruction,
+    { provider: "openai", model: "gpt-4.1", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+  );
+
+  const content = result.updatePayload.content as Record<string, unknown>;
+  assert.equal((result.updatePayload.pricing as Record<string, unknown>).askingPriceRatePerSf, 8);
+  assert.equal(content.leaseDescription, "It hasn't been rented for years.");
+  assert.equal(content.saleDescription, "Old copy");
+  assert.ok(result.summary.some((item) => /property description|lease description|description/i.test(item)));
+});
+
+test("frontier broker-edit prompt requires requested batch strings in updatePayload, not summary only", async () => {
+  const fakeFetch = async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    const prompt = JSON.stringify(body);
+    assert.match(prompt, /Every requested value in a batch command must be present in updatePayload/i);
+    assert.match(prompt, /description to say/i);
+    assert.match(prompt, /Summary is non-authoritative/i);
+    return Response.json({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            summary: ["Updated asking rent and description."],
+            flags: [],
+            confidence: "high",
+            updatePayload: {
+              pricing: { askingPriceRatePerSf: 8, listingPriceVisibility: "per_sf" },
+              content: { leaseDescription: "It hasn't been rented for years." },
+            },
+          }),
+        },
+      }],
+    });
+  };
+
+  const result = await interpretBrokerEditRequest(
+    { visibility: { transactionLabel: "For Lease" }, content: {}, pricing: {} },
+    "Change rent to $8 and update description to say it hasn't been rented for years",
+    { provider: "openai", model: "gpt-4.1", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+  );
+  assert.equal(((result.updatePayload.content as Record<string, unknown>).leaseDescription), "It hasn't been rented for years.");
+});
+
 test("frontier broker-edit-interpreter preserves exact suite capitalization h to H", async () => {
   const calls: string[] = [];
   const fakeFetch = async (url: string | URL | Request, init?: RequestInit) => {

@@ -261,10 +261,11 @@ function polishPublicNarrativeCopy(value: string) {
 function cleanNarrativeCopy(value: string | undefined, options: { verbatim?: boolean } = {}) {
   let text = asString(value)
     .replace(/^[\s"“”'`]+|[\s"“”'`]+$/g, "")
+    .replace(/\s+(?:and|,)\s+(?:add|update|change|set|replace|remove|delete|drop|mark)\s+(?:the\s+)?(?:rent|rate|price|suite|space|photo|image|media|document|attachment|link|zoning|status|description|title|square\s*footage|sf)\b[\s\S]*$/i, "")
     .replace(/^(?:please\s+)?(?:add|update|change|set|replace|write|put|include)\s+(?:a\s+|the\s+)?(?:new\s+)?/i, "")
     .replace(/^(?:a\s+|the\s+)?(?:property\s+description|lease\s+description|sale\s+description|location\s+description|neighborhood\s+description|area\s+description|suite\s+notes?|notes?|description|comments?)\s*(?:to|as|=|is|:)?\s*/i, "")
     .replace(/^(?:under|for|to|on)\s+(?:(?:suite|space)\s+)?[A-Za-z0-9-]+\s+(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
-    .replace(/^(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read)\s*:?[\s"“”]*/i, "")
+    .replace(/^(?:that\s+)?(?:says?|reads?|should\s+say|should\s+read|says?|reads?)\s*:?[\s"“”]*/i, "")
     .replace(/[.。]$/, "")
     .trim();
 
@@ -445,9 +446,9 @@ function splitBulletLines(value: string) {
 
 function extractFieldText(instructions: string, aliases: string[]) {
   for (const alias of aliases) {
-    const quoted = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*["“]([^"”]+)["”]`, "i"));
+    const quoted = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*(?:say(?:s)?|read(?:s)?|that\\s+says?|that\\s+reads?)?\\s*["“]([^"”]+)["”]`, "i"));
     if (quoted) return cleanNarrativeCopy(quoted);
-    const plain = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*([^\\n]{8,400})`, "i"));
+    const plain = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*(?:say(?:s)?|read(?:s)?|that\\s+says?|that\\s+reads?)?\\s*([^\\n]{8,400})`, "i"));
     if (plain) return cleanNarrativeCopy(plain);
   }
   return null;
@@ -857,7 +858,7 @@ function buildFrontierBrokerEditPrompt(rawProperty: Record<string, unknown>, ins
   "summary": ["broker-safe summary strings"],
   "flags": [],
   "confidence": "high" | "medium" | "low",
-  "updatePayload": { "pricing": {}, "property": {}, "content": {}, "admin": { "suites": [] }, "documents": [], "attachments": [], "links": { "saleListingUrl": null, "websiteUrl": null, "leaseListingUrl": null, "virtualTourUrl": null, "matterportUrl": null, "youTubeUrl": null } },
+  "updatePayload": { "pricing": {}, "property": {}, "content": { "saleDescription": "exact requested public description text", "leaseDescription": "exact requested public description text" }, "saleDescription": "exact requested public description text", "leaseDescription": "exact requested public description text", "admin": { "suites": [] }, "documents": [], "attachments": [], "links": { "saleListingUrl": null, "websiteUrl": null, "leaseListingUrl": null, "virtualTourUrl": null, "matterportUrl": null, "youTubeUrl": null } },
   "lifecycleAction": "archive" | "delete" // omit unless explicitly requested for the whole listing
 }
 
@@ -867,6 +868,9 @@ Critical rules:
 - If the broker asks to remove, delete, hide, unpublish, drop, or take down a document, attachment, file, URL, or link, identify the object/field inside the current documents, attachments, or links payload by semantic evidence from id, title, name, label, description, documentType, source, filename, url, href, downloadUrl, or link object key (saleListingUrl, websiteUrl, leaseListingUrl, virtualTourUrl, matterportUrl, youTubeUrl).
 - For documents/attachments removals, return the COMPLETE resulting array for every mutated array with only the requested objects removed and every unrelated object preserved. For links removals, return the COMPLETE resulting links object with the requested URL field set to null. Do not return a partial array/object and do not leave the matched object/URL in place.
 - Verification gate: when a removal is requested for documents or attachments, the corresponding output array length must be strictly less than the input array length before you return a success/high-confidence summary. When a removal is requested for links, the matching links.* URL value must be null or absent and must not equal the input URL before you return success/high-confidence. If this is not true, set confidence "low", add a flag explaining no matching object/field was safely removed, and do not claim success.
+- If the broker requests multiple changes in one sentence, every requested variable must appear in updatePayload. Never put a requested value only in summary. Summary is non-authoritative; updatePayload is the database mutation.
+- If the broker says to update/change/set the description, property description, lease description, or sale description — including phrasing like "description to say ..." — return the actual requested string under updatePayload.content.saleDescription and updatePayload.content.leaseDescription, and also mirror it to root updatePayload.saleDescription and updatePayload.leaseDescription for downstream ListingStream compatibility. Do this even when the same command also changes rent/pricing, suites, or media.
+- Self-check before returning: for every summary sentence that says a field was updated, the corresponding concrete value must exist in updatePayload at the correct field path. If it does not, fix updatePayload before responding.
 - If the broker says to capitalize, rename, correct, or change suite h to H, update admin.suites so the resulting suiteNumber is exactly "H" (uppercase H), never "a" and never lowercase "h".
 - If the broker says to delete/remove the null-data/no-data/blank suite literally named "space", remove the suite row whose suiteNumber is exactly "space" even though "space" is also a generic real-estate noun.
 - Preserve every suite not explicitly removed. When updating admin.suites, return the full resulting suites array, not a partial array.
@@ -920,7 +924,7 @@ async function callOpenAiInterpreter(prompt: string, options: BrokerEditInterpre
       temperature: 0,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, documents/attachments array mutation, links object field deletion, and self-verification before output. For requested document/link/attachment removals, never report success unless the mutated output documents/attachments array is strictly shorter or the matched links.* URL field is null/absent." },
+        { role: "system", content: "You are a frontier reasoning model for commercial real estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact object identity, exact casing, suite row preservation, documents/attachments array mutation, links object field deletion, and self-verification before output. Every requested value in a batch command must be present in updatePayload, not merely summarized; when description text is requested, include the actual string in content.saleDescription/content.leaseDescription and root saleDescription/leaseDescription. For requested document/link/attachment removals, never report success unless the mutated output documents/attachments array is strictly shorter or the matched links.* URL field is null/absent." },
         { role: "user", content: prompt },
       ],
     }),
@@ -963,6 +967,20 @@ function deepMergeForVerification(...records: Record<string, unknown>[]) {
     }
   }
   return output;
+}
+
+function combineInterpreterResults(frontier: BrokerEditInterpreterResult, deterministic: BrokerEditInterpreterResult): BrokerEditInterpreterResult {
+  const mergedPayload = deepMergeForVerification(deterministic.updatePayload, frontier.updatePayload);
+  const summary = [...deterministic.summary, ...frontier.summary].filter((item, index, array) => array.indexOf(item) === index);
+  const flags = [...deterministic.flags, ...frontier.flags].filter((item, index, array) => array.indexOf(item) === index);
+  const deterministicHasPayload = Object.keys(deterministic.updatePayload).length > 0;
+  return {
+    summary,
+    flags,
+    confidence: frontier.confidence === "low" && deterministicHasPayload && !flags.length ? "medium" : frontier.confidence,
+    updatePayload: mergedPayload,
+    ...(frontier.lifecycleAction || deterministic.lifecycleAction ? { lifecycleAction: frontier.lifecycleAction || deterministic.lifecycleAction } : {}),
+  };
 }
 
 function suiteRowsForVerification(value: Record<string, unknown>) {
@@ -1049,6 +1067,18 @@ function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, i
     if (remainingEmpty.length) failures.push(`Frontier cross-check failed: expected no-data suite rows to be removed, but ${remainingEmpty.map(suiteLabelForVerification).filter(Boolean).join(", ") || "an unnamed suite"} remains.`);
   }
 
+  const requestedDescription = extractDescription(instructions);
+  if (requestedDescription) {
+    const afterContent = asRecord(after.content);
+    const descriptionValues = [afterContent.saleDescription, afterContent.leaseDescription, afterContent.descriptionHtml, afterContent.description, after.saleDescription, after.leaseDescription, after.descriptionHtml, after.description]
+      .map(asString)
+      .filter(Boolean);
+    const expected = normalizeTextForMatching(requestedDescription);
+    if (!descriptionValues.some((value) => normalizeTextForMatching(value).includes(expected) || expected.includes(normalizeTextForMatching(value)))) {
+      failures.push(`Frontier cross-check failed: requested description text was summarized but missing from updatePayload.content or root description fields.`);
+    }
+  }
+
   verifyListingArrayRemoval(rawProperty, after, instructions, failures);
   verifyLinksObjectRemoval(rawProperty, after, instructions, failures);
 
@@ -1059,10 +1089,12 @@ export async function interpretBrokerEditRequest(rawProperty: Record<string, unk
   const prompt = buildFrontierBrokerEditPrompt(rawProperty, instructions);
   const provider = pickInterpreterProvider(options);
   const timeoutMs = options.timeoutMs ?? Number(process.env.PIER_MANAGER_INTERPRETER_TIMEOUT_MS ?? 45_000);
-  const result = await withInterpreterTimeout(
+  const deterministic = interpretBrokerEditRequestDeterministic(rawProperty, instructions);
+  const frontier = await withInterpreterTimeout(
     provider === "gemini" ? callGeminiInterpreter(prompt, options) : callOpenAiInterpreter(prompt, options),
     timeoutMs,
   );
+  const result = combineInterpreterResults(frontier, deterministic);
   verifyFrontierInterpreterResult(rawProperty, instructions, result);
   return result;
 }
