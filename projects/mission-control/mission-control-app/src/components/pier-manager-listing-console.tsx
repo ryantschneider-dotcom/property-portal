@@ -945,6 +945,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setSuites((current) => current.map((suite, suiteIndex) => (suiteIndex === index ? { ...suite, ...patch } : suite)));
   }
 
+  function removeSuite(index: number) {
+    setSuites((current) => (current.length <= 1 ? current : current.filter((_, suiteIndex) => suiteIndex !== index)));
+  }
+
   function updateDraftAssessorField(key: AssessorReviewField["key"], value: string) {
     setReviewDraft((current) => {
       if (!current) return current;
@@ -1337,10 +1341,15 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
   }
 
-  async function runDraftLifecycle(action: "delete-draft" | "make-live") {
+  async function runListingLifecycle(action: "delete-draft" | "make-live" | "delete-property") {
     if (!selectedPropertyId) return;
+    const selectedName = selectedListing?.address || selectedListing?.title || selectedListing?.slug || selectedPropertyId;
+    if (action === "delete-property" && !window.confirm(`Permanently delete ${selectedName} from ListingStream? This hard-deletes the Firestore listing and clears the public website cache.`)) return;
     setReviewBusy(true);
-    setModificationStatus(action === "delete-draft" ? "Deleting draft from Firestore..." : "Making draft live and triggering Ascendix sync...");
+    setToastMessage("");
+    setPublishSuccessMessage("");
+    setModificationError("");
+    setModificationStatus(action === "delete-draft" ? "Deleting draft from Firestore and clearing cache..." : action === "make-live" ? "Making draft live, writing Firestore, and clearing cache..." : "Hard-deleting listing from Firestore and clearing cache...");
     try {
       const response = await fetch("/api/listingstream/approve-draft", {
         method: "POST",
@@ -1348,13 +1357,29 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         body: JSON.stringify({ action, propertyIdOrSlug: selectedPropertyId }),
       });
       await parseJsonResponse(response);
-      const data = await parseJsonResponse(await fetch(`/api/listingstream/active-listings?portfolio=all&brokerId=${encodeURIComponent(activeBrokerId)}`, { cache: "no-store" }));
-      const items = Array.isArray(data.items) ? (data.items as PropertyPortalActiveListing[]) : [];
-      setActiveListings(items);
-      setSelectedPropertyId(items[0]?.slug || items[0]?.id || "");
-      setModificationStatus(action === "delete-draft" ? "Draft deleted from Firestore. Ascendix was not touched." : "Draft is now live. Ascendix sync has fired through the live path.");
+      const items = await refreshActiveListingsAfterPublish(selectedPropertyId);
+      if (action === "delete-property" || action === "delete-draft") {
+        const nextSelection = items[0]?.slug || items[0]?.id || "";
+        setSelectedPropertyId(nextSelection);
+        if (nextSelection) {
+          const nextListing = items.find((item) => item.slug === nextSelection || item.id === nextSelection);
+          setListingSearchText(nextListing ? getListingSearchLabel(nextListing) : "");
+        } else {
+          setListingSearchText("");
+        }
+      }
+      const message = action === "delete-draft"
+        ? "Draft deleted. Firestore and ListingStream cache are clear."
+        : action === "make-live"
+          ? "Draft is now live. Firestore, Ascendix sync, and ListingStream cache are updated."
+          : "Listing deleted. Firestore hard-delete completed and ListingStream cache is clear.";
+      setModificationStatus(message);
+      setToastMessage(message);
+      setPublishSuccessMessage(message);
     } catch (error) {
-      setModificationStatus(error instanceof Error ? error.message : "Could not update draft lifecycle.");
+      const message = error instanceof Error ? error.message : "Could not update listing lifecycle.";
+      setModificationStatus(message);
+      setModificationError(message);
     } finally {
       setReviewBusy(false);
     }
@@ -1702,12 +1727,13 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                   <button type="button" onClick={() => setSuites((current) => [...current, createSuite()])} className="rounded-xl border border-[#CB521E] px-4 py-2 text-sm font-semibold text-[#CB521E]">+ Add suite</button>
                 </div>
                 {suites.map((suite, index) => (
-                  <div key={index} className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-5">
+                  <div key={index} className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-6">
                     <label className="space-y-2">{requiredLabel("Suite #")}<input value={suite.suiteNumber} onChange={(event) => updateSuite(index, { suiteNumber: event.target.value })} className={inputClass} required={index === 0} /></label>
                     <label className="space-y-2">{requiredLabel("Suite size")}<input value={suite.availableSqFt} onChange={(event) => updateSuite(index, { availableSqFt: event.target.value })} className={inputClass} required={index === 0} placeholder="SF" /></label>
                     <label className="space-y-2">{requiredLabel("Base rent", !suite.unpriced)}<input value={suite.baseRent} onChange={(event) => updateSuite(index, { baseRent: event.target.value })} className={inputClass} disabled={Boolean(suite.unpriced)} required={index === 0 && !suite.unpriced} /></label>
                     <label className="space-y-2">{requiredLabel("Rent type")}<select value={suite.rentType} onChange={(event) => updateSuite(index, { rentType: event.target.value })} className={inputClass} required={index === 0}>{rentTypes.map((rentType) => <option key={rentType}>{rentType}</option>)}</select></label>
                     <label className="mt-7 flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm text-zinc-700"><input type="checkbox" checked={Boolean(suite.unpriced)} onChange={(event) => updateSuite(index, { unpriced: event.target.checked })} className="h-4 w-4 accent-[#CB521E]" />Unpriced</label>
+                    <button type="button" onClick={() => removeSuite(index)} disabled={suites.length <= 1} className="mt-7 rounded-xl border border-rose-200 bg-white px-3 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
                   </div>
                 ))}
               </div>
@@ -1837,11 +1863,18 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                     <p className="mt-1 text-sm text-amber-900">Draft listings are visible here and by direct preview URL, but hidden from the public website grid until made live.</p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       {selectedListing.previewUrl ? <a href={selectedListing.previewUrl} target="_blank" className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-semibold text-zinc-900">Open Preview</a> : null}
-                      <button type="button" onClick={() => runDraftLifecycle("delete-draft")} disabled={reviewBusy} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50">Delete Draft</button>
-                      <button type="button" onClick={() => runDraftLifecycle("make-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Make Live</button>
+                      <button type="button" onClick={() => runListingLifecycle("delete-draft")} disabled={reviewBusy} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50">Delete Draft</button>
+                      <button type="button" onClick={() => runListingLifecycle("make-live")} disabled={reviewBusy} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Make Live</button>
                     </div>
                   </div>
                 ) : null}
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-white p-4">
+                  <p className="text-sm font-semibold text-rose-950">Permanent delete controls</p>
+                  <p className="mt-1 text-sm text-rose-800">Delete removes this listing from Firestore and immediately clears ListingStream public pages, previews, API responses, and listing grids.</p>
+                  <button type="button" onClick={() => runListingLifecycle("delete-property")} disabled={reviewBusy || !selectedPropertyId} className="mt-3 rounded-xl bg-rose-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:opacity-50">
+                    Delete Listing
+                  </button>
+                </div>
                 <label className="mt-4 block space-y-2">
                   {requiredLabel("Live listing database instructions", false)}
                   <textarea form="listing-revision-form" value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={`${textareaClass} min-h-36 text-base leading-7 sm:text-sm`} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF." To remove the listing, say "archive/remove this listing from the public portal."'} />

@@ -1038,6 +1038,11 @@ test("broker review UI exposes Review Draft, Draft Preview, Publish Live, Revise
   assert.match(source, /Approve & Publish Live/);
   assert.match(source, /Delete Draft/);
   assert.match(source, /Make Live/);
+  assert.match(source, /Delete Listing/);
+  assert.match(source, /runListingLifecycle\("delete-property"\)/);
+  assert.match(source, /ListingStream cache is clear/);
+  assert.match(source, /Remove<\/button>/);
+  assert.match(source, /removeSuite\(index\)/);
   assert.match(source, /Revise Draft/);
   assert.match(source, /revisionFeedback/);
   assert.match(source, /Assessor Data Review/);

@@ -3,7 +3,7 @@ import { after, NextResponse } from "next/server";
 
 import { AUTH_COOKIE, getAuthSession, isValidAuthToken } from "@/lib/auth";
 import { uploadMissionControlFirebaseFile } from "@/lib/mission-control-firebase-storage";
-import { approvePropertyPortalReviewDraft, changePropertyPortalDraftLifecycle, createPropertyPortalProxyError, type StagedListingImageUpload } from "@/lib/property-portal-client";
+import { approvePropertyPortalReviewDraft, changePropertyPortalDraftLifecycle, changePropertyPortalPropertyLifecycle, createPropertyPortalProxyError, type StagedListingImageUpload } from "@/lib/property-portal-client";
 import { buildMarketingPropagationEvent, triggerListingStreamMarketingPropagation } from "@/lib/listingstream-marketing-propagation";
 
 export const runtime = "nodejs";
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const contentType = request.headers.get("content-type") ?? "";
     let draft: unknown;
     let mode: "draft-preview" | "publish-live" = "publish-live";
-    let lifecycleAction: "delete-draft" | "make-live" | null = null;
+    let lifecycleAction: "delete-draft" | "make-live" | "delete-property" | null = null;
     let propertyIdOrSlug = "";
     let assets: File[] = [];
 
@@ -36,19 +36,21 @@ export async function POST(request: Request) {
       const formData = await request.formData();
       draft = JSON.parse(String(formData.get("draft") ?? "null"));
       mode = String(formData.get("mode") ?? "publish-live") === "draft-preview" ? "draft-preview" : "publish-live";
-      lifecycleAction = ["delete-draft", "make-live"].includes(String(formData.get("action"))) ? String(formData.get("action")) as "delete-draft" | "make-live" : null;
+      lifecycleAction = ["delete-draft", "make-live", "delete-property"].includes(String(formData.get("action"))) ? String(formData.get("action")) as "delete-draft" | "make-live" | "delete-property" : null;
       propertyIdOrSlug = String(formData.get("propertyIdOrSlug") ?? "").trim();
       assets = formData.getAll("assets").filter((item): item is File => item instanceof File);
     } else {
       const body = await request.json();
       draft = body.draft;
       mode = body.mode === "draft-preview" ? "draft-preview" : "publish-live";
-      lifecycleAction = ["delete-draft", "make-live"].includes(String(body.action)) ? body.action : null;
+      lifecycleAction = ["delete-draft", "make-live", "delete-property"].includes(String(body.action)) ? body.action : null;
       propertyIdOrSlug = String(body.propertyIdOrSlug ?? "").trim();
     }
 
     if (lifecycleAction) {
-      const result = await changePropertyPortalDraftLifecycle({ propertyIdOrSlug, action: lifecycleAction });
+      const result = lifecycleAction === "delete-property"
+        ? await changePropertyPortalPropertyLifecycle({ propertyIdOrSlug, action: "delete" })
+        : await changePropertyPortalDraftLifecycle({ propertyIdOrSlug, action: lifecycleAction as "delete-draft" | "make-live" });
       if (lifecycleAction === "make-live") {
         const event = buildMarketingPropagationEvent({ propertyIdOrSlug, reason: "listing-made-live", mode: "publish-live" });
         if (event) after(() => triggerListingStreamMarketingPropagation(event, session).then((results) => console.info("PIER Manager V2 marketing propagation", results)).catch((error) => console.error("PIER Manager V2 marketing propagation failed", error)));
