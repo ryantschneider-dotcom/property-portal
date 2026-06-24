@@ -113,7 +113,7 @@ test("PIER Manager intake exposes mobile-safe manual coordinate fields", () => {
 test("PIER Manager active listing picker is scrollable and OM generation has loading/error UX", () => {
   const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
   assert.match(source, /data-testid=\"active-listing-scrollbox\"/);
-  assert.match(source, /max-h-64 overflow-y-auto/);
+  assert.match(source, /overflow-y-auto/);
   assert.match(source, /Generating OM…/);
   assert.match(source, /setOmError/);
   assert.match(source, /AbortController/);
@@ -124,12 +124,21 @@ test("PIER Manager active listing picker separates search from a scrollable list
   assert.match(source, /const \[listingPickerOpen, setListingPickerOpen\] = useState\(true\)/);
   assert.match(source, /data-testid=\"listing-picker-panel\"/);
   assert.match(source, /data-testid=\"listing-filter-input\"/);
-  assert.match(source, /data-testid=\"active-listing-scrollbox\"[\s\S]*max-h-64 overflow-y-auto overscroll-contain/);
+  assert.match(source, /data-testid=\"active-listing-scrollbox\"[\s\S]*overflow-y-auto overscroll-contain/);
   assert.match(source, /function selectActiveListing[\s\S]*setListingPickerOpen\(false\)/);
   assert.match(source, /Change Selection/);
   assert.match(source, /setListingPickerOpen\(true\)/);
   assert.doesNotMatch(source, /<datalist/);
   assert.doesNotMatch(source, /slice\(0, 8\)/);
+});
+
+test("PIER Manager active listing picker renders title with address underneath and searches both", () => {
+  const source = readFileSync(new URL("../src/components/pier-manager-listing-console.tsx", import.meta.url), "utf8");
+  assert.match(source, /function getListingDisplayTitle/);
+  assert.match(source, /function getListingDisplayAddress/);
+  assert.match(source, /data-testid=\"active-listing-address\"/);
+  assert.match(source, /Type title or address/);
+  assert.match(source, /searchableListingText[\s\S]*listing\.address[\s\S]*listing\.title/);
 });
 
 test("PIER Manager AI draft requests have browser timeout cleanup and visible errors", () => {

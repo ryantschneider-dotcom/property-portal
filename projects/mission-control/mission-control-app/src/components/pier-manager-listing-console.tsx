@@ -467,10 +467,18 @@ function getListingSelectionValue(listing: PropertyPortalActiveListing) {
 }
 
 function getListingSearchLabel(listing: PropertyPortalActiveListing) {
-  const primary = listing.address || listing.title || listing.slug || listing.id;
-  const titleSuffix = listing.title && listing.title !== primary ? ` — ${listing.title}` : "";
+  const primary = listing.title || listing.address || listing.slug || listing.id;
+  const titleSuffix = listing.address && listing.address !== primary ? ` — ${listing.address}` : "";
   const transactionSuffix = listing.transactionLabel ? ` — ${listing.transactionLabel}` : "";
   return `${primary}${titleSuffix}${transactionSuffix}`;
+}
+
+function getListingDisplayTitle(listing: PropertyPortalActiveListing) {
+  return listing.title || listing.address || listing.slug || listing.id;
+}
+
+function getListingDisplayAddress(listing: PropertyPortalActiveListing) {
+  return listing.address && listing.address !== getListingDisplayTitle(listing) ? listing.address : "";
 }
 
 function searchableListingText(listing: PropertyPortalActiveListing) {
@@ -1543,7 +1551,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
           <div data-testid="listing-picker-panel" className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm xl:p-5">
             <label className="space-y-2 block">
               {requiredLabel("Filter active listings", false)}
-              <input data-testid="listing-filter-input" value={listingSearchText} onChange={(event) => updateListingSearch(event.target.value)} className={inputClass} placeholder="Type to filter, or scroll the full property list below" autoComplete="off" />
+              <input data-testid="listing-filter-input" value={listingSearchText} onChange={(event) => updateListingSearch(event.target.value)} className={inputClass} placeholder="Type title or address, or scroll the full property list below" autoComplete="off" />
             </label>
             <div className="mt-3 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">
               <span>Active ListingStream properties</span>
@@ -1558,7 +1566,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                   : listing.enrichmentStatus
                     ? `Auto-Enrich ${listing.enrichmentStatus}`
                     : "Auto-Enrich will queue on intake";
-                return <button key={listing.id} data-testid="active-listing-option" type="button" role="option" aria-selected={false} onClick={() => selectActiveListing(value)} className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"><span>{getListingSearchLabel(listing)}</span><span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span><span className="mt-2 inline-flex rounded-full border border-[#CB521E]/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#CB521E]">{enrichmentLabel}</span></button>;
+                const displayAddress = getListingDisplayAddress(listing);
+                return <button key={listing.id} data-testid="active-listing-option" type="button" role="option" aria-selected={false} onClick={() => selectActiveListing(value)} className="w-full border-b border-zinc-100 px-4 py-3 text-left text-sm text-zinc-700 transition last:border-0 hover:bg-[#CB521E]/5 focus:outline-none focus:ring-2 focus:ring-[#CB521E]/40"><span className="block font-bold text-zinc-900">{getListingDisplayTitle(listing)}</span>{displayAddress ? <span data-testid="active-listing-address" className="mt-1 block text-xs font-semibold text-zinc-500">{displayAddress}</span> : null}<span className="mt-1 block text-xs font-normal text-zinc-500">{listing.transactionLabel || "ListingStream listing"}{listing.publishStatus === "draft" ? " • Draft Preview" : ""}</span><span className="mt-2 inline-flex rounded-full border border-[#CB521E]/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#CB521E]">{enrichmentLabel}</span></button>;
               })}
             </div>
           </div>
@@ -1567,7 +1576,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         {selectedListing && hasActivePropertyContext ? (
           <div data-testid="selected-listing-summary" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p><span className="font-extrabold">Active context:</span> {selectedListing.address || selectedListing.title || selectedListing.slug}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>
+              <div><p><span className="font-extrabold">Active context:</span> {getListingDisplayTitle(selectedListing)}{selectedListing.publishStatus === "draft" ? " • Draft Preview" : ""}</p>{getListingDisplayAddress(selectedListing) ? <p className="mt-1 text-xs font-semibold text-emerald-800/80">{getListingDisplayAddress(selectedListing)}</p> : null}</div>
               <button type="button" onClick={reopenListingPicker} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 sm:w-auto">Change Selection</button>
             </div>
           </div>
