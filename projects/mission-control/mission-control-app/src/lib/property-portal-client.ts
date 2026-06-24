@@ -580,7 +580,9 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     status: getApprovedPayloadStatus(updates, input.mode),
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,
-    media: input.draft.kind === "modification" ? (updateMediaIsValid ? mergedMedia : existingMedia) : mergedMedia,
+    saleDescription: finalContent.saleDescription,
+    leaseDescription: finalContent.saleDescription,
+    media: input.draft.kind === "modification" ? (updateMediaIsValid ? { ...(isRecord(mergedMedia) ? mergedMedia : {}), replaceImages: true } : existingMedia) : mergedMedia,
     ...(finalAdmin ? { admin: finalAdmin } : {}),
     meta: deepMergeRecords(isRecord(existing.meta) ? existing.meta : {}, isRecord(merged.meta) ? merged.meta : {}, {
       brokerReview: {
