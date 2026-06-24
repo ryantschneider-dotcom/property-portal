@@ -233,7 +233,8 @@ function isGenericReviewTitle(title: string) {
 }
 
 function isNormalizerFallbackDescription(description: string) {
-  return /the ai returned a partial draft/i.test(clean(description));
+  const text = clean(description);
+  return /the ai returned a partial draft/i.test(text) || /^<?p?>?\s*property details coming soon\.?\s*(?:<\/p>)?$/i.test(text);
 }
 
 function isAbsoluteHttpUrl(value: unknown) {
@@ -382,7 +383,7 @@ function collectMediaUrls(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(collectMediaUrls);
   if (!isRecord(value)) return [];
   return Object.entries(value).flatMap(([key, nested]) => {
-    if (/^(url|original|full|xlarge|large|medium|thumb|thumbnail|heroImageUrl|src)$/i.test(key)) return collectMediaUrls(nested);
+    if (/^(url|original|full|xlarge|large|medium|thumb|thumbnail|heroImageUrl|heroImage|heroPhoto|photoUrl|src)$/i.test(key)) return collectMediaUrls(nested);
     return isRecord(nested) || Array.isArray(nested) ? collectMediaUrls(nested) : [];
   });
 }
@@ -478,6 +479,11 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     ? existingTitle || draftTitle || clean(input.slug)
     : (isGenericReviewTitle(draftTitle) ? existingTitle || draftTitle : draftTitle || existingTitle);
   const finalContent = deepMergeRecords(existingContent, updateContent);
+  const rootDescription = clean(updates.saleDescription as string | undefined)
+    || clean(updates.leaseDescription as string | undefined)
+    || clean(updates.descriptionHtml as string | undefined)
+    || clean(updates.description as string | undefined);
+  if (rootDescription) finalContent.saleDescription = rootDescription;
   const draftDescription = clean(input.draft.descriptionHtml);
   const safeDraftDescription = isNormalizerFallbackDescription(draftDescription) ? "" : draftDescription;
   if (input.draft.kind !== "modification" || hasMeaningfulValue(safeDraftDescription)) {
@@ -512,8 +518,8 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
   const finalPricing = deepMergeRecords(
     isRecord(merged.pricing) ? merged.pricing : {},
     sourcePricing.pricing,
-    suitePricing,
     isRecord(updates.pricing) ? updates.pricing : {},
+    suitePricing,
   );
   const finalVisibility = deepMergeRecords(
     isRecord(merged.visibility) ? merged.visibility : {},
@@ -637,6 +643,13 @@ function uploadLooksLikeFloorPlan(upload: StagedListingImageUpload, draft: Prope
   return /floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(name) && instructionsRequestFloorPlan(draft);
 }
 
+function instructionsRequestSuiteMedia(draft: PropertyPortalReviewDraftForApproval) {
+  if (draft.kind !== "modification") return false;
+  const instructions = clean(draft.sourceInput?.instructions as string | undefined);
+  return /suite\s+[A-Za-z0-9-]+[^.\n]*(?:photo|image|media|floor\s*plan|site\s*plan|plan)/i.test(instructions)
+    || /(?:photo|image|media|floor\s*plan|site\s*plan|plan)[^.\n]*suite\s+[A-Za-z0-9-]+/i.test(instructions);
+}
+
 function getSuiteTargetFromDraft(draft: PropertyPortalReviewDraftForApproval) {
   if (draft.kind !== "modification") return "";
   const instructions = clean(draft.sourceInput?.instructions as string | undefined);
@@ -648,7 +661,7 @@ function attachUploadsToSuiteMedia(draft: PropertyPortalReviewDraftForApproval, 
   const updates = isRecord(draft.structuredUpdates) ? draft.structuredUpdates : {};
   const admin = isRecord(updates.admin) ? updates.admin : {};
   const suites = Array.isArray(admin.suites) ? admin.suites : [];
-  if (!suiteTarget || !suites.length) return null;
+  if (!suiteTarget || !suites.length || !instructionsRequestSuiteMedia(draft)) return null;
   const nextSuites = suites.map((suite) => {
     if (!isRecord(suite)) return suite;
     const suiteNumber = clean(suite.suiteNumber as string | undefined);

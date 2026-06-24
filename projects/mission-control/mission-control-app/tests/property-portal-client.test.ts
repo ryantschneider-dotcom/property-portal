@@ -202,6 +202,103 @@ test("modification approval payload derives lease pricing from edited admin suit
   assert.equal(payload.visibility.saleActive, false);
 });
 
+test("modification approval payload lets edited suite rent override stale canonical pricing", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "ui-sandbox-test-asset",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "Property details coming soon.",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "ui-sandbox-test-asset" },
+      currentListing: {
+        slug: "ui-sandbox-test-asset",
+        title: "UI Sandbox Test Asset",
+        content: { saleDescription: "Existing sandbox copy." },
+        pricing: { askingPriceRatePerSf: 19, leaseRatePerSf: 19, rateType: "NNN", leaseRateUnit: "annual" },
+        admin: { suites: [{ suiteNumber: "100", availableSqFt: "1,900", baseRent: "19", rentType: "NNN" }] },
+      },
+      structuredUpdates: {
+        pricing: { askingPriceRatePerSf: 19, leaseRatePerSf: 19, rateType: "NNN", leaseRateUnit: "annual" },
+        admin: { suites: [{ suiteNumber: "100", availableSqFt: "1,900", baseRent: "$9.00", rentType: "NNN" }] },
+      },
+    },
+  });
+
+  assert.equal(payload.admin.suites[0].baseRent, 9);
+  assert.equal(payload.pricing.askingPriceRatePerSf, 9);
+  assert.equal(payload.pricing.leaseRatePerSf, 9);
+  assert.equal((payload.content as Record<string, unknown>).saleDescription, "Existing sandbox copy.");
+});
+
+test("modification approval payload persists explicit description updates instead of fallback copy", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "ui-sandbox-test-asset",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "Property details coming soon.",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "ui-sandbox-test-asset" },
+      currentListing: {
+        slug: "ui-sandbox-test-asset",
+        title: "UI Sandbox Test Asset",
+        content: { saleDescription: "Existing public copy." },
+      },
+      structuredUpdates: {
+        content: { saleDescription: "Broker-edited sandbox description that must persist." },
+      },
+    },
+  });
+
+  assert.equal((payload.content as Record<string, unknown>).saleDescription, "Broker-edited sandbox description that must persist.");
+});
+
+test("modification approval with suite rent plus property photo keeps upload as parent hero media", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, any> }> = [];
+  const heroUrl = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/property-intake%2Fui-sandbox-test-asset%2Fhero.jpg?alt=media&token=safe123";
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "draft-preview",
+    assets: [new File(["hero-bytes"], "hero.jpg", { type: "image/jpeg" })],
+    uploadStagedImage: async (file, options) => ({
+      url: heroUrl,
+      path: `property-intake/ui-sandbox-test-asset/${options.index}-${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "Property details coming soon.",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "ui-sandbox-test-asset", instructions: "Change Suite 100 rent to $9.00 NNN and update the hero photo." },
+      currentListing: {
+        slug: "ui-sandbox-test-asset",
+        media: { heroImageUrl: "https://cdn.example.com/old-hero.jpg" },
+        admin: { suites: [{ suiteNumber: "100", availableSqFt: "1,900", baseRent: "19", rentType: "NNN" }] },
+      },
+      structuredUpdates: {
+        admin: { suites: [{ suiteNumber: "100", availableSqFt: "1,900", baseRent: "$9.00", rentType: "NNN" }] },
+      },
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/ui-sandbox-test-asset" } });
+    },
+  });
+
+  const approvedPayload = calls.find((call) => call.url.endsWith("/api/admin/properties/launch-package"))?.body.approvedPayload as Record<string, any>;
+  assert.equal(approvedPayload.media.heroImageUrl, heroUrl);
+  assert.equal(approvedPayload.admin.suites[0].baseRent, 9);
+  assert.equal(approvedPayload.admin.suites[0].suitePhotos, undefined);
+});
+
 test("modification approval payload maps monthly suite rent to monthly pricing fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "publish-live",
