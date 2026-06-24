@@ -160,6 +160,72 @@ test("modification approval payload preserves canonical title, media, and unchan
   assert.equal(payload.workflowStatus, "draft_preview");
 });
 
+test("modification approval payload derives lease pricing from edited admin suites and removes omitted suites", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "publish-live",
+    slug: "ui-sandbox-test-asset",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "ui-sandbox-test-asset" },
+      currentListing: {
+        slug: "ui-sandbox-test-asset",
+        title: "UI Sandbox Test Asset",
+        visibility: { leaseActive: true, saleActive: false },
+        pricing: { askingPriceRatePerSf: 18, leaseRatePerSf: 18, rateType: "NNN", leaseRateUnit: "annual" },
+        admin: {
+          suites: [
+            { suiteNumber: "100", availableSqFt: "1,900", baseRent: "18", rentType: "NNN" },
+            { suiteNumber: "200", availableSqFt: "2,100", baseRent: "19", rentType: "NNN" },
+          ],
+        },
+      },
+      structuredUpdates: {
+        admin: {
+          suites: [
+            { suiteNumber: "100", availableSqFt: "1,900", baseRent: "22", rentType: "NNN" },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.equal(payload.admin.suites.length, 1);
+  assert.equal(payload.admin.suites[0].suiteNumber, "100");
+  assert.equal(payload.admin.suites[0].baseRent, 22);
+  assert.equal(payload.admin.suites[0].ratePerSf, 22);
+  assert.equal(payload.pricing.askingPriceRatePerSf, 22);
+  assert.equal(payload.pricing.leaseRatePerSf, 22);
+  assert.equal(payload.visibility.leaseActive, true);
+  assert.equal(payload.visibility.saleActive, false);
+});
+
+test("modification approval payload maps monthly suite rent to monthly pricing fields", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "publish-live",
+    slug: "ui-sandbox-test-asset",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "ui-sandbox-test-asset" },
+      currentListing: { slug: "ui-sandbox-test-asset", title: "UI Sandbox Test Asset", pricing: { askingPriceRatePerSf: 18 } },
+      structuredUpdates: {
+        admin: { suites: [{ suiteNumber: "A", availableSqFt: "1,900", baseRent: "$1,900", rentType: "Monthly" }] },
+      },
+    },
+  });
+
+  assert.equal(payload.admin.suites[0].monthlyRate, 1900);
+  assert.equal(payload.admin.suites[0].monthlyBaseRent, 1900);
+  assert.equal(payload.pricing.monthlyRate, 1900);
+  assert.equal(payload.pricing.monthlyRent, 1900);
+  assert.equal(payload.pricing.leaseRateUnit, "monthly");
+});
+
 test("modification approval payload preserves property use across root and nested ListingStream fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",

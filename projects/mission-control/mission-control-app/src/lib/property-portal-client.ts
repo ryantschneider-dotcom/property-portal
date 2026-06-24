@@ -299,6 +299,53 @@ function sourceString(source: Record<string, unknown>, key: string) {
   return clean(source[key] as string | undefined);
 }
 
+function readSuitesFromRecord(value: Record<string, unknown>) {
+  const directSuites = Array.isArray(value.suites) ? value.suites.filter(isRecord) : [];
+  const admin = isRecord(value.admin) ? value.admin : {};
+  const adminSuites = Array.isArray(admin.suites) ? admin.suites.filter(isRecord) : [];
+  return adminSuites.length || Array.isArray(admin.suites) ? adminSuites : directSuites;
+}
+
+function suiteRentUnit(suite: Record<string, unknown>, fallback = "") {
+  const rentType = sourceString(suite, "rentType") || sourceString(suite, "leaseType") || fallback;
+  return /month|monthly|\/mo|\/month/i.test(rentType) ? "monthly" : "annual";
+}
+
+function normalizeSuitePricingFields(suite: Record<string, unknown>) {
+  const rentType = sourceString(suite, "rentType") || sourceString(suite, "leaseType");
+  const rate = parsePositiveNumber(suite.baseRent) ?? parsePositiveNumber(suite.ratePerSf) ?? parsePositiveNumber(suite.askingRatePerSf) ?? parsePositiveNumber(suite.askingPriceRatePerSf);
+  if (!rate) return suite;
+  if (suiteRentUnit(suite) === "monthly") {
+    return { ...suite, monthlyRate: rate, monthlyBaseRent: rate, rentType };
+  }
+  return { ...suite, baseRent: rate, ratePerSf: rate, askingRatePerSf: rate, askingPriceRatePerSf: rate, rentType };
+}
+
+function buildLeasePricingFromSuites(suites: Record<string, unknown>[], fallbackRateText = "") {
+  const pricing: Record<string, unknown> = {};
+  const pricedSuite = suites.find((suite) => parsePositiveNumber(suite.baseRent) || parsePositiveNumber(suite.ratePerSf) || parsePositiveNumber(suite.askingRatePerSf) || parsePositiveNumber(suite.monthlyRate));
+  const leaseRate = parsePositiveNumber(pricedSuite?.baseRent) ?? parsePositiveNumber(pricedSuite?.ratePerSf) ?? parsePositiveNumber(pricedSuite?.askingRatePerSf) ?? parsePositiveNumber(fallbackRateText);
+  const monthlyRate = parsePositiveNumber(pricedSuite?.monthlyRate) ?? parsePositiveNumber(pricedSuite?.monthlyRent);
+  const unit = pricedSuite ? suiteRentUnit(pricedSuite, fallbackRateText) : (/month|monthly/i.test(fallbackRateText) ? "monthly" : "annual");
+  if (unit === "monthly" && (monthlyRate || leaseRate)) {
+    const value = monthlyRate ?? leaseRate;
+    pricing.monthlyRate = value;
+    pricing.monthlyRent = value;
+    pricing.leaseRate = value;
+    pricing.rateType = sourceString(pricedSuite ?? {}, "rentType") || "Monthly";
+    pricing.leaseRateUnit = "monthly";
+  } else if (leaseRate) {
+    pricing.askingPriceRatePerSf = leaseRate;
+    pricing.leaseRatePerSf = leaseRate;
+    pricing.ratePerSf = leaseRate;
+    pricing.rateType = sourceString(pricedSuite ?? {}, "rentType") || "NNN";
+    pricing.leaseRateUnit = "annual";
+  } else if (suites.some((suite) => suite.unpriced === true || /unpriced|inquire|call/i.test(sourceString(suite, "baseRent")))) {
+    pricing.hiddenPriceLabel = "Call for Rate";
+  }
+  return pricing;
+}
+
 function buildPricingFromSourceInput(source: Record<string, unknown>) {
   const pricing: Record<string, unknown> = {};
   const visibility: Record<string, unknown> = {};
@@ -320,23 +367,14 @@ function buildPricingFromSourceInput(source: Record<string, unknown>) {
     }
   }
 
-  const suites = Array.isArray(source.suites) ? source.suites.filter(isRecord) : [];
+  const suites = readSuitesFromRecord(source).map(normalizeSuitePricingFields);
   if (transactionType === "lease" || suites.length) {
     visibility.leaseActive = true;
     visibility.saleActive = false;
-    const pricedSuite = suites.find((suite) => parsePositiveNumber(suite.baseRent) || parsePositiveNumber(suite.ratePerSf) || parsePositiveNumber(suite.askingRatePerSf));
-    const leaseRate = parsePositiveNumber(pricedSuite?.baseRent) ?? parsePositiveNumber(pricedSuite?.ratePerSf) ?? parsePositiveNumber(pricedSuite?.askingRatePerSf) ?? parsePositiveNumber(sourceString(source, "priceContext"));
-    if (leaseRate) {
-      pricing.askingPriceRatePerSf = leaseRate;
-      pricing.leaseRatePerSf = leaseRate;
-      pricing.rateType = sourceString(pricedSuite ?? {}, "rentType") || "NNN";
-      pricing.leaseRateUnit = /month|monthly/i.test(sourceString(pricedSuite ?? {}, "rentType") || sourceString(source, "priceContext")) ? "monthly" : "annual";
-    } else if (suites.some((suite) => suite.unpriced === true || /unpriced|inquire|call/i.test(sourceString(suite, "baseRent")))) {
-      pricing.hiddenPriceLabel = "Call for Rate";
-    }
+    Object.assign(pricing, buildLeasePricingFromSuites(suites, sourceString(source, "priceContext")));
   }
 
-  return { pricing, visibility };
+  return { pricing, visibility, suites };
 }
 
 function collectMediaUrls(value: unknown): string[] {
@@ -465,14 +503,22 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     existing.leadBroker,
   );
   const sourcePricing = buildPricingFromSourceInput(input.draft.sourceInput ?? {});
+  const finalAdmin = isRecord(merged.admin) ? { ...merged.admin } : undefined;
+  const finalAdminSuites = finalAdmin && Array.isArray(finalAdmin.suites)
+    ? finalAdmin.suites.filter(isRecord).map(normalizeSuitePricingFields)
+    : null;
+  if (finalAdmin && finalAdminSuites) finalAdmin.suites = finalAdminSuites;
+  const suitePricing = finalAdminSuites ? buildLeasePricingFromSuites(finalAdminSuites) : {};
   const finalPricing = deepMergeRecords(
     isRecord(merged.pricing) ? merged.pricing : {},
     sourcePricing.pricing,
+    suitePricing,
     isRecord(updates.pricing) ? updates.pricing : {},
   );
   const finalVisibility = deepMergeRecords(
     isRecord(merged.visibility) ? merged.visibility : {},
     sourcePricing.visibility,
+    finalAdminSuites ? { leaseActive: true, saleActive: false } : {},
     isRecord(updates.visibility) ? updates.visibility : {},
   );
   const propertyUseFields = resolvePropertyUseFields(merged, existing, updates);
@@ -503,6 +549,7 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,
     media: input.draft.kind === "modification" ? (updateMediaIsValid ? mergedMedia : existingMedia) : mergedMedia,
+    ...(finalAdmin ? { admin: finalAdmin } : {}),
     meta: deepMergeRecords(isRecord(existing.meta) ? existing.meta : {}, isRecord(merged.meta) ? merged.meta : {}, {
       brokerReview: {
         approvedAt: input.mode === "draft-preview" ? null : new Date().toISOString(),
