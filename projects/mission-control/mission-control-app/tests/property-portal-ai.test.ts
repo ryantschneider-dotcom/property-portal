@@ -17,6 +17,31 @@ import {
 
 const deterministicInterpreter = async (currentListing: Record<string, unknown>, instructions: string) => interpretBrokerEditRequestDeterministic(currentListing, instructions);
 process.env.OPENAI_API_KEY ||= "test-openai-key";
+test("frontier broker-edit-interpreter parses multiline property and location description blocks", async () => {
+  const instructions = `Replace the property description and neighborhood description as follow;
+Property Description
+Newly refeshed 2nd floor office space and two ground level flex/office/storage spaces available for lease at 42 W. Montgomery Cross Road, Savannah, GA. Situated in the vibrant and re-devloping area of metro Savannah, Chatham County, this property offers a central location for businesses seeking a convenient central Savannah address with convenient access to key roadways and local amenities.
+
+The property features three distinct suites, each designed to accommodate a variety of business needs. With flexible leasing options and competitive rates, these spaces are ideal for companies looking to establish or expand their presence in Savannah.
+
+Location Description
+Located in the immediate area of dining and shopping.  New apartments, a regional mall, and several power centers are within 1/2 to 1.5 miles of the property.  Re-development continues in the neighborhood due to a shortage of available land and spaces for lease`;
+
+  const result = interpretBrokerEditRequestDeterministic(
+    { visibility: { transactionLabel: "For Lease" }, content: { leaseDescription: "Old property copy", locationDescription: "Old location copy" } },
+    instructions,
+  );
+
+  const content = result.updatePayload.content as Record<string, unknown>;
+  assert.equal(
+    content.leaseDescription,
+    "Newly refeshed 2nd floor office space and two ground level flex/office/storage spaces available for lease at 42 W. Montgomery Cross Road, Savannah, GA. Situated in the vibrant and re-devloping area of metro Savannah, Chatham County, this property offers a central location for businesses seeking a convenient central Savannah address with convenient access to key roadways and local amenities. The property features three distinct suites, each designed to accommodate a variety of business needs. With flexible leasing options and competitive rates, these spaces are ideal for companies looking to establish or expand their presence in Savannah.",
+  );
+  assert.equal(
+    content.locationDescription,
+    "Located in the immediate area of dining and shopping. New apartments, a regional mall, and several power centers are within 1/2 to 1.5 miles of the property. Re-development continues in the neighborhood due to a shortage of available land and spaces for lease.",
+  );
+});
 
 
 test("frontier broker-edit-interpreter fortifies batch rent plus description when LLM summary drops string payload", async () => {

@@ -444,8 +444,35 @@ function splitBulletLines(value: string) {
     .filter(Boolean);
 }
 
+const BROKER_TEXT_FIELD_LABELS = [
+  "property description",
+  "sale description",
+  "lease description",
+  "location description",
+  "neighborhood description",
+  "area description",
+  "bullet points",
+  "bullets",
+  "highlights",
+];
+
+function extractLabeledFieldBlock(instructions: string, alias: string) {
+  const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boundaryLabels = BROKER_TEXT_FIELD_LABELS
+    .filter((label) => label.toLowerCase() !== alias.toLowerCase())
+    .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const labeledBlock = instructions.match(new RegExp(
+    `(?:^|\\n)\\s*${escapedAlias}\\s*(?:[:=]|(?:as\\s+)?(?:follows?|below))?\\s*\\n+([\\s\\S]*?)(?=\\n\\s*(?:${boundaryLabels})\\s*(?:[:=]|(?:as\\s+)?(?:follows?|below))?\\s*(?:\\n|$)|$)`,
+    "i",
+  ));
+  return labeledBlock?.[1] ? cleanNarrativeCopy(labeledBlock[1]) : null;
+}
+
 function extractFieldText(instructions: string, aliases: string[]) {
   for (const alias of aliases) {
+    const block = extractLabeledFieldBlock(instructions, alias);
+    if (block) return block;
     const quoted = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*(?:say(?:s)?|read(?:s)?|that\\s+says?|that\\s+reads?)?\\s*["“]([^"”]+)["”]`, "i"));
     if (quoted) return cleanNarrativeCopy(quoted);
     const plain = extractQuotedOrPlain(instructions, new RegExp(`${alias}\\s*(?:to|as|=|:)\\s*(?:say(?:s)?|read(?:s)?|that\\s+says?|that\\s+reads?)?\\s*([^\\n]{8,400})`, "i"));
