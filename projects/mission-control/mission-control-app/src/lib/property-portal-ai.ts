@@ -1,5 +1,5 @@
 import { interpretBrokerEditRequest, type BrokerEditInterpreterOptions, type BrokerEditInterpreterResult } from "@/lib/broker-edit-interpreter";
-import { buildPropertyPortalUrl, type PropertyPortalFetch, withPropertyPortalTimeout } from "@/lib/property-portal-client";
+import { buildPropertyPortalUrl, getPropertyPortalInternalHeaders, type PropertyPortalFetch, withPropertyPortalTimeout } from "@/lib/property-portal-client";
 
 export type PropertyPortalAiWriterResult = {
   title: string;
@@ -517,6 +517,7 @@ export async function fetchPropertyPortalListing(input: { propertyIdOrSlug: stri
     fetchImpl(buildPropertyPortalUrl(`/api/properties/${encodeURIComponent(input.propertyIdOrSlug)}?fresh=${Date.now()}`, input.baseUrl), {
       cache: "no-store",
       headers: {
+        ...getPropertyPortalInternalHeaders(),
         "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
         Pragma: "no-cache",
       },

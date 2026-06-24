@@ -790,7 +790,9 @@ test("deterministic suite parser overwrites duplicated AI suite arrays and prese
 
 
 test("modification AI draft fetches current listing from property-portal before writing delta", async () => {
-  const calls: string[] = [];
+  const previousInternalToken = process.env.PROPERTY_PORTAL_INTERNAL_TOKEN;
+  process.env.PROPERTY_PORTAL_INTERNAL_TOKEN = "test-internal-token";
+  const calls: Array<{ url: string; headers: HeadersInit | undefined }> = [];
   const writer: PropertyPortalCloudWriter = async (prompt) => {
     assert.match(prompt, /Existing description/);
     return {
@@ -807,14 +809,16 @@ test("modification AI draft fetches current listing from property-portal before 
     instructions: "Add new TPO roof and drop asking rate to $22/SF.",
     baseUrl: "https://portal.example.com",
     interpreter: deterministicInterpreter,
-    fetchImpl: async (url) => {
-      calls.push(String(url));
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), headers: init?.headers });
       return Response.json({ slug: "2812-williams-street", content: { saleDescription: "Existing description" } });
     },
     writer,
   });
 
-  assert.match(calls[0], /^https:\/\/portal\.example\.com\/api\/properties\/2812-williams-street\?fresh=\d+$/);
+  assert.match(calls[0].url, /^https:\/\/portal\.example\.com\/api\/properties\/2812-williams-street\?fresh=\d+$/);
+  assert.equal((calls[0].headers as Record<string, string>)["x-pier-manager-internal"], "test-internal-token");
+  process.env.PROPERTY_PORTAL_INTERNAL_TOKEN = previousInternalToken;
   assert.equal(draft.kind, "modification");
   assert.equal(draft.status, "ready_for_broker_review");
   assert.deepEqual(draft.structuredUpdates.pricing, { askingPriceRatePerSf: 22, listingPriceVisibility: "per_sf" });
