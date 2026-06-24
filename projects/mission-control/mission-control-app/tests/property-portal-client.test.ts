@@ -336,6 +336,38 @@ test("modification approval payload lets edited suite rent override stale canoni
   assert.equal((payload.content as Record<string, unknown>).saleDescription, "Existing sandbox copy.");
 });
 
+test("modification approval payload binds Review Draft descriptionHtml into Firestore payload", () => {
+  const enrichedDescription = "<p>Newly enriched Big Brain copy with frontage, access, and tenant-ready positioning.</p>";
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "ui-sandbox-test-asset",
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: enrichedDescription,
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "ui-sandbox-test-asset" },
+      currentListing: {
+        slug: "ui-sandbox-test-asset",
+        title: "UI Sandbox Test Asset",
+        content: { saleDescription: "Property details coming soon." },
+        saleDescription: "Property details coming soon.",
+      },
+      structuredUpdates: {
+        pricing: { leaseRatePerSf: 18, askingPriceRatePerSf: 18 },
+      },
+    },
+  });
+
+  assert.equal((payload.content as Record<string, unknown>).saleDescription, enrichedDescription);
+  assert.equal((payload.content as Record<string, unknown>).leaseDescription, enrichedDescription);
+  assert.equal((payload.content as Record<string, unknown>).descriptionHtml, enrichedDescription);
+  assert.equal(payload.saleDescription, enrichedDescription);
+  assert.equal(payload.leaseDescription, enrichedDescription);
+  assert.equal(payload.descriptionHtml, enrichedDescription);
+  assert.notEqual(payload.saleDescription, "Property details coming soon.");
+});
+
 test("modification approval payload persists explicit description updates instead of fallback copy", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",

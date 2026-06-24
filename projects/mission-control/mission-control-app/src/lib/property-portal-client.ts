@@ -507,8 +507,21 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     || hasMeaningfulValue(updates.description);
   const draftDescription = clean(input.draft.descriptionHtml);
   const safeDraftDescription = isNormalizerFallbackDescription(draftDescription) ? "" : draftDescription;
-  if (input.draft.kind !== "modification" || structuredDescriptionWasExplicitlyUpdated) {
-    if (hasMeaningfulValue(safeDraftDescription)) finalContent.saleDescription = safeDraftDescription;
+  // The Review Draft panel is the broker-approved source of truth for newly enriched
+  // Big Brain copy. Do not require structuredUpdates to repeat the same narrative;
+  // otherwise rich descriptionHtml shown in the UI can be dropped before Firestore.
+  if (hasMeaningfulValue(safeDraftDescription)) {
+    finalContent.saleDescription = safeDraftDescription;
+    finalContent.leaseDescription = safeDraftDescription;
+    finalContent.descriptionHtml = safeDraftDescription;
+    finalContent.description = safeDraftDescription;
+  } else if (input.draft.kind !== "modification" || structuredDescriptionWasExplicitlyUpdated) {
+    if (hasMeaningfulValue(rootDescription)) {
+      finalContent.saleDescription = rootDescription;
+      finalContent.leaseDescription = rootDescription;
+      finalContent.descriptionHtml = rootDescription;
+      finalContent.description = rootDescription;
+    }
   }
   const structuredBulletsWereExplicitlyUpdated = hasMeaningfulValue(updateContent.saleBullets)
     || hasMeaningfulValue(updateContent.leaseBullets)
@@ -581,7 +594,9 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,
     saleDescription: finalContent.saleDescription,
-    leaseDescription: finalContent.saleDescription,
+    leaseDescription: finalContent.leaseDescription || finalContent.saleDescription,
+    descriptionHtml: finalContent.descriptionHtml || finalContent.saleDescription,
+    description: finalContent.description || finalContent.saleDescription,
     media: input.draft.kind === "modification" ? (updateMediaIsValid ? { ...(isRecord(mergedMedia) ? mergedMedia : {}), replaceImages: true } : existingMedia) : mergedMedia,
     ...(finalAdmin ? { admin: finalAdmin } : {}),
     meta: deepMergeRecords(isRecord(existing.meta) ? existing.meta : {}, isRecord(merged.meta) ? merged.meta : {}, {
