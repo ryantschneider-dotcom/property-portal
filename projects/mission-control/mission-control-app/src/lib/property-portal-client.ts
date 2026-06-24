@@ -140,7 +140,6 @@ const DANGEROUS_TRANSIT_PAYLOAD_KEYS = new Set([
   "blob",
   "buffer",
   "bytes",
-  "content",
   "data",
   "file",
   "fileData",

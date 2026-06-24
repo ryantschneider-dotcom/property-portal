@@ -11,6 +11,7 @@ import {
   fetchPropertyPortalActiveListings,
   getMinimalIntakeMissingFields,
   normalizePropertyPortalDraftPreviewUrl,
+  sanitizeListingStreamJsonTransitPayload,
   submitPropertyPortalListingModification,
   type MinimalListingIntakeInput,
 } from "../src/lib/property-portal-client";
@@ -334,6 +335,25 @@ test("modification approval payload lets edited suite rent override stale canoni
   assert.equal(payload.pricing.askingPriceRatePerSf, 9);
   assert.equal(payload.pricing.leaseRatePerSf, 9);
   assert.equal((payload.content as Record<string, unknown>).saleDescription, "Existing sandbox copy.");
+});
+
+test("ListingStream JSON transit sanitizer preserves content description keys read by preview", () => {
+  const sanitized = sanitizeListingStreamJsonTransitPayload({
+    slug: "ui-sandbox-test-asset",
+    content: {
+      saleDescription: "Enriched Review Draft copy that ListingStream preview must read.",
+      leaseDescription: "Lease copy also stays nested for ListingStream normalization.",
+      data: "unsafe nested payload should be stripped",
+    },
+    data: "unsafe root payload should be stripped",
+    rawFile: "unsafe file payload should be stripped",
+  }) as Record<string, any>;
+
+  assert.equal(sanitized.content.saleDescription, "Enriched Review Draft copy that ListingStream preview must read.");
+  assert.equal(sanitized.content.leaseDescription, "Lease copy also stays nested for ListingStream normalization.");
+  assert.equal(sanitized.content.data, undefined);
+  assert.equal(sanitized.data, undefined);
+  assert.equal(sanitized.rawFile, undefined);
 });
 
 test("modification approval payload binds Review Draft descriptionHtml into Firestore payload", () => {
