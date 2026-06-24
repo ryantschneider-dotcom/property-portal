@@ -45,8 +45,24 @@ function resolveAppRoot() {
   return cwd;
 }
 
+function resolveDataDir() {
+  const configuredDataDir = process.env.MISSION_CONTROL_DATA_DIR?.trim();
+  if (configuredDataDir) {
+    return path.resolve(configuredDataDir);
+  }
+
+  // Vercel serverless functions run from /var/task, which is read-only at runtime.
+  // Keep the local/standalone JSON store behavior, but move ephemeral production
+  // runtime state into /tmp so health checks and dashboard SSR do not crash.
+  if (process.env.VERCEL === "1" || process.env.VERCEL_ENV) {
+    return path.join("/tmp", "mission-control-store");
+  }
+
+  return path.join(appRoot, "data");
+}
+
 const appRoot = resolveAppRoot();
-const dataDir = path.join(appRoot, "data");
+const dataDir = resolveDataDir();
 const dataFile = path.join(dataDir, "mission-control-store.json");
 const backupFile = path.join(dataDir, "mission-control-store.bak.json");
 const tempFile = path.join(dataDir, "mission-control-store.tmp.json");
