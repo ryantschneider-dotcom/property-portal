@@ -294,10 +294,11 @@ function extractSuiteNotes(instructions: string, suiteNumber: string) {
 
 
 function getSuiteMediaIntent(instructions: string): "floorPlan" | "photo" | null {
-  const mentionsFile = /\b(?:upload(?:ed)?|attach(?:ed)?|file|pdf|image|photo|plan)\b/i.test(instructions);
+  const mentionsFile = /\b(?:upload(?:ed)?|attach(?:ed|ment)?|files?|pdf|images?|photos?|pictures?|plans?|documents?|details?)\b/i.test(instructions);
   if (!mentionsFile) return null;
   if (/\b(?:floor\s*plans?|site\s*plans?|plan\s*(?:pdf|file|image|photo)?|pdf\s*floor\s*plan)\b/i.test(instructions)) return "floorPlan";
   if (/\b(?:suite\s*)?(?:photos?|images?|pictures?)\b/i.test(instructions)) return "photo";
+  if (/\b(?:attach(?:ed|ment)?|upload(?:ed)?|files?|documents?|details?)\b/i.test(instructions)) return "photo";
   return null;
 }
 

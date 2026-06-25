@@ -737,8 +737,8 @@ function uploadLooksLikeFloorPlan(upload: StagedListingImageUpload, draft: Prope
 function instructionsRequestSuiteMedia(draft: PropertyPortalReviewDraftForApproval) {
   if (draft.kind !== "modification") return false;
   const instructions = clean(draft.sourceInput?.instructions as string | undefined);
-  return /suite\s+[A-Za-z0-9-]+[^.\n]*(?:photo|image|media|floor\s*plan|site\s*plan|plan)/i.test(instructions)
-    || /(?:photo|image|media|floor\s*plan|site\s*plan|plan)[^.\n]*suite\s+[A-Za-z0-9-]+/i.test(instructions);
+  return /suite\s+[A-Za-z0-9-]+[^.\n]*(?:photo|image|media|attachment|attach|upload|file|document|details|floor\s*plan|site\s*plan|plan)/i.test(instructions)
+    || /(?:photo|image|media|attachment|attach|upload|file|document|details|floor\s*plan|site\s*plan|plan)[^.\n]*suite\s+[A-Za-z0-9-]+/i.test(instructions);
 }
 
 function getSuiteTargetFromDraft(draft: PropertyPortalReviewDraftForApproval) {
