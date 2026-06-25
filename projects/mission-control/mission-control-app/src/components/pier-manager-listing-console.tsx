@@ -286,6 +286,16 @@ function addSuiteFloorPlanUrlToDraft(draft: BrokerReviewDraft, fileName: string,
   return clone;
 }
 
+function draftRequestsSuiteFloorPlanImage(draft: BrokerReviewDraft, fileName = "") {
+  if (draft.kind !== "modification") return false;
+  if (/photos?|pictures?|images?|hero|front|exterior|interior/i.test(fileName)) return false;
+  if (/floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(fileName)) return true;
+  const sourceInput = isRecord(draft.sourceInput) ? draft.sourceInput : {};
+  const instructions = String(sourceInput.instructions ?? "");
+  return /suite\s*#?\s*[A-Za-z0-9-]+[^.\n]*(?:floor\s*plan|site\s*plan|plan)/i.test(instructions)
+    || /(?:floor\s*plan|site\s*plan|plan)[^.\n]*suite\s*#?\s*[A-Za-z0-9-]+/i.test(instructions);
+}
+
 async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerReviewDraft; assets: File[]; slug: string }) {
   let draft = input.draft;
   const assetsForApi: File[] = [];
@@ -293,6 +303,12 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
   let uploadedImageCount = 0;
   for (const asset of input.assets) {
     if (isImageFile(asset)) {
+      if (draftRequestsSuiteFloorPlanImage(draft, asset.name)) {
+        convertedCount += 1;
+        const imageUrl = await uploadClientFloorPlanImageViaMissionControl(asset, { slug: input.slug, index: convertedCount });
+        draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
+        continue;
+      }
       uploadedImageCount += 1;
       const upload = await uploadClientListingImageViaMissionControl(asset, { slug: input.slug, index: uploadedImageCount });
       draft = addPropertyMediaUploadToDraft(draft, upload, uploadedImageCount, input.slug);
