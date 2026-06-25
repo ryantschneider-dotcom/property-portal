@@ -82,7 +82,7 @@ function isPdfFile(file: File) {
 }
 
 function isImageFile(file: File) {
-  return /^image\//i.test(file.type || "") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+  return /^image\//i.test(file.type || "") || /\.(jpe?g|png|webp|heic|heif|tiff?|bmp|gif)$/i.test(file.name || "");
 }
 
 type ClientListingMediaUpload = {
@@ -286,14 +286,46 @@ function addSuiteFloorPlanUrlToDraft(draft: BrokerReviewDraft, fileName: string,
   return clone;
 }
 
-function draftRequestsSuiteFloorPlanImage(draft: BrokerReviewDraft, fileName = "") {
-  if (draft.kind !== "modification") return false;
-  if (/photos?|pictures?|images?|hero|front|exterior|interior/i.test(fileName)) return false;
-  if (/floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(fileName)) return true;
+function addSuitePhotoUrlToDraft(draft: BrokerReviewDraft, fileName: string, url: string): BrokerReviewDraft {
+  const target = extractSuiteTargetFromDraft(draft, fileName);
+  const clone = JSON.parse(JSON.stringify(draft)) as BrokerReviewDraft;
+  const structuredUpdates = isRecord(clone.structuredUpdates) ? clone.structuredUpdates as Record<string, unknown> : {};
+  const admin = isRecord(structuredUpdates.admin) ? structuredUpdates.admin as Record<string, unknown> : {};
+  const suites = Array.isArray(admin.suites) ? admin.suites : [];
+  if (!suites.length) return clone;
+  let matched = false;
+  const nextSuites = suites.map((suite, index) => {
+    if (!isRecord(suite)) return suite;
+    const suiteNumber = String(suite.suiteNumber ?? "").trim().toLowerCase();
+    const shouldAttach = target ? suiteNumber === target : suites.length === 1 && index === 0;
+    if (!shouldAttach) return suite;
+    matched = true;
+    const existing = Array.isArray(suite.suitePhotos) ? suite.suitePhotos.map((item) => String(item ?? "")).filter(Boolean) : [];
+    return { ...suite, suitePhotos: [...existing, url] };
+  });
+  if (!matched && isRecord(nextSuites[0])) {
+    const first = nextSuites[0] as Record<string, unknown>;
+    const existing = Array.isArray(first.suitePhotos) ? first.suitePhotos.map((item) => String(item ?? "")).filter(Boolean) : [];
+    nextSuites[0] = { ...first, suitePhotos: [...existing, url] };
+  }
+  clone.structuredUpdates = { ...structuredUpdates, admin: { ...admin, suites: nextSuites } } as BrokerReviewDraft["structuredUpdates"];
+  return clone;
+}
+
+type BrokerDirectedAttachmentTarget = { scope: "main" | "suite"; kind: "photo" | "floorPlan" };
+
+function getBrokerDirectedAttachmentTarget(draft: BrokerReviewDraft, fileName = ""): BrokerDirectedAttachmentTarget {
+  if (draft.kind !== "modification") return { scope: "main", kind: "photo" };
   const sourceInput = isRecord(draft.sourceInput) ? draft.sourceInput : {};
   const instructions = String(sourceInput.instructions ?? "");
-  return /suite\s*#?\s*[A-Za-z0-9-]+[^.\n]*(?:floor\s*plan|site\s*plan|plan)/i.test(instructions)
-    || /(?:floor\s*plan|site\s*plan|plan)[^.\n]*suite\s*#?\s*[A-Za-z0-9-]+/i.test(instructions);
+  const fileLooksLikePhoto = /photos?|pictures?|images?|hero|front|exterior|interior/i.test(fileName);
+  const fileLooksLikeFloorPlan = /floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(fileName);
+  const instructionsMentionFloorPlan = /floor\s*plans?|site\s*plans?|plan\s*(?:image|photo|file)?/i.test(instructions);
+  const explicitMain = /main\s+(?:property\s+)?(?:summary|listing|photos?|media|files?)|property\s+(?:summary|photos?|media|files?)|general\s+(?:property\s+)?(?:photos?|media|files?)|not\s+to\s+any\s+suite/i.test(instructions);
+  const suiteTarget = extractSuiteTargetFromDraft(draft, fileName);
+  const scope = suiteTarget && !explicitMain ? "suite" : "main";
+  const kind = (fileLooksLikeFloorPlan || (!fileLooksLikePhoto && instructionsMentionFloorPlan)) ? "floorPlan" : "photo";
+  return { scope, kind };
 }
 
 async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerReviewDraft; assets: File[]; slug: string }) {
@@ -302,8 +334,9 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
   let convertedCount = 0;
   let uploadedImageCount = 0;
   for (const asset of input.assets) {
+    const target = getBrokerDirectedAttachmentTarget(draft, asset.name);
     if (isImageFile(asset)) {
-      if (draftRequestsSuiteFloorPlanImage(draft, asset.name)) {
+      if (target.scope === "suite" && target.kind === "floorPlan") {
         convertedCount += 1;
         const imageUrl = await uploadClientFloorPlanImageViaMissionControl(asset, { slug: input.slug, index: convertedCount });
         draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
@@ -311,7 +344,11 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
       }
       uploadedImageCount += 1;
       const upload = await uploadClientListingImageViaMissionControl(asset, { slug: input.slug, index: uploadedImageCount });
-      draft = addPropertyMediaUploadToDraft(draft, upload, uploadedImageCount, input.slug);
+      if (target.scope === "suite" && target.kind === "photo") {
+        draft = addSuitePhotoUrlToDraft(draft, asset.name, upload.url);
+      } else {
+        draft = addPropertyMediaUploadToDraft(draft, upload, uploadedImageCount, input.slug);
+      }
       continue;
     }
     if (!isPdfFile(asset)) {
@@ -319,9 +356,15 @@ async function prepareClientSideSuiteFloorPlanImages(input: { draft: BrokerRevie
       continue;
     }
     const imageFile = await renderPdfFirstPageToImageFile(asset);
-    const imageUrl = await uploadClientFloorPlanImageViaMissionControl(imageFile, { slug: input.slug, index: convertedCount + 1 });
-    draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
-    convertedCount += 1;
+    if (target.scope === "suite" && target.kind === "floorPlan") {
+      convertedCount += 1;
+      const imageUrl = await uploadClientFloorPlanImageViaMissionControl(imageFile, { slug: input.slug, index: convertedCount });
+      draft = addSuiteFloorPlanUrlToDraft(draft, asset.name, imageUrl);
+      continue;
+    }
+    uploadedImageCount += 1;
+    const upload = await uploadClientListingImageViaMissionControl(imageFile, { slug: input.slug, index: uploadedImageCount });
+    draft = addPropertyMediaUploadToDraft(draft, upload, uploadedImageCount, input.slug);
   }
   return { draft, assetsForApi, convertedCount, uploadedImageCount };
 }
