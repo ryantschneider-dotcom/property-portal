@@ -727,7 +727,11 @@ function instructionsRequestFloorPlan(draft: PropertyPortalReviewDraftForApprova
 function uploadLooksLikeFloorPlan(upload: StagedListingImageUpload, draft: PropertyPortalReviewDraftForApproval) {
   if (isPdfUpload(upload)) return true;
   const name = [upload.originalName, upload.path, upload.url].filter(Boolean).join(" ");
-  return /floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(name) && instructionsRequestFloorPlan(draft);
+  const nameLooksLikeFloorPlan = /floor[-_\s]*plans?|site[-_\s]*plans?|plans?/i.test(name);
+  const nameLooksLikePhoto = /photos?|pictures?|images?|hero|front|exterior|interior/i.test(name);
+  if (nameLooksLikeFloorPlan && instructionsRequestFloorPlan(draft)) return true;
+  if (nameLooksLikePhoto) return false;
+  return instructionsRequestFloorPlan(draft) && instructionsRequestSuiteMedia(draft);
 }
 
 function instructionsRequestSuiteMedia(draft: PropertyPortalReviewDraftForApproval) {

@@ -477,6 +477,49 @@ test("modification approval with suite rent plus property photo keeps upload as 
   assert.equal(approvedPayload.admin.suites[0].suitePhotos, undefined);
 });
 
+test("modification approval with PNG suite floor plan does not replace parent hero image", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, any> }> = [];
+  const floorPlanUrl = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/property-intake%2F42-w-montgomery%2Ffloorplan.png?alt=media&token=floor123";
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "draft-preview",
+    assets: [new File(["floor-plan-bytes"], "uploaded.png", { type: "image/png" })],
+    uploadStagedImage: async (file, options) => ({
+      url: floorPlanUrl,
+      path: `property-intake/42-w-montgomery/${options.index}-${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
+    draft: {
+      kind: "modification",
+      title: "AI-drafted listing review",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "42-w-montgomery", instructions: "Put the attached PNG file under Suite P as a floor plan." },
+      currentListing: {
+        slug: "42-w-montgomery",
+        media: { heroImageUrl: "https://cdn.example.com/original-hero.jpg" },
+        admin: { suites: [{ suiteNumber: "P", availableSqFt: "1,900", baseRent: "19", rentType: "NNN", suiteFloorPlans: [] }] },
+      },
+      structuredUpdates: {
+        admin: { suites: [{ suiteNumber: "P", availableSqFt: "1,900", baseRent: "19", rentType: "NNN", suiteFloorPlans: [] }] },
+      },
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/42-w-montgomery" } });
+    },
+  });
+
+  const approvedPayload = calls.find((call) => call.url.endsWith("/api/admin/properties/launch-package"))?.body.approvedPayload as Record<string, any>;
+  assert.equal(approvedPayload.media?.heroImageUrl, "https://cdn.example.com/original-hero.jpg");
+  assert.deepEqual(approvedPayload.admin.suites[0].suiteFloorPlans, [floorPlanUrl]);
+  assert.deepEqual(approvedPayload.admin.suites[0].suitePhotos, []);
+});
+
 test("modification approval payload maps monthly suite rent to monthly pricing fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "publish-live",
