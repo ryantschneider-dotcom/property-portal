@@ -134,30 +134,47 @@ function assertCanvasHasVisiblePdfContent(canvas: HTMLCanvasElement) {
   }
 }
 
+type PdfJsModule = {
+  getDocument: (options: { data: Uint8Array }) => { promise: Promise<PdfDocument> };
+  AnnotationMode?: { ENABLE_FORMS?: number };
+  GlobalWorkerOptions?: { workerSrc?: string };
+};
+
+type PdfDocument = {
+  getPage: (pageNumber: number) => Promise<PdfPage>;
+};
+
+type PdfPage = {
+  getViewport: (options: { scale: number }) => { width: number; height: number };
+  render: (options: { canvasContext: CanvasRenderingContext2D; viewport: unknown; annotationMode?: number; renderInteractiveForms?: boolean }) => { promise: Promise<void> };
+};
+
 async function renderPdfFirstPageToImageFile(file: File) {
   if (typeof window === "undefined") throw new Error("PDF floor plan rasterization must run in the browser.");
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = (await import("pdfjs-dist")) as unknown as PdfJsModule;
   configurePdfJsWorker(pdfjs);
-  const loadingTask = (pdfjs as any).getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  let pdf: unknown;
-  let page: unknown;
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  let pdf: PdfDocument | undefined;
+  let page: PdfPage | undefined;
   try {
-    pdf = await loadingTask.promise;
-    page = await (pdf as { getPage: (pageNumber: number) => Promise<any> }).getPage(1);
-    const baseViewport = (page as { getViewport: (options: { scale: number }) => { width: number; height: number } }).getViewport({ scale: 1 });
+    const loadedPdf = await loadingTask.promise;
+    pdf = loadedPdf;
+    const loadedPage = await loadedPdf.getPage(1);
+    page = loadedPage;
+    const baseViewport = loadedPage.getViewport({ scale: 1 });
     const scale = Math.min(2.2, Math.max(1, 1400 / Math.max(baseViewport.width, 1)));
-    const viewport = (page as { getViewport: (options: { scale: number }) => unknown }).getViewport({ scale });
+    const viewport = loadedPage.getViewport({ scale });
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.floor((viewport as { width: number }).width));
-    canvas.height = Math.max(1, Math.floor((viewport as { height: number }).height));
+    canvas.width = Math.max(1, Math.floor(viewport.width));
+    canvas.height = Math.max(1, Math.floor(viewport.height));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Could not create browser canvas for PDF floor plan rendering.");
     context.fillStyle = "#fff";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    await (page as { render: (options: { canvasContext: CanvasRenderingContext2D; viewport: unknown; annotationMode?: number; renderInteractiveForms?: boolean }) => { promise: Promise<void> } }).render({
+    await loadedPage.render({
       canvasContext: context,
       viewport,
-      annotationMode: (pdfjs as any).AnnotationMode?.ENABLE_FORMS ?? 2,
+      annotationMode: pdfjs.AnnotationMode?.ENABLE_FORMS ?? 2,
       renderInteractiveForms: true,
     }).promise;
     assertCanvasHasVisiblePdfContent(canvas);
@@ -589,6 +606,18 @@ type OfferingSiteCommandPayload = {
   error?: string;
 };
 
+type VaultRequest = {
+  id: string;
+  propertyId?: string;
+  propertyTitle?: string;
+  requesterName?: string;
+  requesterEmail?: string;
+  company?: string;
+  status?: string;
+  requestedAt?: string;
+  accessUrl?: string;
+};
+
 
 export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }: { userRole: AuthRole; activeBrokerId?: string }) {
   const [intakeForm, setIntakeForm] = useState<IntakeFormState>(initialIntakeState);
@@ -641,10 +670,15 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [offeringSiteSelectedListingId, setOfferingSiteSelectedListingId] = useState("");
   const [offeringSiteJob, setOfferingSiteJob] = useState<OfferingSiteGenerationJob | null>(null);
   const [offeringSiteLastJobId, setOfferingSiteLastJobId] = useState("");
-  const [offeringSiteStatus, setOfferingSiteStatus] = useState("Select an active listing to launch a PIER Commercial offering website build.");
+  const [offeringSiteStatus, setOfferingSiteStatus] = useState("Select a listing, then launch the PIER offering site generation pipeline.");
   const [offeringSiteError, setOfferingSiteError] = useState("");
   const [offeringSiteBusy, setOfferingSiteBusy] = useState(false);
   const [offeringSiteUrlCopyStatus, setOfferingSiteUrlCopyStatus] = useState("");
+  const [vaultRequests, setVaultRequests] = useState<VaultRequest[]>([]);
+  const [vaultStatus, setVaultStatus] = useState("Load pending buyer and advisor access requests for the selected listing.");
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultDocumentFile, setVaultDocumentFile] = useState<File | null>(null);
+  const [vaultDocumentDescription, setVaultDocumentDescription] = useState("");
 
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
@@ -735,6 +769,68 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
   }
 
+
+  async function loadVaultRequests() {
+    setVaultBusy(true);
+    setVaultStatus("Loading Due Diligence Vault Queue…");
+    try {
+      const data = await fetch("/api/listingstream/due-diligence-requests", { cache: "no-store" }).then(parseJsonResponse) as { items?: VaultRequest[]; requests?: VaultRequest[] };
+      const items = Array.isArray(data.items) ? data.items : Array.isArray(data.requests) ? data.requests : [];
+      setVaultRequests(items);
+      setVaultStatus(items.length ? `${items.length} pending Vault request${items.length === 1 ? "" : "s"} loaded.` : "No pending Vault access requests.");
+    } catch (error) {
+      setVaultStatus(error instanceof Error ? error.message : "Could not load Due Diligence Vault requests.");
+    } finally {
+      setVaultBusy(false);
+    }
+  }
+
+  async function approveVaultRequest(requestId: string) {
+    setVaultBusy(true);
+    setVaultStatus("Creating 7-day Vault Key…");
+    try {
+      const data = await fetch(`/api/listingstream/due-diligence-requests/${encodeURIComponent(requestId)}/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ durationDays: 7 }),
+      }).then(parseJsonResponse) as { accessUrl?: string; url?: string };
+      const accessUrl = data.accessUrl || data.url;
+      setVaultRequests((current) => current.map((item) => item.id === requestId ? { ...item, status: "approved", accessUrl } : item));
+      setVaultStatus(accessUrl ? `7-day Vault Key ready: ${accessUrl}` : "7-day Vault Key created.");
+    } catch (error) {
+      setVaultStatus(error instanceof Error ? error.message : "Could not approve Vault request.");
+    } finally {
+      setVaultBusy(false);
+    }
+  }
+
+  async function uploadVaultDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedPropertyId) {
+      setVaultStatus("Select a listing before uploading a secure Vault document.");
+      return;
+    }
+    if (!vaultDocumentFile || !vaultDocumentDescription.trim()) {
+      setVaultStatus("Document Description and file are required for secure Vault upload.");
+      return;
+    }
+    setVaultBusy(true);
+    setVaultStatus("Uploading secure Vault document…");
+    try {
+      const formData = new FormData();
+      formData.set("propertyId", selectedPropertyId);
+      formData.set("description", vaultDocumentDescription.trim());
+      formData.set("file", vaultDocumentFile);
+      await fetch("/api/listingstream/vault-documents/upload", { method: "POST", body: formData }).then(parseJsonResponse);
+      setVaultDocumentFile(null);
+      setVaultDocumentDescription("");
+      setVaultStatus("Secure Vault document uploaded and registered with ListingStream.");
+    } catch (error) {
+      setVaultStatus(error instanceof Error ? error.message : "Secure Vault document upload failed.");
+    } finally {
+      setVaultBusy(false);
+    }
+  }
 
   async function launchOfferingSiteBuild(listingId?: string, retryJob?: OfferingSiteGenerationJob | null) {
     const targetListingId = listingId || offeringSiteSelectedListingId;
@@ -1734,6 +1830,55 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section data-testid="due-diligence-vault-command-center" className="rounded-[1.35rem] border border-zinc-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Due Diligence Vault Queue</p>
+            <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">Buyer access and secure documents</h3>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Approve verified access requests, issue a 7-day Vault Key, and upload controlled diligence files against the selected ListingStream property.</p>
+          </div>
+          <button type="button" onClick={() => void loadVaultRequests()} disabled={vaultBusy} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60">
+            {vaultBusy ? "Loading…" : "Refresh Vault Queue"}
+          </button>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-700">{vaultStatus}</div>
+
+        <div className="mt-4 grid gap-3">
+          {vaultRequests.length ? vaultRequests.map((request) => (
+            <div key={request.id} className="rounded-2xl border border-zinc-200 bg-white p-4 text-sm text-zinc-700">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-extrabold text-zinc-950">{request.requesterName || request.requesterEmail || "Vault requester"}</p>
+                  <p className="mt-1 text-xs font-semibold text-zinc-500">{request.company || request.propertyTitle || request.propertyId || "Selected listing"}</p>
+                  {request.accessUrl ? <p className="mt-2 break-all font-mono text-xs text-emerald-700"><span className="font-bold">accessUrl:</span> {request.accessUrl}</p> : null}
+                </div>
+                <button type="button" onClick={() => void approveVaultRequest(request.id)} disabled={vaultBusy || request.status === "approved"} className="rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-not-allowed disabled:opacity-50">
+                  Approve Vault Key
+                </button>
+              </div>
+            </div>
+          )) : <p className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-500">No Vault requests loaded.</p>}
+        </div>
+
+        <form onSubmit={(event) => void uploadVaultDocument(event)} className="mt-5 rounded-2xl border border-[#CB521E]/20 bg-[#fff8f4] p-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#CB521E]">Secure Vault Document Upload</p>
+          <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+            <label className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-[0.18em] text-zinc-500">Document Description</span>
+              <input value={vaultDocumentDescription} onChange={(event) => setVaultDocumentDescription(event.target.value)} className={inputClass} placeholder="Title Policy" />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-[0.18em] text-zinc-500">PDF or diligence file</span>
+              <input type="file" onChange={(event) => setVaultDocumentFile(event.target.files?.[0] ?? null)} className={inputClass} />
+            </label>
+            <button type="submit" disabled={vaultBusy || !vaultDocumentFile || !vaultDocumentDescription.trim()} className="self-end rounded-xl bg-zinc-950 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50">
+              Upload Document
+            </button>
+          </div>
+        </form>
       </section>
 
       <section data-testid="syndication-command-center" className="rounded-[1.35rem] border border-[#CB521E]/20 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">

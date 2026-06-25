@@ -58,7 +58,7 @@ export function ViewAsBrokerControl({ activeBrokerId = "ryan" }: { activeBrokerI
           ))}
         </select>
       </label>
-      <span className="hidden max-w-[220px] truncate text-[11px] text-zinc-600 2xl:inline">{getBrokerSenderEmail(brokerId)}</span>
+      <span className="hidden max-w-[220px] truncate text-[11px] text-zinc-600 2xl:inline">Viewing as {getBrokerSenderEmail(brokerId)}</span>
       {saving ? <span className="text-[11px] text-[#CB521E]">Switching…</span> : null}
       {error ? <span className="text-[11px] text-red-600">{error}</span> : null}
     </div>

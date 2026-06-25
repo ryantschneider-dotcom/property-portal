@@ -55,7 +55,7 @@ export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashb
   const [messages, setMessages] = useState<CopilotMessage[]>([
     createLocalMessage(
       "assistant",
-      "Welcome to the Mission Control Hermes Console. This is wired as a general-purpose Hermes interface, not a PIER-only assistant: send any work request and I’ll run it through the same default Hermes profile, memory, skills, and tools used in Telegram.",
+      "Welcome to the Master Co-Pilot Console. This desktop-native command node is wired as a general-purpose Hermes interface, not a PIER-only assistant: send any work request and I’ll run it through the same default Hermes profile, memory, skills, OpenClaw bridge, and tools used in Telegram.",
       "ok",
       { id: "mission-control-hermes-welcome", createdAt: "2026-06-17T14:20:00.000Z" },
     ),
@@ -164,7 +164,7 @@ export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashb
       const startResponse = await fetch("/api/hermes-console/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: hermesMessage, history: activeHistory, sessionId, sessionKey: "mission-control:master-console:ryan", attachedContext }),
+        body: JSON.stringify({ consoleMode: "master", message: hermesMessage, history: activeHistory, sessionId, sessionKey: "mission-control:master-console:ryan", attachedContext }),
       });
       const started = (await startResponse.json().catch(() => ({}))) as { ok?: boolean; run_id?: string; sessionId?: string; error?: string };
       if (!startResponse.ok || !started.run_id) throw new Error(started.error || `Hermes Console returned HTTP ${startResponse.status}`);

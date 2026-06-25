@@ -61,7 +61,7 @@ const postureItems = [
 const MISSION_SHELL_HEADER_HEIGHT_CLASS = "[--mission-shell-header-height:48px] md:[--mission-shell-header-height:52px]";
 const MASTER_CONSOLE_SHELL_CLASS = `flex min-h-screen min-w-0 flex-col bg-[#f6f4f1] scroll-pt-[var(--mission-shell-header-height)] ${MISSION_SHELL_HEADER_HEIGHT_CLASS}`;
 const MASTER_CONSOLE_HEADER_CLASS = "sticky top-0 z-20 flex h-[var(--mission-shell-header-height)] flex-none items-center overflow-hidden border-b border-zinc-200/80 bg-white/95 px-3 py-1 shadow-sm backdrop-blur-xl lg:px-4";
-const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 bg-[#f6f4f1] px-3 py-3 scroll-pt-[var(--mission-shell-header-height)] lg:px-4 xl:px-5";
+const MASTER_CONSOLE_HEADER_CLEARANCE_CLASS = "min-h-0 flex-1 bg-[#f6f4f1] px-3 pb-3 pt-[calc(var(--mission-shell-header-height)+1.5rem)] scroll-pt-[var(--mission-shell-header-height)] lg:px-4 xl:px-5";
 const compactTopNav: NavItem[] = [
   { href: "/", label: "Dashboard", match: "exact" },
   { href: "/pier-workspace", label: "PIER", match: "prefix" },
@@ -100,6 +100,7 @@ export async function MissionShell({
   const canSwitchBroker = session?.role === "master" || isStaff;
   const activeBrokerId = session?.brokerId ?? "ryan";
   const activeBrokerName = getBrokerDisplayName(activeBrokerId);
+  const shellModeLabel = isBroker ? "Broker Listing Console" : "Mission Control OS";
   const visibleActions: PageAction[] = [];
   const today = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
@@ -189,7 +190,7 @@ export async function MissionShell({
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <div className="min-w-0">
                   <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#CB521E]">
-                    Mission Control OS
+                    {shellModeLabel}
                   </p>
                   <div className="flex min-w-0 items-baseline gap-2">
                     <h2 className="truncate text-base font-semibold tracking-tight text-zinc-950 xl:text-lg">{title}</h2>
@@ -218,7 +219,7 @@ export async function MissionShell({
                 <div className="hidden items-center gap-1.5 text-[11px] text-zinc-500 2xl:flex">
                   <span className="rounded-full border border-[#CB521E]/20 bg-[#CB521E]/10 px-2 py-0.5 text-[#CB521E]">{today}</span>
                   <span className="rounded-full border border-emerald-500/20 bg-emerald-50 px-2 py-0.5 text-emerald-700">{isBroker ? "Broker Console" : "online"}</span>
-                  {canSwitchBroker ? <span className="hidden rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 2xl:inline">as {activeBrokerName}</span> : null}
+                  {canSwitchBroker ? <span className="hidden rounded-full border border-zinc-200 bg-zinc-100 px-2 py-0.5 2xl:inline">Impersonation Mode: viewing as {activeBrokerName}</span> : null}
                 </div>
                 <div className="flex items-center gap-1.5">
                   {visibleActions.map((action) => (

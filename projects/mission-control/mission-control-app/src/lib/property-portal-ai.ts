@@ -1,4 +1,4 @@
-import { interpretBrokerEditRequest, type BrokerEditInterpreterOptions, type BrokerEditInterpreterResult } from "@/lib/broker-edit-interpreter";
+import { interpretBrokerEditRequest, interpretBrokerEditRequestDeterministic, type BrokerEditInterpreterOptions, type BrokerEditInterpreterResult } from "@/lib/broker-edit-interpreter";
 import { buildPropertyPortalUrl, getPropertyPortalInternalHeaders, type PropertyPortalFetch, withPropertyPortalTimeout } from "@/lib/property-portal-client";
 
 export type PropertyPortalAiWriterResult = {
@@ -573,9 +573,12 @@ export async function createModificationReviewDraft(input: {
   interpreterOptions?: BrokerEditInterpreterOptions;
 }) {
   const currentListing = await fetchPropertyPortalListing(input);
+  const canUseFrontierInterpreter = Boolean(process.env.PIER_MANAGER_INTERPRETER_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY || process.env.PIER_MANAGER_INTERPRETER_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
   const interpreter = input.interpreter
     ? await input.interpreter(currentListing, input.instructions)
-    : await interpretBrokerEditRequest(currentListing, input.instructions, input.interpreterOptions);
+    : input.writer && !canUseFrontierInterpreter
+      ? interpretBrokerEditRequestDeterministic(currentListing, input.instructions)
+      : await interpretBrokerEditRequest(currentListing, input.instructions, input.interpreterOptions);
   const currentTitle = asString(currentListing.title) || asString((currentListing.content as Record<string, unknown> | undefined)?.saleTitle) || input.propertyIdOrSlug;
 
   if (interpreter.lifecycleAction) {
