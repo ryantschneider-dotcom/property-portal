@@ -674,6 +674,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [offeringSiteError, setOfferingSiteError] = useState("");
   const [offeringSiteBusy, setOfferingSiteBusy] = useState(false);
   const [offeringSiteUrlCopyStatus, setOfferingSiteUrlCopyStatus] = useState("");
+  const [offeringSiteRevisionInstructions, setOfferingSiteRevisionInstructions] = useState("");
+  const [offeringSiteRevisionAssets, setOfferingSiteRevisionAssets] = useState<File[]>([]);
+  const [offeringSiteRevisionStatus, setOfferingSiteRevisionStatus] = useState("Website changes are separate from listing-data modifications. Use this only for edits to the standalone offering website.");
+  const [offeringSiteRevisionError, setOfferingSiteRevisionError] = useState("");
+  const [offeringSiteRevisionSubmitting, setOfferingSiteRevisionSubmitting] = useState(false);
   const [vaultRequests, setVaultRequests] = useState<VaultRequest[]>([]);
   const [vaultStatus, setVaultStatus] = useState("Load pending buyer and advisor access requests for the selected listing.");
   const [vaultBusy, setVaultBusy] = useState(false);
@@ -902,6 +907,56 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
   }
 
+  function resetOfferingSiteRevisionState() {
+    setOfferingSiteRevisionInstructions("");
+    setOfferingSiteRevisionAssets([]);
+    setOfferingSiteRevisionError("");
+    setOfferingSiteRevisionStatus("Website changes are separate from listing-data modifications. Use this only for edits to the standalone offering website.");
+  }
+
+  async function submitOfferingSiteRevision(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const targetListingId = offeringSiteJob?.listingId || offeringSiteSelectedListingId;
+    if (!targetListingId) {
+      setOfferingSiteRevisionError("Select an active ListingStream listing before requesting website changes.");
+      return;
+    }
+    if (!publishedOfferingWebsiteUrl) {
+      setOfferingSiteRevisionError("Launch the PIER offering site build before requesting website-only changes.");
+      return;
+    }
+    if (!offeringSiteRevisionInstructions.trim() && offeringSiteRevisionAssets.length === 0) {
+      setOfferingSiteRevisionError("Describe the website changes or attach photos, PDFs, maps, or floor plans to add to the site.");
+      return;
+    }
+    setOfferingSiteRevisionSubmitting(true);
+    setOfferingSiteRevisionError("");
+    setOfferingSiteRevisionStatus("Website changes are in progress. This can take up to 10 minutes. You can keep working and return to this console; the live link will remain here.");
+    try {
+      const formData = new FormData();
+      formData.set("listingId", targetListingId);
+      formData.set("brokerInstructions", offeringSiteRevisionInstructions.trim());
+      offeringSiteRevisionAssets.forEach((file) => formData.append("files", file));
+      const payload = await fetch("/api/listingstream/offering-site-revisions", {
+        method: "POST",
+        body: formData,
+      }).then(parseJsonResponse) as OfferingSiteCommandPayload;
+      if (payload.job) {
+        setOfferingSiteJob(payload.job);
+        setOfferingSiteLastJobId(payload.job.listingId || targetListingId);
+      }
+      setOfferingSiteRevisionInstructions("");
+      setOfferingSiteRevisionAssets([]);
+      setOfferingSiteRevisionStatus(payload.message || "Website changes are in progress. This can take up to 10 minutes. The standalone offering website will republish without changing ListingStream listing data.");
+      if (payload.job?.listingId || targetListingId) void refreshOfferingSiteJob(payload.job?.listingId || targetListingId);
+    } catch (error) {
+      setOfferingSiteRevisionError(error instanceof Error ? error.message : "Website change request failed.");
+      setOfferingSiteRevisionStatus("Website change request needs attention. Listing-data modifications were not changed.");
+    } finally {
+      setOfferingSiteRevisionSubmitting(false);
+    }
+  }
+
   useEffect(() => {
     const status = String(offeringSiteJob?.status || "").toLowerCase();
     const hasLiveUrl = Boolean(offeringSiteJob?.deployment?.publicUrl || offeringSiteJob?.deployment?.customDomain);
@@ -1116,6 +1171,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     resetOmRevisionPanelState();
     setIncludeRentRoll(false);
     setIncludeProforma(false);
+    resetOfferingSiteRevisionState();
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
     setOfferingSiteSelectedListingId(value);
     if (listing) setListingSearchText(getListingSearchLabel(listing));
@@ -1137,6 +1193,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setIncludeRentRoll(false);
     setIncludeProforma(false);
     setOfferingSiteSelectedListingId("");
+    resetOfferingSiteRevisionState();
   }
 
   function updateIntake<K extends keyof IntakeFormState>(key: K, value: IntakeFormState[K]) {
@@ -1743,20 +1800,35 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
           <label className="space-y-2">
             <span className="text-xs font-extrabold uppercase tracking-[0.18em] text-zinc-500">Active ListingStream property</span>
-            <select value={offeringSiteSelectedListingId} onChange={(event) => setOfferingSiteSelectedListingId(event.target.value)} className={inputClass}>
+            <select
+              value={offeringSiteSelectedListingId}
+              onChange={(event) => {
+                setOfferingSiteSelectedListingId(event.target.value);
+                resetOfferingSiteRevisionState();
+              }}
+              className={inputClass}
+            >
               <option value="">Select listing to build</option>
               {activeListings.map((listing) => (
                 <option key={listing.id} value={getListingSelectionValue(listing)}>{listing.title || listing.address || listing.slug}</option>
               ))}
             </select>
           </label>
-          <button type="button" onClick={() => void launchOfferingSiteBuild()} disabled={offeringSiteBusy || !offeringSiteSelectedListingId} className="self-end rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
-            {offeringSiteBusy ? "Building…" : "Launch PIER Offering Site Build"}
-          </button>
+          {!publishedOfferingWebsiteUrl ? (
+            <button type="button" onClick={() => void launchOfferingSiteBuild()} disabled={offeringSiteBusy || !offeringSiteSelectedListingId} className="self-end rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60">
+              {offeringSiteBusy ? "Building…" : "Launch PIER Offering Site Build"}
+            </button>
+          ) : null}
         </div>
 
         {offeringSiteSelectedListing ? (
           <p className="mt-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600"><span className="font-bold text-zinc-950">Selected:</span> {offeringSiteSelectedListing.address || offeringSiteSelectedListing.title || offeringSiteSelectedListing.slug}</p>
+        ) : null}
+
+        {!publishedOfferingWebsiteUrl && offeringSiteSelectedListing ? (
+          <div data-testid="offering-site-no-website-state" className="mt-3 rounded-2xl border border-dashed border-[#CB521E]/35 bg-white p-4 text-sm font-semibold leading-6 text-zinc-700">
+            No offering website has been created for this listing yet. Launch PIER Offering Site Build to create the standalone GitHub Pages-backed property website.
+          </div>
         ) : null}
 
         {publishedOfferingWebsiteUrl ? (
@@ -1774,6 +1846,39 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             </div>
             {offeringSiteUrlCopyStatus ? <p className="mt-2 text-xs font-bold text-emerald-800">{offeringSiteUrlCopyStatus}</p> : null}
           </div>
+        ) : null}
+
+        {publishedOfferingWebsiteUrl ? (
+          <form data-testid="offering-site-revision-form" onSubmit={(event) => void submitOfferingSiteRevision(event)} className="mt-4 rounded-2xl border border-[#CB521E]/20 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#CB521E]">Request Website Changes</p>
+                <h4 className="mt-1 text-base font-extrabold text-zinc-950">Standalone offering website only</h4>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">Describe the public website changes in plain English. Attach photos, PDFs, maps, or floor plans if needed. This republish request does not modify ListingStream listing data, spaces, rates, documents, or the public listing page.</p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold leading-5 text-zinc-600 xl:max-w-xs">
+                Modify Listing changes listing data. Request Website Changes changes the standalone offering website only.
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_0.75fr]">
+              <label className="space-y-2">
+                <span className="text-xs font-extrabold uppercase tracking-[0.18em] text-zinc-500">Plain-English website instructions</span>
+                <textarea value={offeringSiteRevisionInstructions} onChange={(event) => setOfferingSiteRevisionInstructions(event.target.value)} className={textareaClass} placeholder="Example: Replace the hero image with the new aerial, add the attached floor plan under Gallery, and update the CTA language for medical tenants." />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-extrabold uppercase tracking-[0.18em] text-zinc-500">Optional photos / PDFs / maps / floor plans</span>
+                <input type="file" multiple onChange={(event) => setOfferingSiteRevisionAssets(fileListToArray(event.target.files))} className={inputClass} />
+                {offeringSiteRevisionAssets.length ? <p className="text-xs font-semibold text-zinc-500">{offeringSiteRevisionAssets.length} attachment{offeringSiteRevisionAssets.length === 1 ? "" : "s"} ready to send.</p> : <p className="text-xs font-semibold text-zinc-500">Attachments are optional. Use this for website-supporting files only.</p>}
+              </label>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <p data-testid="offering-site-revision-status" className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-semibold leading-6 text-zinc-700">{offeringSiteRevisionStatus}</p>
+              <button type="submit" disabled={offeringSiteRevisionSubmitting || (!offeringSiteRevisionInstructions.trim() && offeringSiteRevisionAssets.length === 0)} className="rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-not-allowed disabled:opacity-50">
+                {offeringSiteRevisionSubmitting ? "Sending Website Change Request…" : "Send Website Change Request"}
+              </button>
+            </div>
+            {offeringSiteRevisionError ? <div role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">{offeringSiteRevisionError}</div> : null}
+          </form>
         ) : null}
 
         <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-700">{offeringSiteStatus}</div>
