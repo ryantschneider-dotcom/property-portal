@@ -43,6 +43,13 @@ export type PropertyPortalActiveListing = {
   publishStatus?: string;
   previewUrl?: string;
   publicUrl?: string;
+  offeringWebsiteUrl?: string;
+  propertyWebsiteUrl?: string;
+  links?: {
+    offeringWebsiteUrl?: string;
+    propertyWebsiteUrl?: string;
+    [key: string]: unknown;
+  };
 };
 
 export type PropertyPortalRequestOptions = {

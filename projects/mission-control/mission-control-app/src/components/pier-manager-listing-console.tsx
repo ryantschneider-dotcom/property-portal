@@ -466,6 +466,20 @@ function getListingSelectionValue(listing: PropertyPortalActiveListing) {
   return listing.slug || listing.id;
 }
 
+function cleanWebsiteUrl(value: unknown) {
+  return typeof value === "string" && /^https?:\/\//i.test(value.trim()) ? value.trim() : "";
+}
+
+function getPublishedOfferingWebsiteUrl(listing?: PropertyPortalActiveListing | null, job?: OfferingSiteGenerationJob | null) {
+  return cleanWebsiteUrl(job?.deployment?.publicUrl)
+    || cleanWebsiteUrl(job?.deployment?.customDomain)
+    || cleanWebsiteUrl(listing?.offeringWebsiteUrl)
+    || cleanWebsiteUrl(listing?.propertyWebsiteUrl)
+    || cleanWebsiteUrl(listing?.links?.offeringWebsiteUrl)
+    || cleanWebsiteUrl(listing?.links?.propertyWebsiteUrl)
+    || "";
+}
+
 function getListingSearchLabel(listing: PropertyPortalActiveListing) {
   const primary = listing.title || listing.address || listing.slug || listing.id;
   const titleSuffix = listing.address && listing.address !== primary ? ` — ${listing.address}` : "";
@@ -630,6 +644,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [offeringSiteStatus, setOfferingSiteStatus] = useState("Select an active listing to launch a PIER Commercial offering website build.");
   const [offeringSiteError, setOfferingSiteError] = useState("");
   const [offeringSiteBusy, setOfferingSiteBusy] = useState(false);
+  const [offeringSiteUrlCopyStatus, setOfferingSiteUrlCopyStatus] = useState("");
 
   const [reviewDraft, setReviewDraft] = useState<BrokerReviewDraft | null>(null);
   const [revisionFeedback, setRevisionFeedback] = useState("");
@@ -729,12 +744,12 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
     setOfferingSiteBusy(true);
     setOfferingSiteError("");
-    setOfferingSiteStatus(retryJob ? "Re-sending this offering site build to the PIER/Vercel Website Production Factory…" : "Sending this listing to the PIER/Vercel Website Production Factory…");
+    setOfferingSiteStatus(retryJob ? "Re-sending this offering site build to the PIER Website Production Factory…" : "Sending this listing to the PIER Website Production Factory…");
     try {
       const payload = await fetch("/api/listingstream/offering-sites", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", workflow: "vercel-offering-site" }),
+        body: JSON.stringify({ listingId: targetListingId, requestedBy: "pier-manager-desktop", workflow: "github-pages-offering-site" }),
       }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
@@ -743,12 +758,12 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         // Legacy blocked states can still surface validation metadata, but Vercel launches should not expose obsolete external-hosting workflows.
         if (payload.job.status === "blocked") {
           setOfferingSiteError(`Build blocked by missing data${missingFields.length ? `: ${missingFields.join(", ")}` : "."}`);
-          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the PIER/Vercel build.");
+          setOfferingSiteStatus("Offering site build needs more public data. Use Auto-Enrich Data to query public records and patch the listing payload, then retry the PIER website build.");
         } else {
-          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "PIER/Vercel returned the live offering site URL. Open it below." : payload.message || PRODUCTION_FACTORY_MESSAGE);
+          setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "PIER returned the live offering site URL. Copy it below for email marketing, OM links, or outside use." : payload.message || PRODUCTION_FACTORY_MESSAGE);
         }
       } else {
-        setOfferingSiteError(payload.error || "PIER/Vercel did not return an offering site job.");
+        setOfferingSiteError(payload.error || "PIER did not return an offering site job.");
       }
     } catch (error) {
       setOfferingSiteError(error instanceof Error ? error.message : "Offering site build failed.");
@@ -766,7 +781,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       const payload = await fetch(`/api/listingstream/offering-sites?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" }).then(parseJsonResponse) as OfferingSiteCommandPayload;
       if (payload.job) {
         setOfferingSiteJob(payload.job);
-        setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "PIER/Vercel returned the live offering site URL. Open it below." : payload.message || "The PIER/Vercel Website Production Factory is still building the offering site. The link will appear here automatically when it is ready.");
+        setOfferingSiteStatus(payload.job.deployment?.publicUrl || payload.job.status === "deployed" ? "PIER returned the live offering site URL. Copy it below for email marketing, OM links, or outside use." : payload.message || "The PIER Website Production Factory is still building the offering site. The link will appear here automatically when it is ready.");
       } else {
         setOfferingSiteError(payload.error || "No offering site job returned.");
       }
@@ -779,6 +794,16 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
 
   function retryOfferingSiteBuild() {
     void launchOfferingSiteBuild(offeringSiteJob?.listingId || offeringSiteSelectedListingId, offeringSiteJob);
+  }
+
+  async function copyOfferingSiteUrl(url: string) {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setOfferingSiteUrlCopyStatus("Copied offering website address.");
+    } catch {
+      setOfferingSiteUrlCopyStatus("Select the website address and copy it manually.");
+    }
   }
 
   useEffect(() => {
@@ -1481,6 +1506,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const syndicationReadiness = syndicationPayload?.readiness ?? [];
 
   const offeringSiteSelectedListing = useMemo(() => activeListings.find((item) => item.id === offeringSiteSelectedListingId || item.slug === offeringSiteSelectedListingId), [activeListings, offeringSiteSelectedListingId]);
+  const publishedOfferingWebsiteUrl = getPublishedOfferingWebsiteUrl(offeringSiteSelectedListing, offeringSiteJob);
   const selectedListingPublicUrl = selectedListing
     ? selectedListing.publicUrl || normalizePropertyPortalDraftPreviewUrl(`/property/${selectedListing.slug || selectedListing.id}`)
     : "";
@@ -1611,7 +1637,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#CB521E]">Offering Site Command Center</p>
             <h3 className="mt-1 text-xl font-extrabold tracking-tight text-zinc-950">PIER Commercial website builds</h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">Launch or refresh the live PIER offering site for the selected property. Broker-visible build logs now expose the exact root cause for Vercel build crashes, schema mismatches, missing required variables, and data-blocking validation errors.</p>
+            <p className="mt-2 text-sm leading-6 text-zinc-600">Launch or refresh the live PIER offering site for the selected property. When the GitHub Pages-backed property domain is published, the exact website address appears here so brokers can copy it into email marketing, an OM, or any outside workflow.</p>
           </div>
           <button type="button" onClick={() => void refreshOfferingSiteJob()} disabled={offeringSiteBusy || !offeringSiteLastJobId} className="rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50">
             {offeringSiteBusy ? "Refreshing…" : "Refresh Status"}
@@ -1637,6 +1663,23 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
           <p className="mt-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600"><span className="font-bold text-zinc-950">Selected:</span> {offeringSiteSelectedListing.address || offeringSiteSelectedListing.title || offeringSiteSelectedListing.slug}</p>
         ) : null}
 
+        {publishedOfferingWebsiteUrl ? (
+          <div data-testid="offering-site-published-url-card" className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-700">Published Website Address</p>
+                <p className="mt-1 text-xs font-semibold text-emerald-800">Use this exact DNS/CNAME-backed property website URL in Mailchimp campaigns, offering memoranda, email signatures, or outside broker materials.</p>
+              </div>
+              <a data-testid="offering-site-live-url" className="inline-flex rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-extrabold text-white" href={publishedOfferingWebsiteUrl} target="_blank" rel="noopener noreferrer">Open site</a>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input data-testid="offering-site-copyable-url" readOnly value={publishedOfferingWebsiteUrl} onFocus={(event) => event.currentTarget.select()} className="min-w-0 flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2 font-mono text-xs text-zinc-900" aria-label="Published offering website address" />
+              <button type="button" onClick={() => void copyOfferingSiteUrl(publishedOfferingWebsiteUrl)} className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-extrabold text-emerald-900 transition hover:bg-emerald-100">Copy URL</button>
+            </div>
+            {offeringSiteUrlCopyStatus ? <p className="mt-2 text-xs font-bold text-emerald-800">{offeringSiteUrlCopyStatus}</p> : null}
+          </div>
+        ) : null}
+
         <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-700">{offeringSiteStatus}</div>
         {offeringSiteError ? (
           <div role="alert" className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
@@ -1659,7 +1702,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             <p><span className="font-bold text-zinc-900">Status:</span> {offeringSiteJob.status === "deployed" || offeringSiteJob.deployment?.publicUrl ? "Live" : offeringSiteJob.status === "failed" ? "Failed — see root cause below" : offeringSiteJob.status === "blocked" ? "Blocked — missing listing data shown below" : "Working"}</p>
             {offeringSiteRootCause ? <p className="mt-2 break-words text-sm font-bold text-amber-800"><span className="text-zinc-900">Root cause:</span> {offeringSiteRootCause}</p> : null}
             {offeringSiteMissingFields.length ? <p className="mt-2 text-sm font-semibold text-amber-800"><span className="text-zinc-900">Missing fields:</span> {offeringSiteMissingFields.join(", ")}</p> : null}
-            {(offeringSiteJob.deployment?.publicUrl || offeringSiteJob.deployment?.customDomain) ? <a data-testid="offering-site-live-url" className="mt-2 inline-flex rounded-xl bg-[#CB521E] px-4 py-2 font-extrabold text-white" href={(offeringSiteJob.deployment.publicUrl || offeringSiteJob.deployment.customDomain) as string} target="_blank" rel="noopener noreferrer">Open live offering site</a> : null}
+            {publishedOfferingWebsiteUrl ? <p className="mt-2 break-all font-mono text-[11px] text-zinc-700"><span className="font-bold text-zinc-900">Live URL:</span> {publishedOfferingWebsiteUrl}</p> : null}
           </div>
         ) : null}
 

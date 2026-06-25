@@ -198,6 +198,12 @@ test("PIER Manager hides operational tools until a global property context is se
   assert.doesNotMatch(source, /window\.open\("", "_blank"/);
   assert.match(source, /Operational tools are hidden until you select a listing/);
   assert.match(source, /\{hasActivePropertyContext \? \(\s*<>[\s\S]*data-testid=\"offering-site-command-center\"/);
+  assert.match(source, /data-testid=\"offering-site-published-url-card\"/);
+  assert.match(source, /data-testid=\"offering-site-copyable-url\"/);
+  assert.match(source, /Published Website Address/);
+  assert.match(source, /Copy URL/);
+  assert.match(source, /github-pages-offering-site/);
+  assert.doesNotMatch(source, /PIER\/Vercel/);
   assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"syndication-command-center\"/);
   assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"om-revision-request\"/);
 });
