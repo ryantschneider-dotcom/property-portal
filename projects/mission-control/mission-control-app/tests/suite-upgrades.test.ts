@@ -232,6 +232,33 @@ test("suite floor plan file-only instructions produce high-confidence structured
   assert.equal(interpreter.flags.length, 0);
 });
 
+test("generic attachment-to-suite wording creates a real suite media mutation", async () => {
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Parrott Plaza",
+    descriptionHtml: "<p>Attachment added to Suite P details as requested.</p>",
+    highlights: [],
+    structuredUpdates: {},
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: "Attachment added to Suite P details as requested.",
+    interpreter: deterministicInterpreter,
+    fetchImpl: async () => Response.json(currentListing),
+    writer,
+  });
+
+  const suites = (draft.structuredUpdates.admin as { suites: Array<Record<string, unknown>> }).suites;
+  const suiteP = suites.find((suite) => suite.suiteNumber === "P");
+  const interpreter = draft.review.interpreter;
+  assert.ok(interpreter);
+  assert.equal(interpreter.confidence, "high");
+  assert.deepEqual(suiteP?.suitePhotos, []);
+  assert.match(interpreter.summary.join(" "), /Suite P photo upload mapping/i);
+  assert.equal(interpreter.flags.length, 0);
+});
+
 test("suite PDF uploads are converted to image URLs but still routed to suiteFloorPlans", () => {
   const payload = buildPropertyPortalApprovedPayload({
     mode: "publish-live",
