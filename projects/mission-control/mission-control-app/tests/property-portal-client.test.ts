@@ -520,6 +520,60 @@ test("modification approval with PNG suite floor plan does not replace parent he
   assert.deepEqual(approvedPayload.admin.suites[0].suitePhotos, []);
 });
 
+test("modification approval keeps broker-directed main summary attachments out of suite media", async () => {
+  const { approvePropertyPortalReviewDraft } = await import("../src/lib/property-portal-client");
+  const calls: Array<{ url: string; body: Record<string, any> }> = [];
+  const propertyPhotoUrl = "https://firebasestorage.googleapis.com/v0/b/listingstream/o/property-intake%2Flease-center%2Fmain-photo.tiff?alt=media&token=main123";
+
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://portal.example.com",
+    mode: "draft-preview",
+    assets: [new File(["photo-bytes"], "main-building.tiff", { type: "image/tiff" })],
+    uploadStagedImage: async (file, options) => ({
+      url: propertyPhotoUrl,
+      path: `property-intake/lease-center/${options.index}-${file.name}`,
+      contentType: file.type,
+      size: file.size,
+      originalName: file.name,
+    }),
+    draft: {
+      kind: "modification",
+      title: "Lease Center",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "lease-center", instructions: "Add the attached TIFF to the main property summary photos, not to any suite." },
+      currentListing: {
+        slug: "lease-center",
+        media: { heroImageUrl: "https://cdn.example.com/existing-hero.jpg" },
+        admin: { suites: [{ suiteNumber: "A" }, { suiteNumber: "B" }] },
+      },
+      structuredUpdates: {
+        admin: { suites: [{ suiteNumber: "A" }, { suiteNumber: "B" }] },
+      },
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return Response.json({ success: true, result: { previewUrl: "/preview/lease-center" } });
+    },
+  });
+
+  const approvedPayload = calls.find((call) => call.url.endsWith("/api/admin/properties/launch-package"))?.body.approvedPayload as Record<string, any>;
+  assert.equal(approvedPayload.media.heroImageUrl, propertyPhotoUrl);
+  assert.equal(approvedPayload.media.images[0].urls.original, propertyPhotoUrl);
+  assert.deepEqual(approvedPayload.admin.suites[0].suitePhotos, undefined);
+  assert.deepEqual(approvedPayload.admin.suites[1].suitePhotos, undefined);
+});
+
+test("PIER Manager client classifies attachments before upload so suite images do not become hero media", async () => {
+  const componentSource = await readFile("src/components/pier-manager-listing-console.tsx", "utf8");
+
+  assert.match(componentSource, /function getBrokerDirectedAttachmentTarget/);
+  assert.match(componentSource, /target\.scope === "suite" && target\.kind === "floorPlan"/);
+  assert.match(componentSource, /target\.scope === "suite" && target\.kind === "photo"/);
+  assert.match(componentSource, /addSuitePhotoUrlToDraft/);
+  assert.match(componentSource, /renderPdfFirstPageToImageFile\(asset\)[\s\S]*uploadClientListingImageViaMissionControl/);
+});
+
 test("modification approval payload maps monthly suite rent to monthly pricing fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "publish-live",
