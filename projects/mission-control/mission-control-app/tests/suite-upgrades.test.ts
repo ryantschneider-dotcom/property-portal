@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import { createModificationReviewDraft, buildModificationDeltaPrompt, type PropertyPortalCloudWriter } from "../src/lib/property-portal-ai";
 import { interpretBrokerEditRequestDeterministic } from "../src/lib/broker-edit-interpreter";
-import { buildPropertyPortalApprovedPayload } from "../src/lib/property-portal-client";
+import { approvePropertyPortalReviewDraft, buildPropertyPortalApprovedPayload } from "../src/lib/property-portal-client";
 
 const deterministicInterpreter = async (current: Record<string, unknown>, instructions: string) => interpretBrokerEditRequestDeterministic(current, instructions);
 
@@ -255,8 +255,108 @@ test("generic attachment-to-suite wording creates a real suite media mutation", 
   assert.ok(interpreter);
   assert.equal(interpreter.confidence, "high");
   assert.deepEqual(suiteP?.suitePhotos, []);
-  assert.match(interpreter.summary.join(" "), /Suite P photo upload mapping/i);
+  assert.deepEqual(suiteP?.suiteFloorPlans, []);
+  assert.match(interpreter.summary.join(" "), /Suite P attachment upload mapping/i);
   assert.equal(interpreter.flags.length, 0);
+});
+
+test("generic Suite P PDF attachment saves only to Suite P floor plans", async () => {
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Parrott Plaza",
+    descriptionHtml: "<p>Attachment added to Suite P details as requested.</p>",
+    highlights: [],
+    structuredUpdates: {},
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: "Attachment added to Suite P details as requested.",
+    interpreter: deterministicInterpreter,
+    fetchImpl: async () => Response.json(currentListing),
+    writer,
+  });
+
+  const launchBodies: Array<Record<string, unknown>> = [];
+  const pdfUrl = "https://storage.googleapis.com/pier-test/parrott-suite-p-floorplan.pdf";
+  const result = await approvePropertyPortalReviewDraft({
+    baseUrl: "https://listingportal.piercommercial.com",
+    mode: "draft-preview",
+    draft,
+    assets: [new File(["%PDF-1.4"], "Parrott Plaza Suite P Floorplan.pdf", { type: "application/pdf" })],
+    uploadStagedImage: async () => ({
+      url: pdfUrl,
+      path: "test/parrott-suite-p-floorplan.pdf",
+      originalName: "Parrott Plaza Suite P Floorplan.pdf",
+      contentType: "application/pdf",
+      size: 8,
+    }),
+    fetchImpl: async (_url, init) => {
+      launchBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true, slug: "42-west-montgomery-cross-road", previewUrl: "/preview/42-west-montgomery-cross-road" });
+    },
+  });
+
+  assert.equal(result.save.success, true);
+  assert.equal(launchBodies.length, 1);
+  const launchPayload = launchBodies[0].approvedPayload as Record<string, unknown>;
+  assert.equal(launchPayload.photos, undefined);
+  const media = launchPayload.media as Record<string, unknown> | undefined;
+  assert.equal(media?.heroImageUrl, undefined);
+  const suites = ((launchPayload.admin as { suites: Array<Record<string, unknown>> }).suites);
+  const suiteP = suites.find((suite) => suite.suiteNumber === "P");
+  const suiteM = suites.find((suite) => suite.suiteNumber === "M");
+  assert.deepEqual(suiteP?.suiteFloorPlans, [pdfUrl]);
+  assert.deepEqual(suiteP?.suitePhotos, []);
+  assert.equal(suiteM?.suiteFloorPlans, undefined);
+  assert.equal(suiteM?.suitePhotos, undefined);
+});
+
+test("generic Suite P image attachment saves only to Suite P photos", async () => {
+  const writer: PropertyPortalCloudWriter = async () => ({
+    title: "Parrott Plaza",
+    descriptionHtml: "<p>Attachment added to Suite P details as requested.</p>",
+    highlights: [],
+    structuredUpdates: {},
+    mediaNotes: [],
+  });
+
+  const draft = await createModificationReviewDraft({
+    propertyIdOrSlug: "42-west-montgomery-cross-road",
+    instructions: "Attachment added to Suite P details as requested.",
+    interpreter: deterministicInterpreter,
+    fetchImpl: async () => Response.json(currentListing),
+    writer,
+  });
+
+  const launchBodies: Array<Record<string, unknown>> = [];
+  const imageUrl = "https://storage.googleapis.com/pier-test/parrott-suite-p-photo.jpg";
+  await approvePropertyPortalReviewDraft({
+    baseUrl: "https://listingportal.piercommercial.com",
+    mode: "draft-preview",
+    draft,
+    assets: [new File(["fake image"], "Suite P storefront.jpg", { type: "image/jpeg" })],
+    uploadStagedImage: async () => ({
+      url: imageUrl,
+      path: "test/parrott-suite-p-photo.jpg",
+      originalName: "Suite P storefront.jpg",
+      contentType: "image/jpeg",
+      size: 10,
+    }),
+    fetchImpl: async (_url, init) => {
+      launchBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true, slug: "42-west-montgomery-cross-road", previewUrl: "/preview/42-west-montgomery-cross-road" });
+    },
+  });
+
+  const launchPayload = launchBodies[0].approvedPayload as Record<string, unknown>;
+  assert.equal(launchPayload.photos, undefined);
+  const media = launchPayload.media as Record<string, unknown> | undefined;
+  assert.equal(media?.heroImageUrl, undefined);
+  const suites = ((launchPayload.admin as { suites: Array<Record<string, unknown>> }).suites);
+  const suiteP = suites.find((suite) => suite.suiteNumber === "P");
+  assert.deepEqual(suiteP?.suitePhotos, [imageUrl]);
+  assert.deepEqual(suiteP?.suiteFloorPlans, []);
 });
 
 test("suite PDF uploads are converted to image URLs but still routed to suiteFloorPlans", () => {

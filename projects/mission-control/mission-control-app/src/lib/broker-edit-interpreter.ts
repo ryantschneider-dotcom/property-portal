@@ -293,12 +293,12 @@ function extractSuiteNotes(instructions: string, suiteNumber: string) {
 }
 
 
-function getSuiteMediaIntent(instructions: string): "floorPlan" | "photo" | null {
+function getSuiteMediaIntent(instructions: string): "floorPlan" | "photo" | "attachment" | null {
   const mentionsFile = /\b(?:upload(?:ed)?|attach(?:ed|ment)?|files?|pdf|images?|photos?|pictures?|plans?|documents?|details?)\b/i.test(instructions);
   if (!mentionsFile) return null;
   if (/\b(?:floor\s*plans?|site\s*plans?|plan\s*(?:pdf|file|image|photo)?|pdf\s*floor\s*plan)\b/i.test(instructions)) return "floorPlan";
   if (/\b(?:suite\s*)?(?:photos?|images?|pictures?)\b/i.test(instructions)) return "photo";
-  if (/\b(?:attach(?:ed|ment)?|upload(?:ed)?|files?|documents?|details?)\b/i.test(instructions)) return "photo";
+  if (/\b(?:attach(?:ed|ment)?|upload(?:ed)?|files?|documents?|details?)\b/i.test(instructions)) return "attachment";
   return null;
 }
 
@@ -662,6 +662,11 @@ function updateSuiteRecord(suites: SuiteRecord[], suiteNumber: string, instructi
     current.suitePhotos = Array.isArray(current.suitePhotos) ? current.suitePhotos : [];
     changed = true;
     messages.push(`Prepared Suite ${suiteNumber} photo upload mapping.`);
+  } else if (mediaIntent === "attachment") {
+    current.suitePhotos = Array.isArray(current.suitePhotos) ? current.suitePhotos : [];
+    current.suiteFloorPlans = Array.isArray(current.suiteFloorPlans) ? current.suiteFloorPlans : [];
+    changed = true;
+    messages.push(`Prepared Suite ${suiteNumber} attachment upload mapping.`);
   }
 
   if (!changed) {
