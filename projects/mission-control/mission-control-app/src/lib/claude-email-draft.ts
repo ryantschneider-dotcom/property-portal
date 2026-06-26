@@ -8,7 +8,7 @@ type BrokerContext = {
 };
 
 export const PIER_EMAIL_LOGO_URL =
-  process.env.PIER_EMAIL_LOGO_URL || "https://missioncontrol.piercommercial.com/assets/Brokeragetransp.png";
+  process.env.PIER_EMAIL_LOGO_URL || "https://www.piercommercial.com/wp-content/uploads/Brokeragetransp.png";
 
 export type ClaudeEmailSourcePacket = {
   generatedAt: string;

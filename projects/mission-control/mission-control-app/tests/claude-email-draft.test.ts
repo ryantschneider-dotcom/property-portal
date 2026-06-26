@@ -64,7 +64,7 @@ test("Claude email draft normalizer validates strategic draft output", () => {
     subjectLines: ["42 West Montgomery | Move-in ready Savannah space", "Southside Savannah lease opportunity"],
     previewText: "Freestanding commercial space near Abercorn Street.",
     campaignStrategy: "Lead with location and ready occupancy.",
-    emailHtml: "<!doctype html><html><body><img src=\"https://missioncontrol.piercommercial.com/assets/Brokeragetransp.png\" alt=\"PIER Commercial Real Estate\"><h1>42 West Montgomery</h1><a href=\"https://piercommercial.com\">View Property Website</a></body></html>",
+    emailHtml: "<!doctype html><html><body><img src=\"https://www.piercommercial.com/wp-content/uploads/Brokeragetransp.png\" alt=\"PIER Commercial Real Estate\"><h1>42 West Montgomery</h1><a href=\"https://piercommercial.com\">View Property Website</a></body></html>",
     plainText: "42 West Montgomery\nView Property Website: https://piercommercial.com",
     ctaText: "View Property Website",
     designNotes: "Dark header, orange CTA, clean mobile stack.",
@@ -95,7 +95,7 @@ test("Claude email normalizer rejects faux or filtered PIER logos", () => {
 
   assert.throws(() => normalizeClaudeEmailDraft({
     ...baseDraft,
-    emailHtml: "<!doctype html><html><body><img src=\"https://missioncontrol.piercommercial.com/assets/Brokeragetransp.png\" style=\"filter:invert(1)\"><h1>42 West Montgomery</h1></body></html>",
+    emailHtml: "<!doctype html><html><body><img src=\"https://www.piercommercial.com/wp-content/uploads/Brokeragetransp.png\" style=\"filter:invert(1)\"><h1>42 West Montgomery</h1></body></html>",
   }), /recreate or CSS-filter/);
 });
 
@@ -111,7 +111,7 @@ test("Claude provider runner posts to Anthropic messages API and parses JSON tex
           subjectLines: ["Test Listing | PIER Commercial"],
           previewText: "A focused PIER listing update.",
           campaignStrategy: "Lead with the property-specific hook.",
-          emailHtml: "<!doctype html><html><body><img src=\"https://missioncontrol.piercommercial.com/assets/Brokeragetransp.png\" alt=\"PIER Commercial Real Estate\"><h1>Test Listing</h1><a href=\"https://piercommercial.com\">View Property Website</a></body></html>",
+          emailHtml: "<!doctype html><html><body><img src=\"https://www.piercommercial.com/wp-content/uploads/Brokeragetransp.png\" alt=\"PIER Commercial Real Estate\"><h1>Test Listing</h1><a href=\"https://piercommercial.com\">View Property Website</a></body></html>",
           plainText: "Test Listing\nView Property Website: https://piercommercial.com",
           ctaText: "View Property Website",
           designNotes: "PIER email layout.",

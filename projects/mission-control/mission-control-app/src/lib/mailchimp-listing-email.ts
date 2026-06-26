@@ -2,7 +2,7 @@ type ListingRecord = Record<string, any>;
 
 const PIER_ORANGE = "#CB521E";
 const PIER_TEXT = "#1a1a2e";
-const PIER_LOGO_URL = process.env.PIER_EMAIL_LOGO_URL || "https://missioncontrol.piercommercial.com/assets/Brokeragetransp.png";
+const PIER_LOGO_URL = process.env.PIER_EMAIL_LOGO_URL || "https://www.piercommercial.com/wp-content/uploads/Brokeragetransp.png";
 const PIER_PUBLIC_LISTING_BASE_URL = process.env.PIER_PUBLIC_LISTING_BASE_URL || "https://listingportal.piercommercial.com";
 
 export function getMailchimpServerPrefix(env: Record<string, string | undefined> = process.env) {
