@@ -62,8 +62,9 @@ test("Master Console layout uses a tight grid viewport below the sticky header",
   assert.doesNotMatch(shell, /h-dvh/);
   assert.doesNotMatch(shell, /min-h-0 flex-1 overflow-auto/);
   assert.match(shell, /min-h-0 flex-1 bg-\[#f6f4f1\]/);
-  assert.match(component, /h-\[calc\(100dvh-7\.25rem\)\]/);
-  assert.match(component, /grid min-h-0 grid-rows-\[auto_minmax\(0,1fr\)_auto\] overflow-hidden/);
+  assert.match(component, /min-h-\[calc\(100dvh-7\.25rem\)\]/);
+  assert.doesNotMatch(component, /grid h-\[calc\(100dvh-7\.25rem\)\]/);
+  assert.match(component, /grid min-h-\[900px\] grid-rows-\[auto_minmax\(28rem,1fr\)_auto\] overflow-hidden/);
   assert.match(component, /min-h-0 flex-1 overflow-y-auto/);
 });
 

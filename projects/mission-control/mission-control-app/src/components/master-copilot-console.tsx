@@ -24,8 +24,8 @@ const fileStructures = ["/Users/macclaw/projects", "/Users/macclaw/listingstream
 const MAX_PENDING_ATTACHMENTS = 8;
 const ACCEPTED_ATTACHMENT_TYPES = "image/*,video/*,.pdf,.txt,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 const MASTER_CONSOLE_VIEWPORT_CLEARANCE_CLASS =
-  "grid h-[calc(100dvh-7.25rem)] min-h-[620px] min-h-0 scroll-mt-24 gap-4 pb-1 xl:grid-cols-[minmax(0,1.65fr)_440px] 2xl:grid-cols-[minmax(0,1.8fr)_500px]";
-const MASTER_CONSOLE_CHAT_CARD_CLASS = "grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm";
+  "grid min-h-[calc(100dvh-7.25rem)] scroll-mt-24 gap-4 pb-1 xl:grid-cols-[minmax(0,1.65fr)_440px] 2xl:grid-cols-[minmax(0,1.8fr)_500px]";
+const MASTER_CONSOLE_CHAT_CARD_CLASS = "grid min-h-[900px] grid-rows-[auto_minmax(28rem,1fr)_auto] overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm";
 
 type PendingAttachment = { id: string; file: File };
 type SignedUpload = CopilotAttachment & { uploadUrl: string; method: "PUT"; headers: Record<string, string> };
@@ -226,12 +226,12 @@ export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashb
   return (
     <div className={viewportClassName}>
       <section className={MASTER_CONSOLE_CHAT_CARD_CLASS}>
-        <div className="flex-none border-b border-zinc-200 bg-zinc-950 p-5 text-white lg:p-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex-none border-b border-zinc-200 bg-zinc-950 p-4 text-white lg:p-5">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[0.28em] text-[#f6a87f]">First-class Hermes interface</p>
-              <h3 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-4xl">Mission Control Hermes Console</h3>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-300">
+              <h3 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Mission Control Hermes Console</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-300">
                 Desktop-primary command stream routed to the same Hermes backend/profile as Telegram, with shared tools, memory, skills, long-running task status, and prior-session continuity.
               </p>
             </div>
@@ -280,11 +280,11 @@ export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashb
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-none border-t border-zinc-200 bg-white p-4 lg:p-5">
+        <form onSubmit={handleSubmit} className="flex-none border-t border-zinc-200 bg-white p-3 lg:p-4">
           {error ? <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
           {uploadStatus ? <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{uploadStatus}</div> : null}
           <div onDragOver={(event) => { event.preventDefault(); setIsDragActive(true); }} onDragLeave={() => setIsDragActive(false)} onDrop={handleDrop} className={`rounded-3xl border bg-zinc-50 p-3 focus-within:border-[#CB521E]/40 focus-within:ring-2 focus-within:ring-[#CB521E]/10 ${isDragActive ? "border-[#CB521E] ring-2 ring-[#CB521E]/20" : "border-zinc-200"}`}>
-            <textarea ref={textareaRef} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} rows={4} placeholder="Hand Hermes the outcome: inspect a repo, deploy a fix, research a question, draft a document, search prior Telegram context, or coordinate any PIER/non-PIER work..." className="min-h-28 w-full resize-y bg-transparent px-2 py-2 text-base leading-7 text-zinc-950 outline-none placeholder:text-zinc-400" />
+            <textarea ref={textareaRef} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={handleKeyDown} rows={3} placeholder="Hand Hermes the outcome: inspect a repo, deploy a fix, research a question, draft a document, search prior Telegram context, or coordinate any PIER/non-PIER work..." className="min-h-24 w-full resize-y bg-transparent px-2 py-2 text-base leading-7 text-zinc-950 outline-none placeholder:text-zinc-400" />
             {pendingAttachments.length ? (
               <div className="mt-2 grid gap-2 border-t border-zinc-200 pt-3 md:grid-cols-2">
                 {pendingAttachments.map(({ id, file }) => (
