@@ -7,6 +7,9 @@ type BrokerContext = {
   title?: string;
 };
 
+export const PIER_EMAIL_LOGO_URL =
+  process.env.PIER_EMAIL_LOGO_URL || "https://missioncontrol.piercommercial.com/assets/Brokeragetransp.png";
+
 export type ClaudeEmailSourcePacket = {
   generatedAt: string;
   campaign: {
@@ -28,6 +31,11 @@ export type ClaudeEmailSourcePacket = {
     primaryColor: string;
     darkColor: string;
     accentColor: string;
+    logoUrl: string;
+    logoAssetName: string;
+    logoRequired: boolean;
+    noLogoRecreation: boolean;
+    noLogoCssFilters: boolean;
     noEmoji: boolean;
     noRawFieldLabels: boolean;
     draftFirst: boolean;
@@ -230,6 +238,11 @@ export function buildEmailDraftSourcePacket(input: BuildPacketInput): ClaudeEmai
       primaryColor: "#CB521E",
       darkColor: "#1A1A1A",
       accentColor: "#E5E7EB",
+      logoUrl: PIER_EMAIL_LOGO_URL,
+      logoAssetName: "Brokeragetransp.png",
+      logoRequired: true,
+      noLogoRecreation: true,
+      noLogoCssFilters: true,
       noEmoji: true,
       noRawFieldLabels: true,
       draftFirst: true,
@@ -259,6 +272,9 @@ Hard rules:
 - Do not invent property facts. If a fact is not in the packet, omit it.
 - Every feature should explain a business reason.
 - Email HTML must be Mailchimp-compatible table/inline-style HTML with a dark/white/orange PIER visual hierarchy, mobile-safe width, broker footer, and a clear CTA.
+- The PIER logo is mandatory. Use this exact image in the email header and footer: ${packet.brandRules.logoUrl}
+- Do not recreate the PIER logo as typed text, orange square-letter blocks, SVG/CSS shapes, or any approximation. Use only an <img> tag pointed at Brokeragetransp.png.
+- Never apply CSS filters to the PIER logo image. No invert, brightness, saturate, hue-rotate, grayscale, opacity washout, or filter declarations.
 - Text on orange backgrounds must be white.
 - Use orange bullets or simple typography; no emoji or icon/checkmark list markers.
 - Include subjectLines, previewText, campaignStrategy, emailHtml, plainText, ctaText, designNotes, and complianceChecklist.
@@ -313,6 +329,12 @@ export function normalizeClaudeEmailDraft(value: unknown): ClaudeEmailDraft {
   if (!plainText) throw new Error("Claude email draft must include plain-text fallback copy.");
   if (/Verified Highlight|Verified Property Data|ListingStream field|internal note|commission/i.test(`${emailHtml}\n${plainText}\n${previewText}`)) {
     throw new Error("Claude email draft contains forbidden raw/internal language.");
+  }
+  if (!/Brokeragetransp\.png/i.test(emailHtml)) {
+    throw new Error("Claude email draft must use the official Brokeragetransp.png PIER logo image.");
+  }
+  if (/pier-logo-square|>\s*P\s*<[^>]*>\s*I\s*<[^>]*>\s*E\s*<[^>]*>\s*R\s*<|filter\s*:/i.test(emailHtml)) {
+    throw new Error("Claude email draft must not recreate or CSS-filter the PIER logo.");
   }
   return {
     subjectLines,

@@ -74,7 +74,7 @@ test("listing email html follows institutional PIER template with logo, hero, fa
   });
 
   assert.match(html, /PIER Commercial Real Estate/);
-  assert.match(html, /Brokeragetransp-1\.png/);
+  assert.match(html, /Brokeragetransp\.png/);
   assert.match(html, /role="presentation"/);
   assert.match(html, /2600 Louisville Road/);
   assert.match(html, /SPACE FOR LEASE/);
@@ -92,6 +92,8 @@ test("listing email html follows institutional PIER template with logo, hero, fa
   assert.match(html, /±26,461 SF/);
   assert.match(html, /View PIER Listing Page/);
   assert.match(html, /listingportal\.piercommercial\.com\/property\/2600-louisville-road/);
+  assert.match(html, /Brokeragetransp\.png/);
+  assert.doesNotMatch(html, /pier-logo-square|filter\s*:/i);
   assert.match(html, /PIER Commercial Real Estate Brokerage/);
   assert.match(html, /joel@piercommercial\.com/);
   assert.doesNotMatch(html, /ListingStream/);
