@@ -189,25 +189,23 @@ test("Hermes Co-Pilot route renders actual OpenClaw payload instead of queued ac
   assert.match(clientSource, /history/);
 });
 
-test("Mission Control Hermes Console uses the native Hermes API runs and session history surfaces", () => {
+test("Mission Control Hermes Console uses the working OpenClaw bridge plus session history surfaces", () => {
   const consoleSource = readFileSync("src/components/master-copilot-console.tsx", "utf8");
-  const runsRoute = readFileSync("src/app/api/hermes-console/runs/route.ts", "utf8");
-  const runStatusRoute = readFileSync("src/app/api/hermes-console/runs/[runId]/route.ts", "utf8");
+  const copilotRoute = readFileSync("src/app/api/hermes-copilot/route.ts", "utf8");
   const sessionsRoute = readFileSync("src/app/api/hermes-console/sessions/route.ts", "utf8");
   const clientSource = readFileSync("src/lib/hermes-api-client.ts", "utf8");
 
   assert.match(consoleSource, /Mission Control Hermes Console/);
   assert.match(consoleSource, /Previous Telegram sessions/);
   assert.match(consoleSource, /not a PIER-only assistant|Scope\" value=\"General/);
-  assert.match(consoleSource, /\/api\/hermes-console\/runs/);
+  assert.match(consoleSource, /\/api\/hermes-copilot/);
+  assert.doesNotMatch(consoleSource, /\/api\/hermes-console\/runs/);
   assert.match(consoleSource, /\/api\/hermes-console\/sessions/);
-  assert.match(runsRoute, /createHermesRun/);
-  assert.match(runStatusRoute, /getHermesRun/);
+  assert.match(copilotRoute, /sendOpenClawChat/);
+  assert.match(copilotRoute, /consoleMode === "master"/);
   assert.match(sessionsRoute, /searchHermesSessions/);
   assert.match(sessionsRoute, /compactSessionMessages/);
-  assert.match(clientSource, /\/v1\/runs/);
   assert.match(clientSource, /\/api\/sessions/);
-  assert.match(clientSource, /X-Hermes-Session-Key/);
   assert.match(clientSource, /DEFAULT_PUBLIC_HERMES_API_URL/);
 });
 

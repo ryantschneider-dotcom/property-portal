@@ -53,7 +53,7 @@ test("Co-Pilot backend route sanitizes assistant output before both message and 
   assert.match(source, /makeMessage\("assistant", assistantContent/);
 });
 
-test("Master Console layout uses an unobstructed flex viewport below the sticky header", () => {
+test("Master Console layout uses a tight grid viewport below the sticky header", () => {
   const shell = shellSource();
   const component = readFileSync("src/components/master-copilot-console.tsx", "utf8");
 
@@ -62,8 +62,8 @@ test("Master Console layout uses an unobstructed flex viewport below the sticky 
   assert.doesNotMatch(shell, /h-dvh/);
   assert.doesNotMatch(shell, /min-h-0 flex-1 overflow-auto/);
   assert.match(shell, /min-h-0 flex-1 bg-\[#f6f4f1\]/);
-  assert.match(component, /grid h-full min-h-0/);
-  assert.match(component, /flex min-h-0 flex-col overflow-hidden/);
+  assert.match(component, /h-\[calc\(100dvh-7\.25rem\)\]/);
+  assert.match(component, /grid min-h-0 grid-rows-\[auto_minmax\(0,1fr\)_auto\] overflow-hidden/);
   assert.match(component, /min-h-0 flex-1 overflow-y-auto/);
 });
 

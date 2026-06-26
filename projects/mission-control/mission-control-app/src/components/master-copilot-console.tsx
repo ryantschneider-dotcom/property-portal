@@ -4,7 +4,7 @@ import { ChangeEvent, DragEvent, FormEvent, KeyboardEvent, useMemo, useRef, useS
 
 import type { CopilotAttachment, CopilotMessage } from "@/lib/hermes-copilot";
 import { renderMarkdownPreview } from "@/lib/hermes-copilot";
-import type { HermesConversationContext, HermesRunStatus, HermesSession } from "@/lib/hermes-api-client";
+import type { HermesConversationContext, HermesSession } from "@/lib/hermes-api-client";
 
 const quickStarts = [
   "Use your tools to inspect Mission Control and tell me the highest-leverage workflow to build next.",
@@ -24,8 +24,8 @@ const fileStructures = ["/Users/macclaw/projects", "/Users/macclaw/listingstream
 const MAX_PENDING_ATTACHMENTS = 8;
 const ACCEPTED_ATTACHMENT_TYPES = "image/*,video/*,.pdf,.txt,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx";
 const MASTER_CONSOLE_VIEWPORT_CLEARANCE_CLASS =
-  "grid h-full min-h-0 min-h-[calc(100dvh-11rem)] scroll-mt-40 gap-5 pb-2 xl:grid-cols-[minmax(0,1.6fr)_460px] 2xl:grid-cols-[minmax(0,1.75fr)_520px]";
-const MASTER_CONSOLE_CHAT_CARD_CLASS = "flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm";
+  "grid h-[calc(100dvh-7.25rem)] min-h-[620px] min-h-0 scroll-mt-24 gap-4 pb-1 xl:grid-cols-[minmax(0,1.65fr)_440px] 2xl:grid-cols-[minmax(0,1.8fr)_500px]";
+const MASTER_CONSOLE_CHAT_CARD_CLASS = "grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-[2rem] border border-zinc-200 bg-white shadow-sm";
 
 type PendingAttachment = { id: string; file: File };
 type SignedUpload = CopilotAttachment & { uploadUrl: string; method: "PUT"; headers: Record<string, string> };
@@ -130,18 +130,6 @@ export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashb
     return uploaded;
   }
 
-  async function pollRun(runId: string): Promise<HermesRunStatus> {
-    for (let attempt = 0; attempt < 240; attempt += 1) {
-      const response = await fetch(`/api/hermes-console/runs/${encodeURIComponent(runId)}`, { cache: "no-store" });
-      const data = (await response.json().catch(() => ({}))) as { run?: HermesRunStatus; error?: string };
-      if (!response.ok || !data.run) throw new Error(data.error || `Hermes run status returned HTTP ${response.status}`);
-      setActiveRun((current) => current && current.runId === runId ? { ...current, status: data.run?.status || current.status, lastEvent: data.run?.last_event } : current);
-      if (["completed", "failed", "cancelled"].includes(data.run.status)) return data.run;
-      await new Promise((resolve) => setTimeout(resolve, attempt < 10 ? 1200 : 2500));
-    }
-    throw new Error("Hermes run is still active after the Mission Control polling window; check task status before resubmitting.");
-  }
-
   async function sendMessage(messageText: string) {
     const trimmed = messageText.trim();
     if ((!trimmed && !pendingAttachments.length) || isSending) return;
@@ -160,18 +148,17 @@ export function MasterCopilotConsole({ mode = "full" }: { mode?: "full" | "dashb
       setMessages((current) => current.map((message) => message.id === userMessage.id ? { ...message, attachments: uploadedAttachments } : message));
       setPendingAttachments([]);
       setUploadStatus(uploadedAttachments.length ? "Attachments uploaded and added to Hermes context." : "");
-      const hermesMessage = `${outboundText}${attachmentPromptContext(uploadedAttachments)}`;
-      const startResponse = await fetch("/api/hermes-console/runs", {
+      const continuityPromptContext = attachedContext ? `\n\nMission Control continuity context attached from prior ${attachedContext.title || attachedContext.sourceSessionId}:\n${attachedContext.summary}\n\nUse this compact imported context as background for the current request. Do not reveal raw private transcript unnecessarily.` : "";
+      const hermesMessage = `${outboundText}${attachmentPromptContext(uploadedAttachments)}${continuityPromptContext}`;
+      setActiveRun({ runId: "openclaw-bridge", sessionId, status: "running", startedAt: Date.now(), lastEvent: "Routing through Mission Control OpenClaw bridge" });
+      const response = await fetch("/api/hermes-copilot", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ consoleMode: "master", message: hermesMessage, history: activeHistory, sessionId, sessionKey: "mission-control:master-console:ryan", attachedContext }),
+        body: JSON.stringify({ consoleMode: "master", message: hermesMessage, history: activeHistory, attachments: uploadedAttachments }),
       });
-      const started = (await startResponse.json().catch(() => ({}))) as { ok?: boolean; run_id?: string; sessionId?: string; error?: string };
-      if (!startResponse.ok || !started.run_id) throw new Error(started.error || `Hermes Console returned HTTP ${startResponse.status}`);
-      setActiveRun({ runId: started.run_id, sessionId: started.sessionId || sessionId, status: "queued", startedAt: Date.now() });
-      const finalRun = await pollRun(started.run_id);
-      if (finalRun.status !== "completed") throw new Error(finalRun.error || `Hermes run ended with status ${finalRun.status}`);
-      setMessages((current) => [...current, createLocalMessage("assistant", finalRun.output || "Hermes completed without a final response.", "ok")]);
+      const data = (await response.json().catch(() => ({}))) as { assistant?: CopilotMessage; error?: string };
+      if (!response.ok || !data.assistant) throw new Error(data.error || `Hermes Console bridge returned HTTP ${response.status}`);
+      setMessages((current) => [...current, data.assistant as CopilotMessage]);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to reach the Hermes Console bridge.";
       setError(message);
