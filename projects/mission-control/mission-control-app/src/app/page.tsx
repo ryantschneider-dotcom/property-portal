@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { MasterCopilotConsole } from "@/components/master-copilot-console";
 import { MissionShell } from "@/components/mission-shell";
 import { readStore } from "@/lib/storage";
 
@@ -9,18 +8,18 @@ const domainCards = [
     title: "PIER Commercial",
     href: "/pier-workspace",
     eyebrow: "Corporate workspace",
-    description: "Brokerage operations, ListingStream deliverables, PIER Pulse, and company marketing live in a dedicated sandbox away from the global Hermes chat stream.",
+    description: "Brokerage operations, ListingStream deliverables, PIER Pulse, and company marketing live in a dedicated workspace built for structured PIER execution.",
     status: "Active domain",
     metric: "Brokerage + Marketing",
     accent: "#CB521E",
   },
   {
-    title: "Personal Operations",
-    href: "/master-console",
-    eyebrow: "General command lane",
-    description: "Life logistics, research, travel-style planning, documents, media, and broad Ryan support stay routed through the general Hermes module.",
-    status: "Hermes routed",
-    metric: "General AI",
+    title: "Daily Task Control",
+    href: "/daily-control",
+    eyebrow: "Async command lane",
+    description: "Recurring jobs, follow-up queues, and Ryan-approved task workflows belong in a controlled runner model rather than a synchronous browser chat box.",
+    status: "Operational module",
+    metric: "Task Runner Next",
     accent: "#18181b",
   },
   {
@@ -37,7 +36,7 @@ const domainCards = [
 const commandStats = [
   { label: "Domains online", value: "3" },
   { label: "PIER zones", value: "2" },
-  { label: "Hermes mode", value: "Global" },
+  { label: "Hermes access", value: "Telegram" },
   { label: "Desktop layout", value: "Wide" },
 ];
 
@@ -50,14 +49,14 @@ export default async function Home() {
   return (
     <MissionShell
       title="Mission Control OS"
-      subtitle="A 30,000-foot multi-domain operating dashboard that keeps the global Hermes Master Chat visually separate from structured PIER Commercial workflows."
+      subtitle="A 30,000-foot operating dashboard for structured PIER Commercial workflows, system status, and Ryan-only command modules."
       currentPath="/"
       actions={[
-        { href: "/master-console", label: "Open Hermes Chat", tone: "ghost" },
         { href: "/pier-workspace", label: "Enter PIER Workspace", tone: "primary" },
+        { href: "/daily-control", label: "Open Daily Task Control", tone: "ghost" },
       ]}
     >
-      <div className="grid min-h-[calc(100dvh-5rem)] gap-4 2xl:grid-cols-[minmax(0,1fr)_540px]">
+      <div className="min-h-[calc(100dvh-5rem)]">
         <section className="min-w-0 space-y-6">
           <div className="relative overflow-hidden rounded-[1.75rem] border border-zinc-200 bg-zinc-950 p-5 text-white shadow-sm xl:p-6">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(203,82,30,0.38),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(255,255,255,0.18),transparent_24%),linear-gradient(135deg,rgba(255,255,255,0.08),transparent_45%)]" />
@@ -70,14 +69,14 @@ export default async function Home() {
                   Separate the chat stream from the operating system.
                 </h3>
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-300">
-                  Hermes remains available as a persistent master chat module, while PIER Commercial and future company domains live as structured command cards with their own routed workspaces.
+                  Structured dashboard modules replace the old synchronous browser chat. Use Telegram for full Hermes conversations today; Mission Control stays focused on PIER workflows, system status, and controlled task execution.
                 </p>
                 <div className="mt-5 flex flex-wrap gap-3">
                   <Link href="/pier-workspace" className="rounded-2xl bg-[#CB521E] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#CB521E]/20 transition hover:bg-[#a94318]">
                     Enter PIER Commercial
                   </Link>
-                  <Link href="/master-console" className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15">
-                    Full-screen Hermes Chat
+                  <Link href="/daily-control" className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15">
+                    Daily Task Control
                   </Link>
                 </div>
               </div>
@@ -108,7 +107,7 @@ export default async function Home() {
                 <p className="text-[11px] uppercase tracking-[0.26em] text-[#CB521E]">Domain cards</p>
                 <h3 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">30,000-foot operating map</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-                  Each domain is a visual sandbox. Click into PIER Commercial for brokerage and company marketing workflows; keep unrelated AI work in the global Hermes lane.
+                  Each domain is a visual sandbox. Click into PIER Commercial for brokerage and company marketing workflows; use Daily Task Control for queued work instead of a synchronous chat panel.
                 </p>
               </div>
               <span className="w-fit rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Desktop command grid</span>
@@ -135,16 +134,6 @@ export default async function Home() {
           </section>
         </section>
 
-        <aside className="min-h-0 rounded-[1.75rem] border border-zinc-300/70 bg-[#eee9e1] p-2 shadow-sm 2xl:sticky 2xl:top-[4rem] 2xl:h-[calc(100dvh-5rem)]">
-          <div className="mb-3 flex items-center justify-between px-3 pt-2">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Sandboxed module</p>
-              <h3 className="mt-1 text-lg font-semibold text-zinc-950">Global Hermes Master Chat</h3>
-            </div>
-            <span className="rounded-full bg-zinc-950 px-3 py-1 text-xs font-semibold text-white">Persistent</span>
-          </div>
-          <MasterCopilotConsole mode="dashboard" />
-        </aside>
       </div>
     </MissionShell>
   );

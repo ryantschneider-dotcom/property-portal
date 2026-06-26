@@ -164,10 +164,10 @@ test("Hermes Co-Pilot API remains stateless on Vercel and never imports the disk
   assert.doesNotMatch(routeSource, /readStore|writeStore|pushActivityEvent/);
 });
 
-test("Master Co-Pilot Console route is active after the stripped widget UI", () => {
+test("Master Co-Pilot Console route is retired after removing the visible chat UI", () => {
   const page = readFileSync("src/app/master-console/page.tsx", "utf8");
   const legacyPage = readFileSync("src/app/hermes-co-pilot/page.tsx", "utf8");
-  assert.match(page, /MasterCopilotConsole/);
+  assert.equal(page.includes("redirect(\"/\")"), true);
   assert.equal(legacyPage.includes("redirect(\"/\")"), true);
 });
 
@@ -209,17 +209,19 @@ test("Mission Control Hermes Console uses the working OpenClaw bridge plus sessi
   assert.match(clientSource, /DEFAULT_PUBLIC_HERMES_API_URL/);
 });
 
-test("Mission Control OS separates global Hermes chat from the PIER Commercial workspace", () => {
+test("Mission Control OS removes the visible Master Chat panel from the PIER workspace shell", () => {
   const homePage = readFileSync("src/app/page.tsx", "utf8");
   const pierWorkspace = readFileSync("src/app/pier-workspace/page.tsx", "utf8");
   const shellSource = readFileSync("src/components/mission-shell.tsx", "utf8");
   const authSource = readFileSync("src/lib/auth.ts", "utf8");
 
   assert.match(homePage, /Mission Control OS/);
-  assert.match(homePage, /Global Hermes Master Chat/);
-  assert.match(homePage, /MasterCopilotConsole mode=\"dashboard\"/);
+  assert.match(homePage, /Daily Task Control/);
+  assert.doesNotMatch(homePage, /Global Hermes Master Chat/);
+  assert.doesNotMatch(homePage, /MasterCopilotConsole/);
   assert.match(homePage, /Domain cards/);
-  assert.match(homePage, /href=\"\/pier-workspace\"/);
+  assert.match(homePage, /href="\/pier-workspace"/);
+  assert.doesNotMatch(shellSource, /\/master-console/);
   assert.match(pierWorkspace, /PIER Commercial Brokerage/);
   assert.match(pierWorkspace, /Listing Portal Intake/);
   assert.match(pierWorkspace, /Listing Revisions/);

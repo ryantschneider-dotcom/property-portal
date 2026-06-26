@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Mission Control OS",
-  description: "Ryan Schneider’s private multi-domain operating console with a global Hermes Master Chat, PIER Commercial workspace, business workflows, and AI-assisted execution.",
+  description: "Ryan Schneider’s private multi-domain operating console for PIER Commercial workflows, business operations, system status, and AI-assisted execution.",
 };
 
 export default function RootLayout({

@@ -18,11 +18,11 @@ test("Hermes Co-Pilot widget component files are physically deleted", () => {
   assert.equal(existsSync("src/components/hermes-copilot-console.tsx"), false);
 });
 
-test("Mission Control navigation exposes the dedicated Master Co-Pilot Console without restoring old chat links", () => {
+test("Mission Control navigation hides the retired Master Chat route without restoring old chat links", () => {
   const source = shellSource();
 
-  assert.match(source, /Master Co-Pilot Console/);
-  assert.match(source, /\/master-console/);
+  assert.doesNotMatch(source, /Master Co-Pilot Console/);
+  assert.doesNotMatch(source, /\/master-console/);
   assert.doesNotMatch(source, /\/chat/);
   assert.doesNotMatch(source, /\/hermes-co-pilot/);
 });

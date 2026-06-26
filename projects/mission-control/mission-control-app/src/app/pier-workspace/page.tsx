@@ -69,7 +69,7 @@ export default function PierWorkspacePage() {
   return (
     <MissionShell
       title="PIER Commercial Workspace"
-      subtitle="A dedicated corporate domain inside Mission Control, visually separated from the global Hermes Master Chat and organized into brokerage operations and company marketing."
+      subtitle="A dedicated corporate domain inside Mission Control for brokerage operations, ListingStream deliverables, and company marketing."
       currentPath="/pier-workspace"
       actions={[
         { href: "/", label: "Global dashboard", tone: "ghost" },

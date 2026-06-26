@@ -45,7 +45,7 @@ try {
   await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle0', timeout: 60000 });
   const dashboardUrl = page.url();
   const dashboardText = await page.evaluate(() => document.body.innerText);
-  const dashboardRequired = ['Mission Control OS', 'Global Hermes Master Chat', '30,000-foot operating map', 'PIER Commercial'];
+  const dashboardRequired = ['Mission Control OS', 'Daily Task Control', '30,000-foot operating map', 'PIER Commercial'];
   for (const phrase of dashboardRequired) {
     if (!dashboardText.includes(phrase)) throw new Error(`Dashboard missing phrase: ${phrase}; url=${dashboardUrl}; text=${dashboardText.slice(0, 500).replace(/\s+/g, ' ')}`);
   }

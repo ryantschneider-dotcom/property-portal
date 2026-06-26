@@ -8,19 +8,15 @@ const shellSource = () => readFileSync("src/components/mission-shell.tsx", "utf8
 const pageSource = () => readFileSync("src/app/master-console/page.tsx", "utf8");
 const chatSource = () => readFileSync("src/app/chat/page.tsx", "utf8");
 
-test("Master Co-Pilot Console route renders a dashboard-native command node", () => {
+test("Master Co-Pilot Console route redirects home after visible chat retirement", () => {
   const page = pageSource();
   const component = readFileSync("src/components/master-copilot-console.tsx", "utf8");
   const route = readFileSync("src/app/api/hermes-copilot/route.ts", "utf8");
 
-  assert.match(page, /MasterCopilotConsole/);
-  assert.match(page, /currentPath="\/master-console"/);
+  assert.match(page, /redirect\("\/"\)/);
+  assert.doesNotMatch(page, /MasterCopilotConsole/);
   assert.match(component, /Master Co-Pilot Console/);
   assert.match(component, /consoleMode: "master"/);
-  assert.match(component, /OpenClaw/);
-  assert.match(component, /PIER Commercial Real Estate|PIER CRE/);
-  assert.match(component, /Shopify/);
-  assert.match(component, /desktop-native/i);
   assert.match(route, /buildMasterConsolePrompt/);
   assert.match(chatSource(), /redirect\("\/"\)/);
 });

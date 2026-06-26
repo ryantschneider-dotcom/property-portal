@@ -23,7 +23,6 @@ const navGroups: { title: string; items: NavItem[] }[] = [
     title: "Mission Control",
     items: [
       { href: "/", label: "Global Dashboard", match: "exact" },
-      { href: "/master-console", label: "Hermes Master Chat / Master Co-Pilot Console", match: "prefix" },
       { href: "/pier-workspace", label: "PIER Workspace", match: "prefix" },
       { href: "/pier-manager", label: "Listing Portal", match: "prefix" },
       { href: "/offering-summaries", label: "Offering Summaries", match: "prefix" },
@@ -66,7 +65,6 @@ const compactTopNav: NavItem[] = [
   { href: "/", label: "Dashboard", match: "exact" },
   { href: "/pier-workspace", label: "PIER", match: "prefix" },
   { href: "/pier-manager", label: "Portal", match: "prefix" },
-  { href: "/master-console", label: "Hermes", match: "prefix" },
 ];
 
 
@@ -129,7 +127,7 @@ export async function MissionShell({
               </p>
               <h1 className="mt-2 text-xl font-semibold text-white">Mission Control OS</h1>
               <p className="mt-2 text-xs leading-5 text-zinc-400">
-                Global Hermes chat, domain sandboxes, PIER workflows, and system operations.
+                Structured PIER workflows, system operations, and Ryan-only command modules.
               </p>
             </Link>
 
