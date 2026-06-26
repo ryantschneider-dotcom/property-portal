@@ -20,6 +20,16 @@ const propertyTypes = ["Retail", "Industrial", "Office", "Flex", "Land", "Multif
 const brokers = ["Ryan T. Schneider", "Anthony", "Joel", "Other PIER Broker"];
 const rentTypes = ["NNN", "Modified Gross", "Full Service", "Gross", "Monthly", "Call for details"];
 type MailchimpBrokerContext = { name: string; email: string; source?: string };
+type MailchimpClaudeDraft = {
+  subjectLines: string[];
+  previewText: string;
+  campaignStrategy: string;
+  emailHtml: string;
+  plainText: string;
+  ctaText: string;
+  designNotes: string;
+  complianceChecklist?: Record<string, boolean>;
+};
 
 const brokerSenderProfiles: Record<string, { name: string; email: string }> = {
   ryan: { name: "Ryan T. Schneider, CCIM", email: "ryan@piercommercial.com" },
@@ -713,6 +723,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [mailchimpPreviewHtml, setMailchimpPreviewHtml] = useState("");
   const [mailchimpSmokeTestSent, setMailchimpSmokeTestSent] = useState(false);
   const [mailchimpStatus, setMailchimpStatus] = useState("Load audiences, choose a list, then create an embedded draft preview. Nothing sends automatically.");
+  const [mailchimpAudienceDescription, setMailchimpAudienceDescription] = useState("PIER Commercial broker list: tenants, investors, owner-users, cooperating brokers, and local decision-makers");
+  const [mailchimpCampaignGoal, setMailchimpCampaignGoal] = useState("Announce this property with a premium broker-written email draft and drive clicks to the public listing page");
+  const [mailchimpClaudeNotes, setMailchimpClaudeNotes] = useState("");
+  const [mailchimpClaudeDraft, setMailchimpClaudeDraft] = useState<MailchimpClaudeDraft | null>(null);
+  const [mailchimpSelectedSubjectIndex, setMailchimpSelectedSubjectIndex] = useState(0);
   const [omRevisionInstructions, setOmRevisionInstructions] = useState("");
   const [omDraftId, setOmDraftId] = useState("");
   const [omDraftPreviewHtml, setOmDraftPreviewHtml] = useState("");
@@ -1106,6 +1121,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setMailchimpPreviewHtml("");
     setMailchimpSmokeTestSent(false);
     setMailchimpStatus("Load audiences, choose a list, then create an embedded draft preview. Nothing sends automatically.");
+    setMailchimpAudienceDescription("PIER Commercial broker list: tenants, investors, owner-users, cooperating brokers, and local decision-makers");
+    setMailchimpCampaignGoal("Announce this property with a premium broker-written email draft and drive clicks to the public listing page");
+    setMailchimpClaudeNotes("");
+    setMailchimpClaudeDraft(null);
+    setMailchimpSelectedSubjectIndex(0);
     setMailchimpLoading(false);
     setMailchimpGenerating(false);
     setOmRevisionInstructions("");
@@ -1234,6 +1254,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     const listing = activeListings.find((item) => item.id === value || item.slug === value);
     setOfferingSiteSelectedListingId(value);
     if (listing) setListingSearchText(getListingSearchLabel(listing));
+    setMailchimpCampaignId("");
+    setMailchimpPreviewHtml("");
+    setMailchimpSmokeTestSent(false);
+    setMailchimpClaudeDraft(null);
+    setMailchimpSelectedSubjectIndex(0);
   }
 
   function updateListingSearch(value: string) {
@@ -1478,8 +1503,43 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
   }
 
+  async function generateClaudeMailchimpEmailDraft() {
+    if (!selectedListing || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()) return;
+    setMailchimpGenerating(true);
+    setMailchimpCampaignId("");
+    setMailchimpPreviewHtml("");
+    setMailchimpSmokeTestSent(false);
+    setMailchimpClaudeDraft(null);
+    setMailchimpStatus("Claude is reviewing the ListingStream packet, writing strategy, subject lines, and a full PIER-branded Mailchimp HTML draft. Nothing is being created or sent in Mailchimp yet.");
+    try {
+      const data = await parseJsonResponse(await fetch("/api/listingstream/mailchimp/campaigns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "generate-claude-draft",
+          fromName: mailchimpFromName.trim(),
+          fromEmail: mailchimpFromEmail.trim(),
+          listing: selectedListing,
+          audienceDescription: mailchimpAudienceDescription.trim(),
+          campaignGoal: mailchimpCampaignGoal.trim(),
+          userNotes: mailchimpClaudeNotes.trim(),
+        }),
+      })) as { draft?: MailchimpClaudeDraft };
+      if (!data.draft?.emailHtml || !data.draft.subjectLines?.length) throw new Error("Claude returned an incomplete email draft.");
+      setMailchimpClaudeDraft(data.draft);
+      setMailchimpSelectedSubjectIndex(0);
+      setMailchimpSubjectLine(data.draft.subjectLines[0] || "");
+      setMailchimpPreviewHtml(data.draft.emailHtml);
+      setMailchimpStatus("Claude email draft ready for broker review. Pick a subject line, review the embedded preview, then create the Mailchimp draft only when approved.");
+    } catch (error) {
+      setMailchimpStatus(error instanceof Error ? error.message : "Could not generate Claude email draft.");
+    } finally {
+      setMailchimpGenerating(false);
+    }
+  }
+
   async function createMailchimpEmailDraft() {
-    if (!selectedListing || !mailchimpAudienceId || !mailchimpSubjectLine.trim()) return;
+    if (!selectedListing || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpClaudeDraft) return;
     setMailchimpGenerating(true);
     setMailchimpCampaignId("");
     setMailchimpPreviewHtml("");
@@ -1496,9 +1556,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
           fromName: mailchimpFromName.trim(),
           fromEmail: mailchimpFromEmail.trim(),
           title: getMailchimpCampaignTitle(selectedListing, mailchimpSubjectLine.trim()),
-          previewText: selectedListing.address || selectedListing.title || "PIER Commercial listing update",
+          previewText: mailchimpClaudeDraft.previewText || selectedListing.address || selectedListing.title || "PIER Commercial listing update",
           listing: selectedListing,
           includeFinancials,
+          claudeDraft: mailchimpClaudeDraft,
+          emailHtml: mailchimpClaudeDraft.emailHtml,
         }),
       })) as { campaign?: { id?: string; archiveUrl?: string | null }; previewHtml?: string; smokeTestRequired?: boolean };
       const campaignId = data.campaign?.id || "";
@@ -1562,7 +1624,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
 
   async function submitMailchimpEmailBlast(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await createMailchimpEmailDraft();
+    await generateClaudeMailchimpEmailDraft();
   }
 
   async function reviseDraft() {
@@ -2431,8 +2493,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         {hasActivePropertyContext ? (
           <form id="email-blast-form" onSubmit={submitMailchimpEmailBlast} data-testid="mailchimp-email-blast" className={`${cardClass} h-fit min-w-0 overflow-hidden`}>
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Email Blast</p>
-            <h4 className="mt-1 text-base font-semibold text-zinc-950">Generate an embedded PIER-branded listing blast preview</h4>
-            <p className="mt-1 text-sm leading-6 text-zinc-600">Create and preview the Mailchimp draft inside PIER Manager. Deployment stays locked until a broker-only smoke test is sent to the initiating broker address.</p>
+            <h4 className="mt-1 text-base font-semibold text-zinc-950">Claude-led Mailchimp campaign automaton</h4>
+            <p className="mt-1 text-sm leading-6 text-zinc-600">Claude writes the strategy, subject lines, copy, and Mailchimp-safe HTML first. PIER Manager shows the draft inline for broker approval before it creates any Mailchimp campaign; deployment still requires a broker-only smoke test.</p>
             <p data-testid="mailchimp-broker-context" className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-semibold text-zinc-600">Sender: {mailchimpBrokerContext.name} &lt;{mailchimpBrokerContext.email}&gt;</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="space-y-2 md:col-span-2">
@@ -2448,8 +2510,20 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                 </select>
               </label>
               <label className="space-y-2 md:col-span-2">
+                {requiredLabel("Claude audience brief", false)}
+                <input value={mailchimpAudienceDescription} onChange={(event) => setMailchimpAudienceDescription(event.target.value)} className={inputClass} placeholder="Who is this going to?" />
+              </label>
+              <label className="space-y-2 md:col-span-2">
+                {requiredLabel("Campaign goal", false)}
+                <input value={mailchimpCampaignGoal} onChange={(event) => setMailchimpCampaignGoal(event.target.value)} className={inputClass} placeholder="What should Claude optimize for?" />
+              </label>
+              <label className="space-y-2 md:col-span-2">
+                {requiredLabel("Broker notes for Claude", false)}
+                <textarea value={mailchimpClaudeNotes} onChange={(event) => setMailchimpClaudeNotes(event.target.value)} className={`${textareaClass} min-h-24`} placeholder="Optional: emphasize a tenant profile, timing, rate story, call-to-action, or local angle." />
+              </label>
+              <label className="space-y-2 md:col-span-2">
                 {requiredLabel("Subject Line")}
-                <input value={mailchimpSubjectLine} onChange={(event) => setMailchimpSubjectLine(event.target.value)} className={inputClass} placeholder="Property address | For Sale/Lease | Market" />
+                <input value={mailchimpSubjectLine} onChange={(event) => setMailchimpSubjectLine(event.target.value)} className={inputClass} placeholder="Claude will populate this after draft generation; you can override before creating Mailchimp draft." />
               </label>
               <label className="space-y-2">
                 {requiredLabel("From Name")}
@@ -2465,8 +2539,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               </label>
             </div>
             <div data-testid="mailchimp-action-buttons" className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <button type="submit" disabled={mailchimpGenerating || mailchimpLoading || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
-                {mailchimpGenerating ? "Working…" : "Create Embedded Draft Preview"}
+              <button type="submit" disabled={mailchimpGenerating || mailchimpLoading || !mailchimpFromName.trim() || !mailchimpFromEmail.trim()} aria-busy={mailchimpGenerating} className="w-full rounded-xl bg-[#CB521E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-60 sm:w-auto">
+                {mailchimpGenerating ? "Working…" : "Generate Claude Email Draft"}
+              </button>
+              <button type="button" onClick={createMailchimpEmailDraft} disabled={mailchimpGenerating || mailchimpLoading || !mailchimpAudienceId || !mailchimpSubjectLine.trim() || !mailchimpFromName.trim() || !mailchimpFromEmail.trim() || !mailchimpClaudeDraft} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                Create Mailchimp Draft from Approved Claude Email
               </button>
               <button type="button" onClick={sendMailchimpBrokerSmokeTest} disabled={mailchimpGenerating || !mailchimpCampaignId} className="w-full rounded-xl border border-[#CB521E]/30 bg-white px-4 py-2 text-sm font-semibold text-[#CB521E] transition hover:bg-[#CB521E]/5 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
                 Send Broker Smoke Test
@@ -2476,6 +2553,33 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               </button>
             </div>
             <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">{mailchimpStatus}</p>
+            {mailchimpClaudeDraft ? (
+              <div data-testid="mailchimp-claude-draft" className="mt-4 rounded-2xl border border-[#CB521E]/25 bg-white p-4 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#CB521E]">Claude Strategy</p>
+                <p className="mt-2 text-sm leading-6 text-zinc-700">{mailchimpClaudeDraft.campaignStrategy}</p>
+                <div className="mt-3 grid gap-2">
+                  {mailchimpClaudeDraft.subjectLines.map((subject, index) => (
+                    <label key={`${subject}-${index}`} className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+                      <input
+                        type="radio"
+                        name="mailchimp-subject-option"
+                        checked={mailchimpSelectedSubjectIndex === index}
+                        onChange={() => {
+                          setMailchimpSelectedSubjectIndex(index);
+                          setMailchimpSubjectLine(subject);
+                        }}
+                        className="mt-1 h-4 w-4 accent-[#CB521E]"
+                      />
+                      <span>{subject}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                  <p><strong className="text-zinc-900">Preview text:</strong> {mailchimpClaudeDraft.previewText}</p>
+                  <p className="mt-2"><strong className="text-zinc-900">Design notes:</strong> {mailchimpClaudeDraft.designNotes}</p>
+                </div>
+              </div>
+            ) : null}
             {mailchimpPreviewHtml ? (
               <div data-testid="mailchimp-embedded-preview" className="mt-4 overflow-hidden rounded-2xl border border-zinc-300 bg-zinc-100 shadow-sm">
                 <div className="flex flex-col gap-1 border-b border-zinc-200 bg-white px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500 sm:flex-row sm:items-center sm:justify-between">

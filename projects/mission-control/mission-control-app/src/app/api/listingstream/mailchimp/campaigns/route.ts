@@ -15,12 +15,13 @@ import {
   sendMailchimpTestEmail,
 } from "@/lib/mailchimp-client";
 import { buildMailchimpListingEmailHtml } from "@/lib/mailchimp-listing-email";
+import { buildEmailDraftSourcePacket, runClaudeEmailDraft, type ClaudeEmailDraft } from "@/lib/claude-email-draft";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type CampaignRequest = {
-  action?: "create-draft" | "fetch-preview" | "send-test" | "send-live";
+  action?: "generate-claude-draft" | "create-draft" | "fetch-preview" | "send-test" | "send-live";
   campaignId?: string;
   audienceId?: string;
   subjectLine?: string;
@@ -32,6 +33,11 @@ type CampaignRequest = {
   listing?: Record<string, unknown>;
   includeFinancials?: boolean;
   smokeTestConfirmed?: boolean;
+  audienceDescription?: string;
+  campaignGoal?: string;
+  userNotes?: string;
+  claudeDraft?: ClaudeEmailDraft;
+  emailHtml?: string;
 };
 
 async function requirePierManagerAuth() {
@@ -173,6 +179,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, send, campaign });
     }
 
+    if (action === "generate-claude-draft") {
+      const richListing = await hydrateMailchimpListingPayload(body.listing || {});
+      const packet = buildEmailDraftSourcePacket({
+        listing: richListing,
+        audience: body.audienceDescription,
+        campaignGoal: body.campaignGoal,
+        userNotes: body.userNotes,
+        broker: {
+          name: body.fromName,
+          email: body.fromEmail,
+          phone: "912.239.6298",
+        },
+      });
+      const draft = await runClaudeEmailDraft({ packet });
+      return NextResponse.json({ ok: true, draft, sourcePacket: packet });
+    }
+
     const audienceId = String(body.audienceId || "").trim();
     const subjectLine = String(body.subjectLine || "").trim();
     const fromName = String(body.fromName || "").trim();
@@ -182,8 +205,9 @@ export async function POST(request: Request) {
     }
     const title = String(body.title || `${subjectLine} — PIER Manager Draft`).trim();
     const richListing = await hydrateMailchimpListingPayload(body.listing || {});
-    const html = buildListingEmailHtml({ subjectLine, fromName, fromEmail, listing: richListing, includeFinancials: body.includeFinancials });
-    const campaign = await createMailchimpDraftCampaign({ audienceId, subjectLine, fromName, fromEmail, title, previewText: body.previewText, html });
+    const html = String(body.emailHtml || body.claudeDraft?.emailHtml || "").trim() || buildListingEmailHtml({ subjectLine, fromName, fromEmail, listing: richListing, includeFinancials: body.includeFinancials });
+    const previewText = String(body.previewText || body.claudeDraft?.previewText || "").trim() || undefined;
+    const campaign = await createMailchimpDraftCampaign({ audienceId, subjectLine, fromName, fromEmail, title, previewText, html });
     const content = await getMailchimpCampaignContent(campaign.id);
     return NextResponse.json({ ok: true, campaign, previewHtml: content.html || html, smokeTestRequired: true });
   } catch (error) {
