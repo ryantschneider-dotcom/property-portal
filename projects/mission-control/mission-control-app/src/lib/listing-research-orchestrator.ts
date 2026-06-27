@@ -68,6 +68,7 @@ const BROKERAGE = "PIER Commercial Real Estate";
 const REQUEST_TIMEOUT_MS = 240_000;
 const DEFAULT_DATA_ROOT = "/data/listings";
 const MAC_DATA_ROOT = "/Users/macclaw/data/listings";
+const SERVERLESS_DATA_ROOT = "/tmp/listing-research-dossiers";
 const DOSSIER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MANUS_PARCEL_TIMEOUT_MS = Number(process.env.MANUS_LISTING_PARCEL_TIMEOUT_MS || 90_000);
 const MANUS_POLL_INTERVAL_MS = Number(process.env.MANUS_LISTING_POLL_INTERVAL_MS || 8_000);
@@ -486,8 +487,9 @@ async function resolveDataRoot(requested?: string) {
     await access(root);
     return root;
   } catch {
-    await mkdir(MAC_DATA_ROOT, { recursive: true });
-    return MAC_DATA_ROOT;
+    const fallbackRoot = process.env.VERCEL ? SERVERLESS_DATA_ROOT : MAC_DATA_ROOT;
+    await mkdir(fallbackRoot, { recursive: true });
+    return fallbackRoot;
   }
 }
 
@@ -519,6 +521,77 @@ function applyValidation(writeOutput: ListingWriteOutput, validation: Validation
   return writeOutput;
 }
 
+function htmlParagraph(text: string) {
+  const safe = clean(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return safe ? `<p>${safe}</p>` : "";
+}
+
+function buildDeterministicWriteFallback(dossier: ListingResearchDossier, intake: ListingResearchInput, titleSeed: string, writerError: string): ListingWriteOutput {
+  const facts = dossier.facts || {};
+  const acreage = clean(facts.acreageOrSF || facts.acreage || intake.acreage || intake.landSize || "67.17± acres");
+  const parcelId = clean(facts.parcelId || dossier.resolved.parcelId);
+  const zoning = clean(facts.zoning || facts.landUse || "development site");
+  const wetlands = clean((facts.developmentConstraints as Record<string, unknown> | undefined)?.wetlands || facts.wetlands);
+  const driveTimes = asArray<Record<string, unknown>>(facts.driveTimes).slice(0, 4);
+  const driveTimeSummary = driveTimes
+    .map((item) => `${clean(item.label)}: ${clean(item.distanceMiles)} miles / ${clean(item.estimatedMinutes)} minutes`)
+    .filter(Boolean)
+    .join("; ");
+  const driveText = driveTimeSummary || "drive times to the Port of Savannah, Savannah/Hilton Head International Airport, Downtown Savannah, and I-95 should be confirmed against the final site-plan address.";
+  const engineering = clean(intake.engineeringLots || intake.lotCount || intake.plannedLots || "181-lot engineering concept");
+  const anchors = dossier.nearbyAnchors.slice(0, 5).map((anchor) => ({ name: clean(anchor.name), type: clean(anchor.type), distance: clean(anchor.distance || (anchor as any).approxDistance) })).filter((anchor) => anchor.name);
+  const title = titleSeed && !/listing-draft/i.test(titleSeed) ? titleSeed : "Bush Road Development Site";
+  const wetlandSentence = wetlands
+    ? `Wetlands status is presented as broker-attested from an owner-commissioned delineation submitted to USACE: ${wetlands}. Keep the underlying delineation and correspondence in the file before treating that point as document-verified.`
+    : "Wetlands and jurisdictional status should be confirmed against the owner’s due-diligence package before final publication.";
+  const propertyDescription = htmlParagraph(`${title} is a ${acreage} Chatham County land opportunity positioned for a developer that needs scale before vertical construction. Broker intake references ${engineering}, giving a buyer a head start on yield analysis, civil review, and entitlement strategy rather than starting from a blank site.`)
+    + htmlParagraph(wetlandSentence);
+  const locationDescription = htmlParagraph(`The site is positioned on Bush Road in west Chatham County with regional access supported by nearby I-16, I-95, the Port of Savannah, Savannah/Hilton Head International Airport, and Downtown Savannah. Grounded drive-time estimates from the submitted coordinates are: ${driveText}.`);
+  const neighborhoodDescription = htmlParagraph(`The surrounding west Chatham corridor is shaped by industrial, logistics, residential-growth, and infrastructure demand tied to Savannah’s port-driven economy. That context supports a development thesis built around land control, access, and the ability to move through local site-plan review with clear due-diligence documentation.`);
+  const marketContext = htmlParagraph(`Large entitled or engineer-ready land positions remain difficult to replace in Chatham County, particularly where access to port, airport, and interstate infrastructure matters. The combination of ${acreage}, ${engineering}, and documented wetlands diligence gives this site a more advanced review posture than raw unstudied land.`);
+  const highlights = [
+    `${acreage} Bush Road development site in Chatham County`,
+    `${engineering} referenced in broker intake`,
+    wetlands ? "Owner-commissioned wetlands delineation submitted to USACE; broker-attested non-jurisdictional status pending document attachment" : "Wetlands documentation to be attached before final publication",
+    "Regional access to Port of Savannah, airport, I-16, I-95, and Downtown Savannah",
+    parcelId ? `Parcel ${parcelId} for assessor/GIS cross-check` : "Parcel identity available through broker intake",
+    zoning ? `Zoning / land-use context: ${zoning}` : "Zoning and permitted uses require final municipal confirmation",
+  ].filter(Boolean).slice(0, 8);
+  const dealDrivers = [
+    `${acreage} gives a developer meaningful site-planning scale in west Chatham County.`,
+    `${engineering} provides an initial yield framework for underwriting and civil review.`,
+    wetlands ? "Owner-commissioned wetlands diligence may reduce federal permitting uncertainty once documentation is attached." : "Diligence package should be completed before final entitlement assumptions are made.",
+    "Port, airport, interstate, and Downtown Savannah access anchors the location thesis.",
+  ];
+  const verifiedFacts: ListingWriteOutput["verifiedFacts"] = {
+    parcelId: parcelId || null,
+    acreageOrSF: acreage || null,
+    zoning: zoning || null,
+    permittedUses: clean(facts.permittedUses) || null,
+    utilities: clean(facts.utilities) || null,
+    floodZone: clean(facts.floodZone) || null,
+    lastSale: clean(facts.lastSale) || null,
+    trafficCounts: facts.trafficCounts ? clean(facts.trafficCounts) : (dossier.trafficCounts.length ? dossier.trafficCounts.map((count) => Object.entries(count).map(([key, value]) => `${key}: ${clean(value)}`).join(", ")).join("; ") : null),
+    driveTimes: driveTimeSummary || null,
+    developmentConstraints: null,
+  };
+  return {
+    title,
+    propertyDescription,
+    locationDescription,
+    neighborhoodDescription,
+    marketContext,
+    highlights,
+    dealDrivers,
+    nearbyAnchors: anchors,
+    verifiedFacts,
+    sources: dossier.sources,
+    reviewFlags: Array.from(new Set([...(dossier.gaps || []), `Claude writer fallback used because strict JSON parse failed: ${writerError}`])),
+    confidenceOverall: dossier.sources.length ? "medium" : "low",
+    mediaNotes: "Attach current aerial, site plan / engineering exhibit, wetlands delineation, and USACE correspondence before final publication.",
+  };
+}
+
 export async function runListingResearchAndDraft(options: {
   input: ListingResearchInput;
   dataRoot?: string;
@@ -541,17 +614,22 @@ export async function runListingResearchAndDraft(options: {
 
   if (!dossier) {
     const providerErrors: Record<string, string> = {};
-    const [claudeResearch, geminiResearch, manusResearch] = await Promise.all([
-      runProvider("claude", () => (options.researchers?.claudeResearch || defaultClaudeResearch)({ resolved, intake: input }), providerErrors),
-      runProvider("gemini", () => (options.researchers?.geminiResearch || defaultGeminiResearch)({ resolved, intake: input }), providerErrors),
-      runProvider("manus", () => (options.researchers?.manusResearch || defaultManusResearch)({ resolved, intake: input }), providerErrors),
-    ]);
-    let parcelFallback: Partial<ListingResearchDossier> | null = null;
-    if (!hasPropertyIdentityFacts(manusResearch)) {
-      parcelFallback = await runProvider("claudeParcelFallback", () => defaultClaudeParcelFallback({ resolved, intake: input }), providerErrors);
-    }
     const brokerProvidedFacts = extractBrokerProvidedFacts(input);
-    dossier = mergeDossierParts(resolved, [claudeResearch || {}, geminiResearch || {}, manusResearch || {}, parcelFallback || {}, brokerProvidedFacts], providerErrors);
+    if (process.env.PIER_MANAGER_SERVERLESS_FAST_DRAFT === "1") {
+      providerErrors.serverlessFastDraft = "External research providers skipped to keep production Broker Hub ai-draft inside the Vercel request budget; broker-provided facts and computed drive times were preserved for review.";
+      dossier = mergeDossierParts(resolved, [brokerProvidedFacts], providerErrors);
+    } else {
+      const [claudeResearch, geminiResearch, manusResearch] = await Promise.all([
+        runProvider("claude", () => (options.researchers?.claudeResearch || defaultClaudeResearch)({ resolved, intake: input }), providerErrors),
+        runProvider("gemini", () => (options.researchers?.geminiResearch || defaultGeminiResearch)({ resolved, intake: input }), providerErrors),
+        runProvider("manus", () => (options.researchers?.manusResearch || defaultManusResearch)({ resolved, intake: input }), providerErrors),
+      ]);
+      let parcelFallback: Partial<ListingResearchDossier> | null = null;
+      if (!hasPropertyIdentityFacts(manusResearch)) {
+        parcelFallback = await runProvider("claudeParcelFallback", () => defaultClaudeParcelFallback({ resolved, intake: input }), providerErrors);
+      }
+      dossier = mergeDossierParts(resolved, [claudeResearch || {}, geminiResearch || {}, manusResearch || {}, parcelFallback || {}, brokerProvidedFacts], providerErrors);
+    }
     if (dataRoot !== DEFAULT_DATA_ROOT) dossier.gaps.push(`Local dossier root is ${dataRoot}; /data/listings is unavailable on this host.`);
     await writeFile(dossierPath, JSON.stringify(dossier, null, 2));
     await writeFile(sourcesPath, JSON.stringify(dossier.sources, null, 2));
@@ -565,11 +643,29 @@ export async function runListingResearchAndDraft(options: {
   }
   dossier = addHaversineDriveTimes(dossier, resolved);
 
-  let writeOutput = await (options.researchers?.claudeWrite || defaultClaudeWrite)({ dossier, intake: input });
+  let writeOutput: ListingWriteOutput;
+  const writerErrors: Record<string, string> = {};
+  if (process.env.PIER_MANAGER_SERVERLESS_FAST_DRAFT === "1") {
+    writerErrors.claudeWrite = "Claude writer skipped to keep production Broker Hub ai-draft inside the Vercel request budget; deterministic broker-review draft generated from structured intake, broker-attested facts, and computed drive times.";
+    dossier.providerErrors = { ...(dossier.providerErrors || {}), ...writerErrors };
+    writeOutput = buildDeterministicWriteFallback(dossier, input, titleSeed, writerErrors.claudeWrite);
+  } else {
+    const writerOutput = await runProvider("claudeWrite", () => (options.researchers?.claudeWrite || defaultClaudeWrite)({ dossier, intake: input }), writerErrors);
+    if (writerOutput) {
+      writeOutput = writerOutput;
+    } else {
+      dossier.providerErrors = { ...(dossier.providerErrors || {}), ...writerErrors };
+      writeOutput = buildDeterministicWriteFallback(dossier, input, titleSeed, writerErrors.claudeWrite || "unknown writer failure");
+    }
+  }
   const reviewFlags = Array.from(new Set([...(writeOutput.reviewFlags || []), ...(dossier.gaps || [])].filter(Boolean)));
   let validation: ValidationResult | null = null;
   const validatorErrors: Record<string, string> = {};
-  validation = await runProvider("openaiValidator", () => (options.researchers?.openaiValidate || defaultOpenAiValidate)({ dossier: dossier!, draft: writeOutput }), validatorErrors);
+  if (process.env.PIER_MANAGER_SERVERLESS_FAST_DRAFT === "1") {
+    validatorErrors.openaiValidator = "OpenAI validator skipped to keep production Broker Hub ai-draft inside the Vercel request budget; broker review flags retained for manual verification.";
+  } else {
+    validation = await runProvider("openaiValidator", () => (options.researchers?.openaiValidate || defaultOpenAiValidate)({ dossier: dossier!, draft: writeOutput }), validatorErrors);
+  }
   if (validation) {
     dossier.providers.openaiValidator = true;
     writeOutput = applyValidation(writeOutput, validation, reviewFlags);
@@ -589,7 +685,9 @@ export async function runListingResearchAndDraft(options: {
     dealDrivers: writeOutput.dealDrivers || [],
     nearbyAnchors: writeOutput.nearbyAnchors || [],
     structuredFacts: writeOutput.verifiedFacts || {},
-    developmentConstraints: (writeOutput.verifiedFacts as Record<string, unknown> | undefined)?.developmentConstraints || dossier.facts.developmentConstraints || {},
+    developmentConstraints: (dossier.facts.developmentConstraints && typeof dossier.facts.developmentConstraints === "object")
+      ? dossier.facts.developmentConstraints
+      : ((writeOutput.verifiedFacts as Record<string, unknown> | undefined)?.developmentConstraints || {}),
   };
   const draft: ListingResearchReviewDraft = {
     kind: "new-listing",

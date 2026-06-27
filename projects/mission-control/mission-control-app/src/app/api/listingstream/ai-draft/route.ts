@@ -139,6 +139,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const rawMessage = error instanceof Error ? error.message : "Failed to generate AI broker review draft";
+    console.error("listingstream ai-draft failed", {
+      name: error instanceof Error ? error.name : typeof error,
+      message: rawMessage,
+      stack: error instanceof Error ? error.stack?.split("\n").slice(0, 5).join("\n") : undefined,
+    });
     const normalized = /Cloud writer timed out/i.test(rawMessage)
       ? new Error(rawMessage)
       : createPropertyPortalProxyError(error, "AI broker review drafting");
