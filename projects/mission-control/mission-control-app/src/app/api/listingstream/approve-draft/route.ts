@@ -10,12 +10,24 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function requirePierManagerAuth() {
+const APPROVE_DRAFT_ROUTE_UNAUTHORIZED = "PIER_MANAGER_APPROVE_DRAFT_ROUTE_UNAUTHORIZED";
+
+function getCookieValueFromHeader(headerValue: string | null, name: string) {
+  if (!headerValue) return "";
+  const match = headerValue.split(/;\s*/).find((part) => part.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : "";
+}
+
+async function requirePierManagerAuth(request?: Request) {
   const cookieStore = await cookies();
-  const token = cookieStore.get(AUTH_COOKIE)?.value;
-  const ok = await isValidAuthToken(token);
-  if (!ok) throw new Error("Unauthorized");
-  return getAuthSession(token);
+  const storeToken = cookieStore.get(AUTH_COOKIE)?.value || "";
+  const headerToken = getCookieValueFromHeader(request?.headers.get("cookie") ?? null, AUTH_COOKIE);
+  const storeOk = storeToken ? await isValidAuthToken(storeToken) : false;
+  const headerOk = headerToken ? await isValidAuthToken(headerToken) : false;
+  const ok = storeOk || headerOk;
+  const tokenForSession = storeOk ? storeToken : headerToken;
+  if (!ok) throw new Error(APPROVE_DRAFT_ROUTE_UNAUTHORIZED);
+  return getAuthSession(tokenForSession);
 }
 
 async function uploadStagedAssetToFirebase(file: File, options: { slug?: string; index: number }): Promise<StagedListingImageUpload | null> {
@@ -24,7 +36,7 @@ async function uploadStagedAssetToFirebase(file: File, options: { slug?: string;
 
 export async function POST(request: Request) {
   try {
-    const session = await requirePierManagerAuth();
+    const session = await requirePierManagerAuth(request);
     const contentType = request.headers.get("content-type") ?? "";
     let draft: unknown;
     let mode: "draft-preview" | "publish-live" = "publish-live";
@@ -72,7 +84,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
+    if (error instanceof Error && error.message === APPROVE_DRAFT_ROUTE_UNAUTHORIZED) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const normalized = createPropertyPortalProxyError(error, "approve and publish draft");

@@ -612,6 +612,7 @@ const initialIntakeState: IntakeFormState = {
   areaBusinesses: "",
   roadwaysTransportation: "",
   bulletPoints: "",
+  propertyNotesDueDiligence: "",
   notes: "",
 };
 
@@ -2245,7 +2246,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               <label className="space-y-2">{requiredLabel("Area businesses / retail", false)}<textarea value={intakeForm.areaBusinesses} onChange={(event) => updateIntake("areaBusinesses", event.target.value)} className={textareaClass} /></label>
               <label className="space-y-2">{requiredLabel("Roadways / transportation", false)}<textarea value={intakeForm.roadwaysTransportation} onChange={(event) => updateIntake("roadwaysTransportation", event.target.value)} className={textareaClass} /></label>
               <label className="space-y-2">{requiredLabel("Bullet points", false)}<textarea value={intakeForm.bulletPoints} onChange={(event) => updateIntake("bulletPoints", event.target.value)} className={textareaClass} placeholder="One per line" /></label>
-              <label className="space-y-2">{requiredLabel("General broker notes", false)}<textarea value={intakeForm.notes} onChange={(event) => updateIntake("notes", event.target.value)} className={textareaClass} /></label>
+              <label className="space-y-2">{requiredLabel("Property notes / due diligence", false)}<textarea value={intakeForm.propertyNotesDueDiligence || ""} onChange={(event) => updateIntake("propertyNotesDueDiligence", event.target.value)} className={textareaClass} placeholder="Plain-English broker facts: wetlands, zoning, utilities, access, diligence status, owner-provided documents, or municipal process notes." /></label>
             </div>
           </section>
 
@@ -2372,8 +2373,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                   </button>
                 </div>
                 <label className="mt-4 block space-y-2">
-                  {requiredLabel("Live listing database instructions", false)}
-                  <textarea form="listing-revision-form" value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={`${textareaClass} min-h-36 text-base leading-7 sm:text-sm`} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF." To remove the listing, say "archive/remove this listing from the public portal."'} />
+                  {requiredLabel("Property notes / due diligence", false)}
+                  <textarea form="listing-revision-form" aria-label="Property notes / due diligence" value={modificationInstructions} onChange={(event) => setModificationInstructions(event.target.value)} className={`${textareaClass} min-h-36 text-base leading-7 sm:text-sm`} placeholder={'Example: "Remove Suite 100 because it leased, add the new TPO roof, and drop the asking rate to $22/SF." To remove the listing, say "archive/remove this listing from the public portal."'} />
                 </label>
                 <label className="mt-4 block space-y-2">
                   {requiredLabel("Database/media attachments", false)}

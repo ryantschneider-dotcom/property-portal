@@ -29,7 +29,8 @@ export type BrokerHubIntakeInput = {
   areaBusinesses?: string;
   roadwaysTransportation?: string;
   bulletPoints?: string;
-  notes?: string;
+  propertyNotesDueDiligence?: string;
+  notes?: string; // legacy fallback alias only
 };
 
 export type BrokerHubIntakePayload = {
@@ -57,8 +58,10 @@ export type BrokerHubIntakePayload = {
     areaBusinesses: string;
     roadwaysTransportation: string;
     bulletPoints: string[];
-    notes: string;
+    propertyNotesDueDiligence: string;
+    notes?: string;
   };
+  propertyNotesDueDiligence: string;
 };
 
 function clean(value: unknown) {
@@ -148,8 +151,10 @@ export function buildBrokerHubIntakePayload(input: BrokerHubIntakeInput): Broker
       areaBusinesses: clean(input.areaBusinesses),
       roadwaysTransportation: clean(input.roadwaysTransportation),
       bulletPoints: cleanLines(input.bulletPoints),
-      notes: clean(input.notes),
+      propertyNotesDueDiligence: clean(input.propertyNotesDueDiligence ?? input.notes),
+      notes: clean(input.propertyNotesDueDiligence ?? input.notes),
     },
+    propertyNotesDueDiligence: clean(input.propertyNotesDueDiligence ?? input.notes),
   };
 }
 
