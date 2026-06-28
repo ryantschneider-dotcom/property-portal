@@ -14,7 +14,7 @@ const DEFAULT_WORKER_ENV_FILE = "/Users/macclaw/.hermes/secure-pier-credentials/
 const WORKER_ENV_FILE = process.env.LISTING_RESEARCH_WORKER_ENV_FILE || DEFAULT_WORKER_ENV_FILE;
 const WORKER_ID = process.env.LISTING_RESEARCH_WORKER_ID || `${os.hostname()}-${process.pid}`;
 const POLL_MS = Number(process.env.LISTING_RESEARCH_WORKER_POLL_MS || 10_000);
-const STALE_RUNNING_MS = Number(process.env.LISTING_RESEARCH_WORKER_STALE_MS || 30 * 60_000);
+const STALE_RUNNING_MS = Number(process.env.LISTING_RESEARCH_WORKER_STALE_MS || 2 * 60_000);
 
 function loadDotEnvFile(filePath: string, options: { override?: boolean } = {}) {
   if (!existsSync(filePath)) return;

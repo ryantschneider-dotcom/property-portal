@@ -83,3 +83,8 @@ test("listing research watchdog alerts on dead worker, stuck jobs, and provider 
   assert.match(source, /pier-listing-research-worker\.err\.log/);
   assert.match(source, /console\.log\(alerts\.join/);
 });
+
+test("listing research worker reclaims abandoned running jobs quickly after restart", async () => {
+  const source = await readFile("scripts/listing-research-worker.ts", "utf8");
+  assert.match(source, /LISTING_RESEARCH_WORKER_STALE_MS \|\| 2 \* 60_000/);
+});
