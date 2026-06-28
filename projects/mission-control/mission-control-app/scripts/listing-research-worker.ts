@@ -32,6 +32,7 @@ function loadDotEnvFile(filePath: string) {
 }
 
 function bootstrapEnvironment() {
+  loadDotEnvFile(path.join(APP_ROOT, ".env.worker.local"));
   loadDotEnvFile(path.join(APP_ROOT, ".env.local"));
   loadDotEnvFile(path.join(APP_ROOT, ".env"));
   // The whole point of this worker is to run the real research chain outside Vercel.
