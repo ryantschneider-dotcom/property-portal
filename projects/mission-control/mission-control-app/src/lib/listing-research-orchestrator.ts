@@ -454,7 +454,7 @@ async function defaultGeminiResearch({ resolved }: { resolved: ListingResearchDo
     method: "POST",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1, responseMimeType: "application/json" } }),
+    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
   });
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`Gemini request failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
