@@ -278,7 +278,9 @@ function extractBrokerProvidedFacts(input: ListingResearchInput): Partial<Listin
   const gaps: string[] = [];
 
   const lower = notes.toLowerCase();
-  if (lower.includes("wetland") || lower.includes("404 permit") || lower.includes("army corps") || lower.includes("corps of engineers") || lower.includes("jurisdictional")) {
+  const negatesWetlands = /\b(no|without)\s+(?:broker[-\s]?attested\s+)?wetlands?\s+(?:facts?|notes?|information|data)\b/.test(lower)
+    || /\bwetlands?\s+(?:facts?|notes?|information|data)\s+(?:not\s+provided|unavailable|unknown|omitted)\b/.test(lower);
+  if (!negatesWetlands && (lower.includes("wetland") || lower.includes("404 permit") || lower.includes("army corps") || lower.includes("corps of engineers") || lower.includes("jurisdictional"))) {
     const isolated = /isolated|non[-\s]?jurisdictional/.test(lower);
     const no404 = /no\s+(?:federal\s+)?(?:section\s+)?404|without\s+(?:having\s+to\s+)?(?:submit|apply).*404|404\s+permit\s+(?:is\s+)?(?:not\s+)?required|does\s+not\s+require.*404/.test(lower);
     const delineation = /delineation/.test(lower);
@@ -342,6 +344,10 @@ function buildClaudeSystem(mode: "RESEARCH" | "WRITE") {
   return `${base}\n\nMODE: WRITE. You now have the full research dossier below. Write the finished listing copy using ONLY the dossier and the broker intake.\n\nAudience: a commercial broker, investor, or developer evaluating this site. Write the way a top-producing broker writes an offering — confident, specific, benefit-led, no clichés, no fluff. Tie every feature to what it lets the buyer DO, and use verified numbers rounded honestly.\n\nKeep the four narratives genuinely DISTINCT — do not repeat sentences across them:\n• propertyDescription = the asset itself.\n• locationDescription = access, visibility, positioning, drive times, corridors.\n• neighborhoodDescription = the submarket's character and who/what is around it.\n• marketContext = momentum: what's announced, funded, or under construction nearby and why it matters right now.\n\nCompliance: no invented tenants/entitlements, no guaranteed returns, no fair-housing-sensitive language. If rent is "not disclosed," say so plainly; do not estimate it.\n\nReturn strict JSON only, matching this schema exactly: {"title":"string","propertyDescription":"html string","locationDescription":"html string","neighborhoodDescription":"html string","marketContext":"html string","highlights":["short bullet strings, 4–8"],"dealDrivers":["why-act-now bullets, 2–5"],"nearbyAnchors":[{"name":"string","type":"string","distance":"string"}],"verifiedFacts":{"parcelId":null,"acreageOrSF":null,"zoning":null,"permittedUses":null,"utilities":null,"floodZone":null,"lastSale":null,"trafficCounts":null,"driveTimes":null},"sources":[{"claim":"string","url":"string","note":"string","confidence":"low|medium|high"}],"reviewFlags":["unverified-but-promising items for the broker to confirm"],"confidenceOverall":"low|medium|high","mediaNotes":"string"}. For every concrete claim, carry a matching sources entry from the dossier. Put unverified-but-promising items in reviewFlags.`;
 }
 
+function anthropicListingModel() {
+  return process.env.ANTHROPIC_LISTING_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929";
+}
+
 async function callClaudeJson(system: string, user: string) {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -355,7 +361,7 @@ async function callClaudeJson(system: string, user: string) {
       "anthropic-beta": "web-search-2025-03-05",
     },
     body: JSON.stringify({
-      model: process.env.ANTHROPIC_LISTING_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929",
+      model: anthropicListingModel(),
       max_tokens: 8000,
       temperature: 0.15,
       system,
@@ -372,6 +378,59 @@ async function callClaudeJson(system: string, user: string) {
   return jsonFromText(text);
 }
 
+const LISTING_WRITE_OUTPUT_TOOL = {
+  name: "submit_listing_write_output",
+  description: "Return the final PIER broker-review listing copy as structured JSON. Use this tool exactly once; do not emit prose outside the tool call.",
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["title", "propertyDescription", "locationDescription", "neighborhoodDescription", "marketContext", "highlights", "dealDrivers", "nearbyAnchors", "verifiedFacts", "sources", "reviewFlags", "confidenceOverall", "mediaNotes"],
+    properties: {
+      title: { type: "string" },
+      propertyDescription: { type: "string" },
+      locationDescription: { type: "string" },
+      neighborhoodDescription: { type: "string" },
+      marketContext: { type: "string" },
+      highlights: { type: "array", minItems: 4, maxItems: 8, items: { type: "string" } },
+      dealDrivers: { type: "array", minItems: 2, maxItems: 5, items: { type: "string" } },
+      nearbyAnchors: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "type", "distance"], properties: { name: { type: "string" }, type: { type: "string" }, distance: { type: "string" } } } },
+      verifiedFacts: { type: "object", additionalProperties: false, required: ["parcelId", "acreageOrSF", "zoning", "permittedUses", "utilities", "floodZone", "lastSale", "trafficCounts", "driveTimes"], properties: { parcelId: { type: ["string", "null"] }, acreageOrSF: { type: ["string", "null"] }, zoning: { type: ["string", "null"] }, permittedUses: { type: ["string", "null"] }, utilities: { type: ["string", "null"] }, floodZone: { type: ["string", "null"] }, lastSale: { type: ["string", "null"] }, trafficCounts: { type: ["string", "null"] }, driveTimes: { type: ["string", "null"] } } },
+      sources: { type: "array", items: { type: "object", additionalProperties: false, required: ["claim", "url", "note", "confidence"], properties: { claim: { type: "string" }, url: { type: "string" }, note: { type: "string" }, confidence: { type: "string", enum: ["low", "medium", "high"] } } } },
+      reviewFlags: { type: "array", items: { type: "string" } },
+      confidenceOverall: { type: "string", enum: ["low", "medium", "high"] },
+      mediaNotes: { type: "string" },
+    },
+  },
+} as const;
+
+async function callClaudeWriteJson(system: string, user: string): Promise<ListingWriteOutput> {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: anthropicListingModel(),
+      max_tokens: 8000,
+      temperature: 0.05,
+      system,
+      tools: [LISTING_WRITE_OUTPUT_TOOL],
+      tool_choice: { type: "tool", name: "submit_listing_write_output" },
+      messages: [{ role: "user", content: user }],
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as any;
+  if (!response.ok) throw new Error(`Claude write request failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
+  const toolUse = Array.isArray(payload.content) ? payload.content.find((part: any) => part?.type === "tool_use" && part?.name === "submit_listing_write_output") : null;
+  if (toolUse?.input && typeof toolUse.input === "object") return toolUse.input as ListingWriteOutput;
+  const text = Array.isArray(payload.content)
+    ? payload.content.filter((part: any) => part?.type === "text").map((part: any) => part.text).join("\n")
+    : "";
+  if (!text.trim()) throw new Error("Claude write returned no tool_use payload or text JSON payload");
+  return jsonFromText(text) as ListingWriteOutput;
+}
+
 async function defaultClaudeResearch({ resolved, intake }: { resolved: ListingResearchDossier["resolved"]; intake: ListingResearchInput }) {
   return callClaudeJson(
     buildClaudeSystem("RESEARCH"),
@@ -380,10 +439,10 @@ async function defaultClaudeResearch({ resolved, intake }: { resolved: ListingRe
 }
 
 async function defaultClaudeWrite({ dossier, intake }: { dossier: ListingResearchDossier; intake: ListingResearchInput }) {
-  return callClaudeJson(
+  return callClaudeWriteJson(
     buildClaudeSystem("WRITE"),
     `DOSSIER: ${JSON.stringify(dossier)}\nBROKER INTAKE: ${JSON.stringify(intake)}\n\nWrite broker-grade PIER copy. No invented facts. If rent or price is not disclosed, say not disclosed and never estimate it.`,
-  ) as Promise<ListingWriteOutput>;
+  );
 }
 
 async function defaultGeminiResearch({ resolved }: { resolved: ListingResearchDossier["resolved"]; intake: ListingResearchInput }) {
@@ -528,40 +587,42 @@ function htmlParagraph(text: string) {
 
 function buildDeterministicWriteFallback(dossier: ListingResearchDossier, intake: ListingResearchInput, titleSeed: string, writerError: string): ListingWriteOutput {
   const facts = dossier.facts || {};
-  const acreage = clean(facts.acreageOrSF || facts.acreage || intake.acreage || intake.landSize || "67.17± acres");
+  const acreage = clean(facts.acreageOrSF || facts.acreage || intake.acreage || intake.landSize);
   const parcelId = clean(facts.parcelId || dossier.resolved.parcelId);
-  const zoning = clean(facts.zoning || facts.landUse || "development site");
+  const zoning = clean(facts.zoning || facts.landUse);
   const wetlands = clean((facts.developmentConstraints as Record<string, unknown> | undefined)?.wetlands || facts.wetlands);
   const driveTimes = asArray<Record<string, unknown>>(facts.driveTimes).slice(0, 4);
   const driveTimeSummary = driveTimes
     .map((item) => `${clean(item.label)}: ${clean(item.distanceMiles)} miles / ${clean(item.estimatedMinutes)} minutes`)
     .filter(Boolean)
     .join("; ");
-  const driveText = driveTimeSummary || "drive times to the Port of Savannah, Savannah/Hilton Head International Airport, Downtown Savannah, and I-95 should be confirmed against the final site-plan address.";
-  const engineering = clean(intake.engineeringLots || intake.lotCount || intake.plannedLots || "181-lot engineering concept");
+  const driveText = driveTimeSummary || "drive times to regional anchors should be confirmed against the final site-plan address.";
+  const engineering = clean(intake.engineeringLots || intake.lotCount || intake.plannedLots);
   const anchors = dossier.nearbyAnchors.slice(0, 5).map((anchor) => ({ name: clean(anchor.name), type: clean(anchor.type), distance: clean(anchor.distance || (anchor as any).approxDistance) })).filter((anchor) => anchor.name);
-  const title = titleSeed && !/listing-draft/i.test(titleSeed) ? titleSeed : "Bush Road Development Site";
+  const title = titleSeed && !/listing-draft/i.test(titleSeed) ? titleSeed : clean(dossier.resolved.normalizedAddress) || "Listing Draft";
+  const assetScale = acreage || "commercial property";
+  const engineeringPhrase = engineering ? ` Broker intake references ${engineering}, giving a buyer a starting point for yield analysis, civil review, and entitlement strategy.` : " Yield, entitlement posture, and site constraints require additional verification before publication.";
   const wetlandSentence = wetlands
     ? `Wetlands status is presented as broker-attested from an owner-commissioned delineation submitted to USACE: ${wetlands}. Keep the underlying delineation and correspondence in the file before treating that point as document-verified.`
     : "Wetlands and jurisdictional status should be confirmed against the owner’s due-diligence package before final publication.";
-  const propertyDescription = htmlParagraph(`${title} is a ${acreage} Chatham County land opportunity positioned for a developer that needs scale before vertical construction. Broker intake references ${engineering}, giving a buyer a head start on yield analysis, civil review, and entitlement strategy rather than starting from a blank site.`)
+  const propertyDescription = htmlParagraph(`${title} is a ${assetScale} opportunity submitted through Broker Hub with enough intake to start a broker review, but not enough verified research to publish. ${engineeringPhrase}`)
     + htmlParagraph(wetlandSentence);
-  const locationDescription = htmlParagraph(`The site is positioned on Bush Road in west Chatham County with regional access supported by nearby I-16, I-95, the Port of Savannah, Savannah/Hilton Head International Airport, and Downtown Savannah. Grounded drive-time estimates from the submitted coordinates are: ${driveText}.`);
-  const neighborhoodDescription = htmlParagraph(`The surrounding west Chatham corridor is shaped by industrial, logistics, residential-growth, and infrastructure demand tied to Savannah’s port-driven economy. That context supports a development thesis built around land control, access, and the ability to move through local site-plan review with clear due-diligence documentation.`);
-  const marketContext = htmlParagraph(`Large entitled or engineer-ready land positions remain difficult to replace in Chatham County, particularly where access to port, airport, and interstate infrastructure matters. The combination of ${acreage}, ${engineering}, and documented wetlands diligence gives this site a more advanced review posture than raw unstudied land.`);
+  const locationDescription = htmlParagraph(`The property is identified at ${clean(dossier.resolved.normalizedAddress) || "the submitted coordinates"}. Grounded drive-time estimates from the submitted coordinates are: ${driveText}.`);
+  const neighborhoodDescription = htmlParagraph(`The surrounding submarket should be researched from primary sources before public release. Until the Mac mini research chain completes assessor, GIS, market, and municipal checks, this section is intentionally limited to broker-review context rather than public marketing copy.`);
+  const marketContext = htmlParagraph(`No market momentum, comparable sale, traffic-count, or municipal-development claims should be published from this deterministic fallback alone. The listing needs the full research dossier before final PIER copy is approved.`);
   const highlights = [
-    `${acreage} Bush Road development site in Chatham County`,
-    `${engineering} referenced in broker intake`,
-    wetlands ? "Owner-commissioned wetlands delineation submitted to USACE; broker-attested non-jurisdictional status pending document attachment" : "Wetlands documentation to be attached before final publication",
-    "Regional access to Port of Savannah, airport, I-16, I-95, and Downtown Savannah",
-    parcelId ? `Parcel ${parcelId} for assessor/GIS cross-check` : "Parcel identity available through broker intake",
-    zoning ? `Zoning / land-use context: ${zoning}` : "Zoning and permitted uses require final municipal confirmation",
+    acreage ? `${acreage} identified from submitted or researched facts` : "Acreage / rentable area requires assessor or survey verification",
+    engineering ? `${engineering} referenced in broker intake` : "Yield, lot count, and entitlement status require confirmation",
+    wetlands ? "Wetlands status requires attachment of supporting delineation / agency correspondence before publication" : "Wetlands and jurisdictional status require confirmation",
+    "Regional drive-time context requires full research-chain confirmation",
+    parcelId ? `Parcel ${parcelId} for assessor/GIS cross-check` : "Parcel identity requires assessor/GIS cross-check",
+    zoning ? `Zoning / land-use context: ${zoning}` : "Zoning and permitted uses require municipal confirmation",
   ].filter(Boolean).slice(0, 8);
   const dealDrivers = [
-    `${acreage} gives a developer meaningful site-planning scale in west Chatham County.`,
-    `${engineering} provides an initial yield framework for underwriting and civil review.`,
-    wetlands ? "Owner-commissioned wetlands diligence may reduce federal permitting uncertainty once documentation is attached." : "Diligence package should be completed before final entitlement assumptions are made.",
-    "Port, airport, interstate, and Downtown Savannah access anchors the location thesis.",
+    acreage ? `${acreage} may create site-planning optionality once verified.` : "Verified site scale is required before a deal thesis can be written.",
+    engineering ? `${engineering} provides an initial yield framework for underwriting and civil review.` : "A researched entitlement and yield framework is required before underwriting claims are made.",
+    wetlands ? "Wetlands diligence may reduce permitting uncertainty once documentation is attached." : "Environmental and jurisdictional constraints must be verified before publication.",
+    "Location and access advantages require source-backed research before final marketing use.",
   ];
   const verifiedFacts: ListingWriteOutput["verifiedFacts"] = {
     parcelId: parcelId || null,
