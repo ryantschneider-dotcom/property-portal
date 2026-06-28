@@ -184,7 +184,7 @@ export async function getListingResearchJob(jobId: string) {
   return jobFromFirestoreDocument(payload);
 }
 
-async function listListingResearchJobs() {
+export async function listListingResearchJobs() {
   const payload = await firestoreFetch(`/${getListingResearchJobCollectionPath()}?pageSize=50`, { method: "GET" });
   return Array.isArray(payload.documents) ? payload.documents.map(jobFromFirestoreDocument) : [];
 }

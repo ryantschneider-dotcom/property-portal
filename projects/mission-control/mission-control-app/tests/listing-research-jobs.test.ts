@@ -73,3 +73,13 @@ test("Mac mini worker uses one canonical worker secret file instead of layered a
   assert.doesNotMatch(source, /\.env\.local/);
   assert.doesNotMatch(source, /loadDotEnvFile\(path\.join\(APP_ROOT, "\.env"\)/);
 });
+
+test("listing research watchdog alerts on dead worker, stuck jobs, and provider failures", async () => {
+  const source = await readFile("scripts/listing-research-watchdog.ts", "utf8");
+  assert.match(source, /listing-research-worker\.ts/);
+  assert.match(source, /queued/i);
+  assert.match(source, /running/i);
+  assert.match(source, /PROVIDER_FAILURE_PATTERNS/);
+  assert.match(source, /pier-listing-research-worker\.err\.log/);
+  assert.match(source, /console\.log\(alerts\.join/);
+});
