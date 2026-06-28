@@ -15,7 +15,7 @@ const WORKER_ID = process.env.LISTING_RESEARCH_WORKER_ID || `${os.hostname()}-${
 const POLL_MS = Number(process.env.LISTING_RESEARCH_WORKER_POLL_MS || 10_000);
 const STALE_RUNNING_MS = Number(process.env.LISTING_RESEARCH_WORKER_STALE_MS || 30 * 60_000);
 
-function loadDotEnvFile(filePath: string) {
+function loadDotEnvFile(filePath: string, options: { override?: boolean } = {}) {
   if (!existsSync(filePath)) return;
   const raw = readFileSync(filePath, "utf8");
   for (const line of raw.split(/\r?\n/)) {
@@ -26,12 +26,12 @@ function loadDotEnvFile(filePath: string) {
     const key = match[1];
     let value = match[2] ?? "";
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-    if (process.env[key] === undefined) process.env[key] = value;
+    if (options.override || !process.env[key]) process.env[key] = value;
   }
 }
 
 function bootstrapEnvironment() {
-  loadDotEnvFile(path.join(APP_ROOT, ".env.worker.local"));
+  loadDotEnvFile(path.join(APP_ROOT, ".env.worker.local"), { override: true });
   loadDotEnvFile(path.join(APP_ROOT, ".env.local"));
   loadDotEnvFile(path.join(APP_ROOT, ".env"));
   // The whole point of this worker is to run the real research chain outside Vercel.
