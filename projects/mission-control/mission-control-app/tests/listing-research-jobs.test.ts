@@ -64,3 +64,12 @@ test("Mac mini worker script disables serverless fast draft and runs the real or
   assert.match(source, /runListingResearchAndDraft/);
   assert.match(source, /completeListingResearchJob/);
 });
+
+test("Mac mini worker uses one canonical worker secret file instead of layered app env files", async () => {
+  const source = await readFile("scripts/listing-research-worker.ts", "utf8");
+  assert.match(source, /DEFAULT_WORKER_ENV_FILE/);
+  assert.match(source, /secure-pier-credentials\/mission-control-worker\.env/);
+  assert.match(source, /LISTING_RESEARCH_WORKER_ENV_FILE/);
+  assert.doesNotMatch(source, /\.env\.local/);
+  assert.doesNotMatch(source, /loadDotEnvFile\(path\.join\(APP_ROOT, "\.env"\)/);
+});

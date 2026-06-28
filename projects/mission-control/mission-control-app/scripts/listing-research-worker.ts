@@ -1,5 +1,4 @@
 import { readFileSync, existsSync } from "node:fs";
-import path from "node:path";
 import os from "node:os";
 
 import {
@@ -11,6 +10,8 @@ import {
 import { runListingResearchAndDraft } from "../src/lib/listing-research-orchestrator";
 
 const APP_ROOT = process.env.MISSION_CONTROL_APP_ROOT || process.cwd();
+const DEFAULT_WORKER_ENV_FILE = "/Users/macclaw/.hermes/secure-pier-credentials/mission-control-worker.env";
+const WORKER_ENV_FILE = process.env.LISTING_RESEARCH_WORKER_ENV_FILE || DEFAULT_WORKER_ENV_FILE;
 const WORKER_ID = process.env.LISTING_RESEARCH_WORKER_ID || `${os.hostname()}-${process.pid}`;
 const POLL_MS = Number(process.env.LISTING_RESEARCH_WORKER_POLL_MS || 10_000);
 const STALE_RUNNING_MS = Number(process.env.LISTING_RESEARCH_WORKER_STALE_MS || 30 * 60_000);
@@ -31,9 +32,7 @@ function loadDotEnvFile(filePath: string, options: { override?: boolean } = {}) 
 }
 
 function bootstrapEnvironment() {
-  loadDotEnvFile(path.join(APP_ROOT, ".env.worker.local"), { override: true });
-  loadDotEnvFile(path.join(APP_ROOT, ".env.local"));
-  loadDotEnvFile(path.join(APP_ROOT, ".env"));
+  loadDotEnvFile(WORKER_ENV_FILE, { override: true });
   // The whole point of this worker is to run the real research chain outside Vercel.
   delete process.env.PIER_MANAGER_SERVERLESS_FAST_DRAFT;
   delete process.env.VERCEL;
