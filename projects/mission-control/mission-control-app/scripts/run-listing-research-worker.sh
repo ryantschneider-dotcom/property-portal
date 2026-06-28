@@ -4,6 +4,10 @@ APP_ROOT="${MISSION_CONTROL_APP_ROOT:-/Users/macclaw/projects/mission-control/mi
 cd "$APP_ROOT"
 export MISSION_CONTROL_APP_ROOT="$APP_ROOT"
 export NODE_ENV=production
+case " ${NODE_OPTIONS:-} " in
+  *" --dns-result-order=ipv4first "*) ;;
+  *) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first" ;;
+esac
 if command -v npm >/dev/null 2>&1; then
   exec npm exec tsx -- scripts/listing-research-worker.ts
 fi

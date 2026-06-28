@@ -74,14 +74,17 @@ test("Mac mini worker uses one canonical worker secret file instead of layered a
   assert.doesNotMatch(source, /loadDotEnvFile\(path\.join\(APP_ROOT, "\.env"\)/);
 });
 
-test("listing research watchdog alerts on dead worker, stuck jobs, and provider failures", async () => {
+test("listing research watchdog alerts on dead worker, stuck jobs, and provider failures without raw trace spam", async () => {
   const source = await readFile("scripts/listing-research-watchdog.ts", "utf8");
   assert.match(source, /listing-research-worker\.ts/);
   assert.match(source, /queued/i);
   assert.match(source, /running/i);
-  assert.match(source, /PROVIDER_FAILURE_PATTERNS/);
+  assert.match(source, /providerFailures/);
   assert.match(source, /pier-listing-research-worker\.err\.log/);
-  assert.match(source, /console\.log\(alerts\.join/);
+  assert.match(source, /signatureFor/);
+  assert.match(source, /STATE_FILE/);
+  assert.match(source, /Firestore queue connectivity/);
+  assert.doesNotMatch(source, /alerts\.join\("\\n\\n"\)/);
 });
 
 test("Gemini grounded research does not request JSON mime type with google_search tool", async () => {

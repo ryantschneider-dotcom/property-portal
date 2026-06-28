@@ -65,7 +65,15 @@ export type ListingResearchReviewDraft = {
 };
 
 const BROKERAGE = "PIER Commercial Real Estate";
-const REQUEST_TIMEOUT_MS = 240_000;
+const PROVIDER_TIMEOUT_MS = {
+  claudeResearch: Number(process.env.LISTING_RESEARCH_CLAUDE_TIMEOUT_MS || 180_000),
+  claudeWrite: Number(process.env.LISTING_RESEARCH_CLAUDE_WRITE_TIMEOUT_MS || 180_000),
+  gemini: Number(process.env.LISTING_RESEARCH_GEMINI_TIMEOUT_MS || 90_000),
+  manusCreate: Number(process.env.LISTING_RESEARCH_MANUS_CREATE_TIMEOUT_MS || 30_000),
+  manusPoll: Number(process.env.LISTING_RESEARCH_MANUS_POLL_TIMEOUT_MS || 12_000),
+  openaiValidator: Number(process.env.LISTING_RESEARCH_OPENAI_TIMEOUT_MS || 90_000),
+} as const;
+const PROVIDER_RETRY_ATTEMPTS = Number(process.env.LISTING_RESEARCH_PROVIDER_RETRY_ATTEMPTS || 2);
 const DEFAULT_DATA_ROOT = "/data/listings";
 const MAC_DATA_ROOT = "/Users/macclaw/data/listings";
 const SERVERLESS_DATA_ROOT = "/tmp/listing-research-dossiers";
@@ -115,6 +123,31 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function providerErrorMessage(provider: string, url: string, attempt: number, error: unknown) {
+  const host = (() => {
+    try { return new URL(url).host; } catch { return url; }
+  })();
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : null;
+  const causeMessage = cause instanceof Error ? cause.message : cause ? String(cause) : "";
+  const code = cause && typeof cause === "object" && "code" in cause ? String((cause as { code?: unknown }).code) : "";
+  return `${provider} network request failed on attempt ${attempt} to ${host}: ${message}${code ? ` (${code})` : ""}${causeMessage && causeMessage !== message ? `; cause: ${causeMessage}` : ""}`;
+}
+
+async function providerFetch(provider: string, url: string, init: RequestInit, timeoutMs: number, attempts = PROVIDER_RETRY_ATTEMPTS) {
+  let lastError: unknown = null;
+  const tries = Math.max(1, attempts);
+  for (let attempt = 1; attempt <= tries; attempt += 1) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (error) {
+      lastError = error;
+      if (attempt < tries) await sleep(Math.min(2_000 * attempt, 5_000));
+    }
+  }
+  throw new Error(providerErrorMessage(provider, url, tries, lastError));
+}
+
 function normalizeParcelId(value: string) {
   return clean(value).replace(/[^0-9A-Za-z]/g, "");
 }
@@ -151,6 +184,19 @@ function hasPropertyIdentityFacts(part: Partial<ListingResearchDossier> | null |
     .some((key) => clean((facts as Record<string, unknown>)[key]));
 }
 
+function extractTaskId(payload: unknown): string {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+  const record = payload as Record<string, unknown>;
+  const direct = clean(record.id) || clean(record.taskId) || clean(record.task_id) || clean(record.runId) || clean(record.run_id);
+  if (direct) return direct;
+  for (const key of ["data", "task", "result"]) {
+    const nested = record[key];
+    const nestedId = extractTaskId(nested);
+    if (nestedId) return nestedId;
+  }
+  return "";
+}
+
 function readManusStatusEndpoint() {
   const base = (process.env.MANUS_API_BASE_URL || "https://api.manus.ai").replace(/\/$/, "");
   return `${base}/v2/task.listMessages`;
@@ -163,11 +209,10 @@ async function pollManusTaskForDossier(taskId: string, apiKey: string, timeoutMs
   while (Date.now() < deadline) {
     const url = new URL(endpoint);
     url.searchParams.set("task_id", taskId);
-    const response = await fetch(url.toString(), {
+    const response = await providerFetch("Manus task.listMessages", url.toString(), {
       method: "GET",
-      signal: AbortSignal.timeout(Math.min(15_000, Math.max(1_000, deadline - Date.now()))),
       headers: { "X-Manus-API-Key": apiKey, "Accept": "application/json" },
-    });
+    }, Math.min(PROVIDER_TIMEOUT_MS.manusPoll, Math.max(1_000, deadline - Date.now())));
     const payload = await response.json().catch(() => ({})) as unknown;
     lastPayload = payload;
     if (!response.ok) throw new Error(`Manus task.listMessages failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
@@ -351,9 +396,8 @@ function anthropicListingModel() {
 async function callClaudeJson(system: string, user: string) {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await providerFetch("Claude research", "https://api.anthropic.com/v1/messages", {
     method: "POST",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey,
@@ -368,7 +412,7 @@ async function callClaudeJson(system: string, user: string) {
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 12 }],
       messages: [{ role: "user", content: user }],
     }),
-  });
+  }, PROVIDER_TIMEOUT_MS.claudeResearch);
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`Claude request failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
   const text = Array.isArray(payload.content)
@@ -406,9 +450,8 @@ const LISTING_WRITE_OUTPUT_TOOL = {
 async function callClaudeWriteJson(system: string, user: string): Promise<ListingWriteOutput> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await providerFetch("Claude write", "https://api.anthropic.com/v1/messages", {
     method: "POST",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: anthropicListingModel(),
@@ -419,7 +462,7 @@ async function callClaudeWriteJson(system: string, user: string): Promise<Listin
       tool_choice: { type: "tool", name: "submit_listing_write_output" },
       messages: [{ role: "user", content: user }],
     }),
-  });
+  }, PROVIDER_TIMEOUT_MS.claudeWrite);
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`Claude write request failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
   const toolUse = Array.isArray(payload.content) ? payload.content.find((part: any) => part?.type === "tool_use" && part?.name === "submit_listing_write_output") : null;
@@ -450,12 +493,12 @@ async function defaultGeminiResearch({ resolved }: { resolved: ListingResearchDo
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
   const model = process.env.GEMINI_LISTING_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const prompt = `Use Google Search grounding. For the point ${resolved.lat},${resolved.lng} in ${resolved.county}, ${resolved.state}, return JSON only:\n1) nearbyAnchors: notable commercial/industrial/retail/civic sites within ~5 miles, each {name,type,approxDistance,direction}.\n2) accessContext: nearest interstates/interchanges/major roads with distances, and published traffic counts (AADT) for adjacent roads if available, each with source.\n3) recentLocalNews: items from the last ~24 months relevant to development, roads, utilities, employers, or rezonings near this point, each {headline,date,url,oneLineWhyItMatters}.\nCite a source URL for every item. Do not write marketing copy. If unsure, omit.`;
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await providerFetch("Gemini generateContent", url, {
     method: "POST",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
-  });
+  }, PROVIDER_TIMEOUT_MS.gemini);
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`Gemini request failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
   const text = payload.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("\n") || "";
@@ -479,15 +522,14 @@ async function defaultManusResearch({ resolved }: { resolved: ListingResearchDos
   const target = resolved.normalizedAddress || `${resolved.lat},${resolved.lng}`;
   const assessorUrl = resolved.parcelId ? buildChathamAssessorParcelUrl(resolved.parcelId) : "";
   const prompt = `TASK: Pull primary-source parcel identity records for a commercial property. Use your browser and file-reading tools fully — open portals, run searches, download and read PDFs.\n\nTarget: parcel ${resolved.parcelId || "unknown parcel"} at ${target}, ${resolved.county}, ${resolved.state}.\nDeterministic assessor/GIS record URL to open first: ${assessorUrl || "parcel ID unavailable"}.\n\nCollect and return as STRICT JSON ONLY with source URLs, matching this shape: {"facts":{"owner":"","acreageOrSF":"","acreage":"","buildingSF":"","zoning":"","landUse":"","utilities":"","floodZone":"","lastSale":"","assessedValue":"","deedOrPlat":"","roadFrontage":"","accessPoints":""},"nearbyAnchors":[],"marketEvents":[],"trafficCounts":[],"comps":[],"sources":[{"claim":"","url":"","note":"","confidence":"low|medium|high"}],"gaps":[]}.\n\nPrimary task: county assessor / GIS record for this parcel: owner of record, acreage / building SF, zoning + permitted uses if shown, land-use designation, utilities present (water / sewer / power / gas), topography, FEMA flood zone, road frontage, access points, last sale date & price, deed/plat reference, easements or restrictions you can confirm. If a field is not visible in a primary source, put it in gaps instead of guessing.`;
-  const response = await fetch(endpoint, {
+  const response = await providerFetch("Manus task.create", endpoint, {
     method: "POST",
-    signal: AbortSignal.timeout(45_000),
     headers: { "content-type": "application/json", "X-Manus-API-Key": apiKey },
     body: JSON.stringify({ message: { text: prompt, content: prompt }, task_mode: "agent", metadata: { workflow: "listing-parcel-identity", parcelId: resolved.parcelId, address: target, assessorUrl } }),
-  });
+  }, PROVIDER_TIMEOUT_MS.manusCreate);
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`Manus task.create failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
-  const taskId = clean(payload.task_id || payload.taskId || payload.id || payload.data?.task_id || payload.data?.id);
+  const taskId = extractTaskId(payload);
   if (!taskId) {
     const immediate = extractDossierJsonFromPayload(payload);
     return immediate || { gaps: ["Manus accepted the task but did not return a task id or usable parcel JSON."] } satisfies Partial<ListingResearchDossier>;
@@ -518,12 +560,11 @@ async function defaultOpenAiValidate({ dossier, draft }: { dossier: ListingResea
   const apiKey = (process.env.OPENAI_API_KEY || "").trim();
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
   const prompt = `You are a fact-checker. You are given (A) a drafted commercial listing in JSON and (B) the research dossier it was supposedly written from. For every CONCRETE claim in the draft (numbers, names, distances, "coming soon" items, sale prices), decide:\n- SUPPORTED (a dossier source backs it) → keep,\n- WEAK (partially supported / needs softening) → suggest softer wording,\n- UNSUPPORTED (no dossier source) → must be removed from copy and moved to reviewFlags.\nReturn JSON only: { "keep":[], "soften":[{"field":"","original":"","suggested":""}], "remove":[{"field":"","claim":""}] }. Do not add new facts. Do not rewrite tone.\n\nDRAFT: ${JSON.stringify(draft)}\nDOSSIER: ${JSON.stringify(dossier)}`;
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await providerFetch("OpenAI validator", "https://api.openai.com/v1/chat/completions", {
     method: "POST",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model: process.env.OPENAI_VALIDATOR_MODEL || "gpt-4o-mini", temperature: 0, response_format: { type: "json_object" }, messages: [{ role: "user", content: prompt }] }),
-  });
+  }, PROVIDER_TIMEOUT_MS.openaiValidator);
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`OpenAI validator failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
   return jsonFromText(payload.choices?.[0]?.message?.content || "{}") as ValidationResult;
