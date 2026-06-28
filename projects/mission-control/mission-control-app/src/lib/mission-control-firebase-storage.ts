@@ -51,7 +51,7 @@ export async function getFirebaseAccessToken() {
   const header = { alg: "RS256", typ: "JWT" };
   const claim = {
     iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/devstorage.read_write",
+    scope: "https://www.googleapis.com/auth/devstorage.read_write https://www.googleapis.com/auth/datastore",
     aud: tokenUri,
     iat: now,
     exp: now + 3600,

@@ -31,6 +31,14 @@ type MailchimpClaudeDraft = {
   complianceChecklist?: Record<string, boolean>;
 };
 
+type ListingResearchJobPayload = {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  result?: unknown;
+  error?: string | null;
+  providerErrors?: Record<string, string>;
+};
+
 const brokerSenderProfiles: Record<string, { name: string; email: string }> = {
   ryan: { name: "Ryan T. Schneider, CCIM", email: "ryan@piercommercial.com" },
   joel: { name: "Joel Boblasky", email: "joel@piercommercial.com" },
@@ -768,6 +776,9 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [draftPreviewUrl, setDraftPreviewUrl] = useState("");
   const [publishSuccessMessage, setPublishSuccessMessage] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [listingResearchJobId, setListingResearchJobId] = useState("");
+  const [listingResearchJobStatus, setListingResearchJobStatus] = useState<"idle" | "queued" | "researching" | "ready" | "failed">("idle");
+  const [listingResearchFallbackBanner, setListingResearchFallbackBanner] = useState("");
   const [omGenerating, setOmGenerating] = useState(false);
   const [omError, setOmError] = useState("");
   const [includeRetailAerial, setIncludeRetailAerial] = useState(false);
@@ -1320,9 +1331,53 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     });
   }
 
+  async function pollListingResearchJob(jobId: string, sourceInput: unknown, titleFallback: string) {
+    setListingResearchJobId(jobId);
+    setListingResearchJobStatus("queued");
+    setReviewStatus(`Research job ${jobId} queued on the Mac mini. Broker Hub will keep polling until the real researched draft is ready.`);
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, attempt < 6 ? 5_000 : 10_000));
+      const data = (await fetchJsonWithTimeout(`/api/listingstream/ai-draft/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" }, 30_000)) as { job?: ListingResearchJobPayload; draft?: unknown };
+      const job = data.job;
+      if (!job) throw new Error("Research job status did not return from Broker Hub.");
+      if (job.status === "queued") {
+        setListingResearchJobStatus("queued");
+        setReviewStatus(`Research job ${jobId} is queued. Waiting for the Mac mini worker to claim it.`);
+        continue;
+      }
+      if (job.status === "running") {
+        setListingResearchJobStatus("researching");
+        setReviewStatus(`Researching on the Mac mini worker. Full provider chain is running outside Vercel; this may take several minutes.`);
+        continue;
+      }
+      if (job.status === "failed") {
+        setListingResearchJobStatus("failed");
+        setListingResearchFallbackBanner("Research not yet run — do not publish. The Mac mini worker failed before returning a verified draft; use retry or emergency intake-only fallback only after reviewing the error.");
+        throw new Error(job.error || "Mac mini listing research worker failed.");
+      }
+      if (job.status === "completed") {
+        const draftPayload = requireDraftResponse(data.draft || job.result, "Listing research job API");
+        const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: titleFallback || "New listing draft", sourceInput: sourceInput as Record<string, unknown> });
+        setReviewDraft(draft);
+        revealReviewDraft("actions");
+        setListingResearchJobStatus("ready");
+        const providerErrors = job.providerErrors || ((draft.structuredUpdates?.meta as Record<string, unknown> | undefined)?.researchDossier as { providerErrors?: Record<string, string> } | undefined)?.providerErrors || {};
+        const fallbackActive = Object.values(providerErrors).some((value) => /skipped|deterministic|fallback/i.test(String(value)));
+        setListingResearchFallbackBanner(fallbackActive ? "Research not yet run — do not publish. This draft came from a deterministic fallback because the worker/provider chain failed." : "");
+        setReviewStatus(`Full research draft ready from Mac mini worker job ${jobId}. Hero photo and media stay staged until approval.`);
+        setIntakeStatus(`The PIER Commercial research worker returned a broker-review draft. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
+        return;
+      }
+    }
+    throw new Error("Research job is still not complete after the Broker Hub polling window. Leave it queued and refresh status later.");
+  }
+
   async function submitBrokerHubIntake(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIntakeSubmitting(true);
+    setListingResearchFallbackBanner("");
+    setListingResearchJobStatus("idle");
+    setListingResearchJobId("");
     setReviewError("");
     setPublishSuccessMessage("");
     setToastMessage("");
@@ -1333,13 +1388,17 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "new-listing", input }),
-      }, PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS)) as { draft: unknown };
-      const draftPayload = requireDraftResponse(data, "New listing draft API");
-      const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
-      setReviewDraft(draft);
-      revealReviewDraft("actions");
-      setReviewStatus(`Review Draft ready for ${draft.title}. Hero photo and media stay staged until approval.`);
-      setIntakeStatus(`The PIER Commercial Big Brain enrichment draft is ready for broker review. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
+      }, 30_000)) as { draft?: unknown; jobId?: string; job?: ListingResearchJobPayload; queued?: boolean };
+      if (data.jobId || data.job?.id || data.queued) {
+        await pollListingResearchJob(data.jobId || data.job?.id || "", input, intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft");
+      } else {
+        const draftPayload = requireDraftResponse(data, "New listing draft API");
+        const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
+        setReviewDraft(draft);
+        revealReviewDraft("actions");
+        setReviewStatus(`Review Draft ready for ${draft.title}. Hero photo and media stay staged until approval.`);
+        setIntakeStatus(`The PIER Commercial Big Brain enrichment draft is ready for broker review. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
+      }
     } catch (error) {
       const message = getAbortableErrorMessage(error, "Could not generate listing review draft.");
       setReviewError(message);
@@ -2609,6 +2668,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               Review all assessor fields, checklist items, revision feedback, and payload preview before final approval.
             </div>
           </div>
+          {listingResearchFallbackBanner ? <div data-testid="listing-research-fallback-banner" className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950">{listingResearchFallbackBanner}</div> : null}
+          {listingResearchJobId ? <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Research job {listingResearchJobId}: {listingResearchJobStatus === "researching" ? "researching" : listingResearchJobStatus === "ready" ? "ready" : listingResearchJobStatus}</p> : null}
           <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-sm leading-7 text-zinc-800" dangerouslySetInnerHTML={{ __html: visibleReviewDraft.descriptionHtml }} />
 
           <div data-testid="broker-revise-loop" className="mt-6 rounded-3xl border border-[#CB521E]/25 bg-[#CB521E]/5 p-5">

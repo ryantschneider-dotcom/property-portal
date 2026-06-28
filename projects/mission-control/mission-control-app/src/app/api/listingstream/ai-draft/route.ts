@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
+import { createListingResearchJob } from "@/lib/listing-research-jobs";
 import { runListingResearchAndDraft } from "@/lib/listing-research-orchestrator";
 import { createModificationReviewDraft, reviseBrokerReviewDraft, type BrokerReviewDraft } from "@/lib/property-portal-ai";
 import { createPropertyPortalProxyError, withPropertyPortalTimeout } from "@/lib/property-portal-client";
@@ -90,12 +91,18 @@ export async function POST(request: Request) {
     await requirePierManagerAuth();
     const body = (await request.json()) as AiDraftRequest;
     if (body.mode === "new-listing") {
-      const draft = await withPropertyPortalTimeout(
-        runListingResearchAndDraft({ input: body.input }),
-        AI_DRAFT_ROUTE_TIMEOUT_MS,
-        "AI broker review drafting timed out before a research dossier and draft were returned. Please retry with shorter instructions.",
-      );
-      return NextResponse.json({ ok: true, draft });
+      const job = await createListingResearchJob({
+        mode: "new-listing",
+        input: body.input,
+        requestedBy: "pier-manager-broker-hub",
+      });
+      return NextResponse.json({
+        ok: true,
+        queued: true,
+        jobId: job.id,
+        job,
+        message: "Listing research queued on the Mac mini worker. Broker Hub will poll until the researched draft is ready.",
+      }, { status: 202 });
     }
     if (body.mode === "modification") {
       const draft = await withPropertyPortalTimeout(

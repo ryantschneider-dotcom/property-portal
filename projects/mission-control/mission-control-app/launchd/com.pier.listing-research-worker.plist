@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pier.listing-research-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>/Users/macclaw/projects/mission-control/mission-control-app/scripts/run-listing-research-worker.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/macclaw/projects/mission-control/mission-control-app</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MISSION_CONTROL_APP_ROOT</key>
+    <string>/Users/macclaw/projects/mission-control/mission-control-app</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/macclaw/Library/Logs/pier-listing-research-worker.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macclaw/Library/Logs/pier-listing-research-worker.err.log</string>
+  <key>ThrottleInterval</key>
+  <integer>20</integer>
+</dict>
+</plist>
