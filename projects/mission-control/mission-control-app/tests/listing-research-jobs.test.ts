@@ -87,8 +87,11 @@ test("listing research watchdog alerts on dead worker, stuck jobs, and provider 
   assert.doesNotMatch(source, /alerts\.join\("\\n\\n"\)/);
 });
 
-test("Gemini grounded research does not request JSON mime type with google_search tool", async () => {
+test("Gemini grounded research uses a second JSON-mode normalization call, not JSON mode with google_search", async () => {
   const source = await readFile("src/lib/listing-research-orchestrator.ts", "utf8");
   assert.match(source, /tools:\s*\[\{ google_search: \{\} \}\]/);
-  assert.doesNotMatch(source, /responseMimeType:\s*"application\/json"/);
+  assert.match(source, /responseMimeType:\s*"application\/json"/);
+  assert.match(source, /geminiJsonFromGroundedText/);
+  const groundedCall = source.slice(source.indexOf("const grounded = await callGeminiGenerate"), source.indexOf("let json: any"));
+  assert.doesNotMatch(groundedCall, /responseMimeType:\s*"application\/json"/);
 });

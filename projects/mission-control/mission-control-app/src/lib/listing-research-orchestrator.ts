@@ -78,8 +78,9 @@ const DEFAULT_DATA_ROOT = "/data/listings";
 const MAC_DATA_ROOT = "/Users/macclaw/data/listings";
 const SERVERLESS_DATA_ROOT = "/tmp/listing-research-dossiers";
 const DOSSIER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const MANUS_PARCEL_TIMEOUT_MS = Number(process.env.MANUS_LISTING_PARCEL_TIMEOUT_MS || 90_000);
+const MANUS_PARCEL_TIMEOUT_MS = Number(process.env.MANUS_LISTING_PARCEL_TIMEOUT_MS || 240_000);
 const MANUS_POLL_INTERVAL_MS = Number(process.env.MANUS_LISTING_POLL_INTERVAL_MS || 8_000);
+const MANUS_NOT_FOUND_GRACE_MS = Number(process.env.MANUS_LISTING_NOT_FOUND_GRACE_MS || 30_000);
 
 function clean(value: unknown) {
   if (value == null) return "";
@@ -164,13 +165,40 @@ function walkStrings(value: unknown, out: string[] = []) {
   return out;
 }
 
+function dossierHasUsableContent(value: Partial<ListingResearchDossier> | null | undefined) {
+  if (!value || typeof value !== "object") return false;
+  const facts = value.facts || {};
+  const hasFact = Object.values(facts).some((item) => clean(item));
+  const hasSource = asArray<DossierSource>(value.sources).some((source) => clean(source.claim) && clean(source.url));
+  return hasFact || hasSource || hasPropertyIdentityFacts(value);
+}
+
+function assistantMessageStrings(value: unknown, out: string[] = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) assistantMessageStrings(item, out);
+  } else if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const assistant = record.assistant_message;
+    if (assistant && typeof assistant === "object" && !Array.isArray(assistant)) {
+      const content = (assistant as Record<string, unknown>).content;
+      if (typeof content === "string") out.push(content);
+    }
+    for (const item of Object.values(record)) assistantMessageStrings(item, out);
+  }
+  return out;
+}
+
 function extractDossierJsonFromPayload(payload: unknown): Partial<ListingResearchDossier> | null {
   const direct = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
-  if (direct && (direct.facts || direct.sources || direct.nearbyAnchors || direct.marketEvents)) return direct as Partial<ListingResearchDossier>;
-  for (const text of walkStrings(payload)) {
+  if (direct && dossierHasUsableContent(direct as Partial<ListingResearchDossier>)) return direct as Partial<ListingResearchDossier>;
+  const candidates = [...assistantMessageStrings(payload), ...walkStrings(payload)];
+  const seen = new Set<string>();
+  for (const text of candidates) {
+    if (seen.has(text)) continue;
+    seen.add(text);
     try {
       const parsed = jsonFromText(text);
-      if (parsed && typeof parsed === "object" && (parsed.facts || parsed.sources || parsed.nearbyAnchors || parsed.marketEvents)) return parsed as Partial<ListingResearchDossier>;
+      if (parsed && typeof parsed === "object" && dossierHasUsableContent(parsed as Partial<ListingResearchDossier>)) return parsed as Partial<ListingResearchDossier>;
     } catch {
       // Continue scanning; Manus messages often include logs before final JSON.
     }
@@ -215,7 +243,17 @@ async function pollManusTaskForDossier(taskId: string, apiKey: string, timeoutMs
     }, Math.min(PROVIDER_TIMEOUT_MS.manusPoll, Math.max(1_000, deadline - Date.now())));
     const payload = await response.json().catch(() => ({})) as unknown;
     lastPayload = payload;
-    if (!response.ok) throw new Error(`Manus task.listMessages failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
+    if (!response.ok) {
+      const elapsed = Date.now() - (deadline - Math.max(1_000, timeoutMs));
+      // Manus can return 404 for a freshly-created task for a few seconds before
+      // task.listMessages is indexed. Treat that as handshake propagation, not
+      // a terminal provider failure, until the grace window expires.
+      if (response.status === 404 && elapsed < MANUS_NOT_FOUND_GRACE_MS && Date.now() < deadline) {
+        await sleep(Math.min(MANUS_POLL_INTERVAL_MS, Math.max(250, deadline - Date.now())));
+        continue;
+      }
+      throw new Error(`Manus task.listMessages failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
+    }
     const parsed = extractDossierJsonFromPayload(payload);
     if (parsed && (hasPropertyIdentityFacts(parsed) || asArray<DossierSource>(parsed.sources).length)) return parsed;
     await sleep(Math.min(MANUS_POLL_INTERVAL_MS, Math.max(250, deadline - Date.now())));
@@ -488,21 +526,63 @@ async function defaultClaudeWrite({ dossier, intake }: { dossier: ListingResearc
   );
 }
 
-async function defaultGeminiResearch({ resolved }: { resolved: ListingResearchDossier["resolved"]; intake: ListingResearchInput }) {
-  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "").trim();
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-  const model = process.env.GEMINI_LISTING_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const prompt = `Use Google Search grounding. For the point ${resolved.lat},${resolved.lng} in ${resolved.county}, ${resolved.state}, return JSON only:\n1) nearbyAnchors: notable commercial/industrial/retail/civic sites within ~5 miles, each {name,type,approxDistance,direction}.\n2) accessContext: nearest interstates/interchanges/major roads with distances, and published traffic counts (AADT) for adjacent roads if available, each with source.\n3) recentLocalNews: items from the last ~24 months relevant to development, roads, utilities, employers, or rezonings near this point, each {headline,date,url,oneLineWhyItMatters}.\nCite a source URL for every item. Do not write marketing copy. If unsure, omit.`;
+const GEMINI_RESEARCH_JSON_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    nearbyAnchors: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { name: { type: "STRING" }, type: { type: "STRING" }, approxDistance: { type: "STRING" }, distance: { type: "STRING" }, direction: { type: "STRING" } } },
+    },
+    accessContext: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { road: { type: "STRING" }, name: { type: "STRING" }, claim: { type: "STRING" }, aadt: { type: "STRING" }, trafficCount: { type: "STRING" }, url: { type: "STRING" }, source: { type: "STRING" } } },
+    },
+    recentLocalNews: {
+      type: "ARRAY",
+      items: { type: "OBJECT", properties: { headline: { type: "STRING" }, date: { type: "STRING" }, url: { type: "STRING" }, oneLineWhyItMatters: { type: "STRING" } } },
+    },
+    gaps: { type: "ARRAY", items: { type: "STRING" } },
+  },
+} as const;
+
+async function callGeminiGenerate(model: string, apiKey: string, body: Record<string, unknown>) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await providerFetch("Gemini generateContent", url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
+    body: JSON.stringify(body),
   }, PROVIDER_TIMEOUT_MS.gemini);
   const payload = await response.json().catch(() => ({})) as any;
   if (!response.ok) throw new Error(`Gemini request failed (${response.status}): ${JSON.stringify(payload).slice(0, 400)}`);
   const text = payload.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("\n") || "";
-  const json = jsonFromText(text);
+  if (!text.trim()) throw new Error("Gemini returned no text payload");
+  return { payload, text };
+}
+
+async function geminiJsonFromGroundedText(model: string, apiKey: string, groundedText: string) {
+  const { text } = await callGeminiGenerate(model, apiKey, {
+    contents: [{ role: "user", parts: [{ text: `Convert these grounded research notes into STRICT JSON ONLY. If the notes contain a refusal, safety message, or insufficient detail, still return valid JSON with the issue in gaps. Do not add facts not present in the notes. Schema keys: nearbyAnchors array, accessContext array, recentLocalNews array, gaps array.\n\nNOTES:\n${groundedText}` }] }],
+    generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: GEMINI_RESEARCH_JSON_SCHEMA },
+  });
+  return jsonFromText(text);
+}
+
+async function defaultGeminiResearch({ resolved }: { resolved: ListingResearchDossier["resolved"]; intake: ListingResearchInput }) {
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "").trim();
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  const model = process.env.GEMINI_LISTING_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const prompt = `Use Google Search grounding. For the point ${resolved.lat},${resolved.lng} in ${resolved.county}, ${resolved.state}, collect factual notes for JSON extraction:\n1) nearbyAnchors: notable commercial/industrial/retail/civic sites within ~5 miles, each {name,type,approxDistance,direction}.\n2) accessContext: nearest interstates/interchanges/major roads with distances, and published traffic counts (AADT) for adjacent roads if available, each with source.\n3) recentLocalNews: items from the last ~24 months relevant to development, roads, utilities, employers, or rezonings near this point, each {headline,date,url,oneLineWhyItMatters}.\nCite a source URL for every item. Do not write marketing copy. If unsure, say what is missing.`;
+  const grounded = await callGeminiGenerate(model, apiKey, {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.1 },
+  });
+  let json: any;
+  try {
+    json = jsonFromText(grounded.text);
+  } catch {
+    json = await geminiJsonFromGroundedText(model, apiKey, grounded.text);
+  }
   return {
     nearbyAnchors: asArray<any>(json.nearbyAnchors).map((a) => ({ name: clean(a.name), type: clean(a.type), distance: clean(a.approxDistance || a.distance), direction: clean(a.direction) })).filter((a) => a.name),
     trafficCounts: asArray<Record<string, unknown>>(json.accessContext).filter((a) => clean((a as any).aadt || (a as any).trafficCount)),
