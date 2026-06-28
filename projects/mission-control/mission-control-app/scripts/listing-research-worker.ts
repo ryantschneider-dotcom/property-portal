@@ -26,7 +26,6 @@ function loadDotEnvFile(filePath: string) {
     const key = match[1];
     let value = match[2] ?? "";
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
-    value = value.replace(/\\n/g, "\n");
     if (process.env[key] === undefined) process.env[key] = value;
   }
 }
