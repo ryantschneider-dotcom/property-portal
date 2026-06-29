@@ -251,6 +251,64 @@ test("new-listing approval payload binds intake manual coordinates as the map ov
   assert.equal(payload.location.source, "manual-intake-override");
 });
 
+test("new-listing approval payload rejects address objects before they can render as object Object", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "bush-road-land",
+    draft: {
+      kind: "new-listing",
+      title: "Bush Road Land",
+      descriptionHtml: "<p>Property copy.</p>",
+      highlights: [],
+      sourceInput: { address: { street: "0 Bush Road", city: "Savannah", state: "GA", zip: "31419" } },
+      structuredUpdates: {
+        address: { street: "0 Bush Road", city: "Savannah", state: "GA", zip: "31419" },
+        property: { parcelId: "11026 02007" },
+      },
+    },
+  });
+
+  assert.equal(payload.address, "0 Bush Road, Savannah, GA, 31419");
+  assert.doesNotMatch(JSON.stringify(payload), /\[object Object\]/);
+});
+
+test("new-listing approval payload keeps public ListingStream content to standard form fields", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "bush-road-land",
+    draft: {
+      kind: "new-listing",
+      title: "Bush Road Development Site",
+      descriptionHtml: "<p>Fallback should not replace structured property copy.</p>",
+      highlights: ["4.8-acre land position"],
+      sourceInput: { addressStreet: "0 Bush Road", city: "Savannah", state: "GA" },
+      structuredUpdates: {
+        content: {
+          title: "Bush Road Development Site",
+          propertyDescription: "<p>PROPERTY FIELD: the asset itself.</p>",
+          locationDescription: "<p>LOCATION FIELD: access and corridors.</p>",
+          neighborhoodDescription: "<p>NEIGHBORHOOD FIELD: surrounding users.</p>",
+          marketContext: "<p>MARKET FIELD: momentum and projects.</p>",
+          highlights: ["4.8-acre land position"],
+          dealDrivers: ["West Chatham growth path"],
+          nearbyAnchors: [{ name: "I-16", type: "Interstate", distance: "approx. 3 miles" }],
+          structuredFacts: { parcelId: "11026 02007", zoning: "pending verification" },
+        },
+      },
+    },
+  });
+
+  assert.equal(payload.content.saleDescription, "<p>PROPERTY FIELD: the asset itself.</p>");
+  assert.equal(payload.content.descriptionHtml, "<p>PROPERTY FIELD: the asset itself.</p>");
+  assert.equal(payload.content.locationDescription, "<p>LOCATION FIELD: access and corridors.</p>");
+  assert.equal(payload.content.neighborhoodDescription, undefined);
+  assert.equal(payload.content.marketContext, undefined);
+  assert.notEqual(payload.content.saleDescription, payload.content.locationDescription);
+  assert.equal(payload.content.dealDrivers, undefined);
+  assert.equal(payload.content.nearbyAnchors, undefined);
+  assert.equal(payload.content.structuredFacts, undefined);
+});
+
 test("modification approval payload preserves canonical title, media, and unchanged fields", () => {
   const payload: any = buildPropertyPortalApprovedPayload({
     mode: "draft-preview",

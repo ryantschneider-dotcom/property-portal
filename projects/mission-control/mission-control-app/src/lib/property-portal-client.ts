@@ -128,8 +128,25 @@ export async function safePropertyPortalFetch(fetchImpl: PropertyPortalFetch, ur
   }
 }
 
-function clean(value: unknown) {
-  return String(value ?? "").trim();
+function clean(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "[object Object]" ? "" : trimmed;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const a = value as Record<string, unknown>;
+    const street = a.street ?? a.line1 ?? a.address1 ?? a.streetAddress;
+    const city = a.city;
+    const state = a.state;
+    const zip = a.zip ?? a.zipCode ?? a.postalCode;
+    return [street, city, state, zip]
+      .map((v) => (v == null ? "" : String(v).trim()))
+      .filter((v) => Boolean(v && v !== "[object Object]"))
+      .join(", ");
+  }
+  const trimmed = String(value).trim();
+  return trimmed === "[object Object]" ? "" : trimmed;
 }
 
 function parseCoordinate(value: unknown) {
@@ -528,33 +545,49 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     ? existingTitle || draftTitle || clean(input.slug)
     : (isGenericReviewTitle(draftTitle) ? existingTitle || draftTitle : draftTitle || existingTitle);
   const finalContent = deepMergeRecords(existingContent, updateContent);
-  const rootDescription = clean(updates.saleDescription as string | undefined)
+  const propertyNarrative = clean(updateContent.propertyDescription)
+    || clean(updateContent.saleDescription)
+    || clean(updateContent.leaseDescription)
+    || clean(updateContent.descriptionHtml)
+    || clean(updates.propertyDescription)
+    || clean(updates.saleDescription as string | undefined)
     || clean(updates.leaseDescription as string | undefined)
     || clean(updates.descriptionHtml as string | undefined)
     || clean(updates.description as string | undefined);
-  if (rootDescription) finalContent.saleDescription = rootDescription;
-  const structuredDescriptionWasExplicitlyUpdated = hasMeaningfulValue(updateContent.saleDescription)
+  if (propertyNarrative) {
+    finalContent.propertyDescription = propertyNarrative;
+    finalContent.saleDescription = propertyNarrative;
+    finalContent.descriptionHtml = propertyNarrative;
+    finalContent.description = propertyNarrative;
+  }
+  const structuredDescriptionWasExplicitlyUpdated = hasMeaningfulValue(updateContent.propertyDescription)
+    || hasMeaningfulValue(updateContent.saleDescription)
     || hasMeaningfulValue(updateContent.leaseDescription)
+    || hasMeaningfulValue(updateContent.locationDescription)
+    || hasMeaningfulValue(updateContent.neighborhoodDescription)
+    || hasMeaningfulValue(updateContent.marketContext)
+    || hasMeaningfulValue(updates.propertyDescription)
     || hasMeaningfulValue(updates.saleDescription)
     || hasMeaningfulValue(updates.leaseDescription)
     || hasMeaningfulValue(updates.descriptionHtml)
     || hasMeaningfulValue(updates.description);
   const draftDescription = clean(input.draft.descriptionHtml);
   const safeDraftDescription = isNormalizerFallbackDescription(draftDescription) ? "" : draftDescription;
-  // The Review Draft panel is the broker-approved source of truth for newly enriched
-  // Big Brain copy. Do not require structuredUpdates to repeat the same narrative;
-  // otherwise rich descriptionHtml shown in the UI can be dropped before Firestore.
-  if (hasMeaningfulValue(safeDraftDescription)) {
+  // Legacy/new-listing drafts may only have descriptionHtml. Structured research
+  // drafts now carry distinct narratives, so never let the legacy fallback overwrite
+  // property/location/neighborhood/market fields that Claude wrote separately.
+  if (hasMeaningfulValue(safeDraftDescription) && !hasMeaningfulValue(propertyNarrative)) {
+    finalContent.propertyDescription = safeDraftDescription;
     finalContent.saleDescription = safeDraftDescription;
     finalContent.leaseDescription = safeDraftDescription;
     finalContent.descriptionHtml = safeDraftDescription;
     finalContent.description = safeDraftDescription;
   } else if (input.draft.kind !== "modification" || structuredDescriptionWasExplicitlyUpdated) {
-    if (hasMeaningfulValue(rootDescription)) {
-      finalContent.saleDescription = rootDescription;
-      finalContent.leaseDescription = rootDescription;
-      finalContent.descriptionHtml = rootDescription;
-      finalContent.description = rootDescription;
+    if (hasMeaningfulValue(propertyNarrative)) {
+      finalContent.saleDescription = propertyNarrative;
+      finalContent.descriptionHtml = propertyNarrative;
+      finalContent.description = propertyNarrative;
+      if (!hasMeaningfulValue(finalContent.leaseDescription)) finalContent.leaseDescription = propertyNarrative;
     }
   }
   const structuredBulletsWereExplicitlyUpdated = hasMeaningfulValue(updateContent.saleBullets)
@@ -566,6 +599,19 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
   }
   if (input.draft.kind !== "modification" || titleWasExplicitlyUpdated) {
     finalContent.saleTitle = finalTitle;
+  }
+
+  // ListingStream public listing pages are intentionally simpler than separate
+  // generated offering websites. Keep research/diligence sections in broker
+  // review meta, not in the live listing form.
+  for (const key of ["neighborhoodDescription", "marketContext", "structuredFacts", "nearbyAnchors", "dealDrivers", "developmentConstraints"] as const) {
+    delete finalContent[key];
+  }
+  if (merged.visibility && isRecord(merged.visibility) && (merged.visibility as Record<string, unknown>).leaseActive === true) {
+    finalContent.saleDescription = "";
+    if (!hasMeaningfulValue(finalContent.leaseDescription) && hasMeaningfulValue(finalContent.propertyDescription)) {
+      finalContent.leaseDescription = finalContent.propertyDescription;
+    }
   }
 
   const existingMedia = existing.media;

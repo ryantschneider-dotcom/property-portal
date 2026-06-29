@@ -451,7 +451,7 @@ function buildClaudeSystem(mode: "RESEARCH" | "WRITE") {
   if (mode === "RESEARCH") {
     return `${base}\n\nMODE: RESEARCH. Do not write marketing copy yet. Gather facts and return them as JSON.\n\nInvestigate generously. Prioritize these targets and cite each finding with its URL:\n\n1. PROPERTY IDENTITY (county assessor / GIS by parcel ID + address/coords): owner of record, acreage / building SF, zoning + permitted uses, land-use designation, utilities present (water / sewer / power / gas), topography, FEMA flood zone, road frontage, access points, last sale date & price, deed/plat reference, easements or restrictions you can confirm.\n2. LOCATION & ACCESS: nearest interstates / interchanges / arterials with distances and drive times to port, airport, rail, downtown, and major employers; published traffic counts (AADT) on adjacent roads if available; visible corridors and frontage exposure.\n3. MARKET MOMENTUM: announced or under-construction developments nearby; DOT / road-improvement projects; water-sewer-utility expansions; civic/public infrastructure; recent land or site sales to developers in the submarket; major employer or anchor announcements; rezonings, annexations, opportunity zones / TADs / incentives; relevant growth or demographic trends for this asset type.\n\nSOURCE PRIORITY: county assessor/GIS, planning commission & county commission agendas/minutes, city council packets, regional development / economic-development authority, state & regional DOT project lists, reputable local news. Use competitor broker listings ONLY to harvest data points and comparable sales — never their narrative or wording.\n\nReturn strict JSON only: { "facts":{...}, "nearbyAnchors":[...], "marketEvents":[...], "trafficCounts":[...], "comps":[...], "sources":[{"claim":"","url":"","note":"","confidence":"low|medium|high"}], "gaps":[...] }. Put anything you suspect but could not verify into gaps, not facts.`;
   }
-  return `${base}\n\nMODE: WRITE. You now have the full research dossier below. Write the finished listing copy using ONLY the dossier and the broker intake.\n\nAudience: a commercial broker, investor, or developer evaluating this site. Write the way a top-producing broker writes an offering — confident, specific, benefit-led, no clichés, no fluff. Tie every feature to what it lets the buyer DO, and use verified numbers rounded honestly.\n\nKeep the four narratives genuinely DISTINCT — do not repeat sentences across them:\n• propertyDescription = the asset itself.\n• locationDescription = access, visibility, positioning, drive times, corridors.\n• neighborhoodDescription = the submarket's character and who/what is around it.\n• marketContext = momentum: what's announced, funded, or under construction nearby and why it matters right now.\n\nCompliance: no invented tenants/entitlements, no guaranteed returns, no fair-housing-sensitive language. If rent is "not disclosed," say so plainly; do not estimate it.\n\nReturn strict JSON only, matching this schema exactly: {"title":"string","propertyDescription":"html string","locationDescription":"html string","neighborhoodDescription":"html string","marketContext":"html string","highlights":["short bullet strings, 4–8"],"dealDrivers":["why-act-now bullets, 2–5"],"nearbyAnchors":[{"name":"string","type":"string","distance":"string"}],"verifiedFacts":{"parcelId":null,"acreageOrSF":null,"zoning":null,"permittedUses":null,"utilities":null,"floodZone":null,"lastSale":null,"trafficCounts":null,"driveTimes":null},"sources":[{"claim":"string","url":"string","note":"string","confidence":"low|medium|high"}],"reviewFlags":["unverified-but-promising items for the broker to confirm"],"confidenceOverall":"low|medium|high","mediaNotes":"string"}. For every concrete claim, carry a matching sources entry from the dossier. Put unverified-but-promising items in reviewFlags.`;
+  return `${base}\n\nMODE: WRITE. You now have the full research dossier below. Write the finished GENERAL LISTING copy using ONLY the dossier and the broker intake.\n\nImportant workflow boundary: this is ListingStream listing entry, not the separate offering-website generator. The public listing page supports a simple broker form: property description, location/neighborhood description, highlights, pricing, available spaces/suites, property type, address, brokers, and media. Do not write offering-website sections into the listing draft.\n\nAudience: a tenant, buyer, or broker scanning the public PIER listing page. Write concise, form-ready listing copy — not a full offering memorandum, diligence report, or market study. For a For Lease listing, write tenant-facing lease copy and availability/suite value only.\n\nKeep only two public narratives:\n• propertyDescription = the space/property being offered and the occupancy/value proposition.\n• locationDescription = the surrounding corridor/neighborhood, access, and nearby demand drivers.\n\nUse market/municipal/parcel research only to avoid errors and to support concise broker copy. Do NOT put flood/FEMA, parcel IDs, last-sale history, ownership/acquisition details, assessment values, raw building-size diligence, structured-fact tables, nearby-anchor dumps, deal-driver sections, or long market/infrastructure context into public listing fields unless the broker explicitly asks for that exact item.\n\nCompliance: no invented tenants/entitlements, no guaranteed returns, no fair-housing-sensitive language. If rent is "not disclosed," say so plainly; do not estimate it.\n\nReturn strict JSON only, matching this schema exactly: {"title":"string","propertyDescription":"html string","locationDescription":"html string","neighborhoodDescription":"","marketContext":"","highlights":["short bullet strings, 4–8"],"dealDrivers":[],"nearbyAnchors":[],"verifiedFacts":{"parcelId":null,"acreageOrSF":null,"zoning":null,"permittedUses":null,"utilities":null,"floodZone":null,"lastSale":null,"trafficCounts":null,"driveTimes":null},"sources":[{"claim":"string","url":"string","note":"string","confidence":"low|medium|high"}],"reviewFlags":["unverified-but-promising items for the broker to confirm"],"confidenceOverall":"low|medium|high","mediaNotes":"string"}. Sources and verifiedFacts are for broker review/meta only; they are not public listing sections.`;
 }
 
 function anthropicListingModel() {
@@ -886,21 +886,25 @@ export async function runListingResearchAndDraft(options: {
     dossier.providerErrors = { ...(dossier.providerErrors || {}), openaiValidator: validatorErrors.openaiValidator };
     reviewFlags.push(`OpenAI validation failed: ${validatorErrors.openaiValidator}`);
   }
+  const transactionText = JSON.stringify(input).toLowerCase();
+  const leaseListing = /for\s+lease|lease|rent|suite|modified\s+gross|nnn|full\s+service/.test(transactionText) && !/for\s+sale|sale\s+price|purchase/.test(transactionText);
   const content = {
     title: writeOutput.title,
     propertyDescription: writeOutput.propertyDescription,
-    saleDescription: writeOutput.propertyDescription,
+    saleDescription: leaseListing ? "" : writeOutput.propertyDescription,
+    leaseDescription: leaseListing ? writeOutput.propertyDescription : "",
     descriptionHtml: writeOutput.propertyDescription,
-    locationDescription: writeOutput.locationDescription,
-    neighborhoodDescription: writeOutput.neighborhoodDescription,
-    marketContext: writeOutput.marketContext,
+    description: writeOutput.propertyDescription,
+    locationDescription: writeOutput.locationDescription || writeOutput.neighborhoodDescription || "",
+    neighborhoodDescription: "",
+    marketContext: "",
     highlights: writeOutput.highlights || [],
-    dealDrivers: writeOutput.dealDrivers || [],
-    nearbyAnchors: writeOutput.nearbyAnchors || [],
-    structuredFacts: writeOutput.verifiedFacts || {},
-    developmentConstraints: (dossier.facts.developmentConstraints && typeof dossier.facts.developmentConstraints === "object")
-      ? dossier.facts.developmentConstraints
-      : ((writeOutput.verifiedFacts as Record<string, unknown> | undefined)?.developmentConstraints || {}),
+    leaseBullets: leaseListing ? (writeOutput.highlights || []) : [],
+    saleBullets: leaseListing ? [] : (writeOutput.highlights || []),
+    dealDrivers: [],
+    nearbyAnchors: [],
+    structuredFacts: {},
+    developmentConstraints: {},
   };
   const draft: ListingResearchReviewDraft = {
     kind: "new-listing",
@@ -913,8 +917,6 @@ export async function runListingResearchAndDraft(options: {
       location: { lat: resolved.lat, lng: resolved.lng, source: resolved.lat !== null && resolved.lng !== null ? "manual-or-resolved-intake" : undefined },
       content,
       property: {
-        parcelId: writeOutput.verifiedFacts?.parcelId || resolved.parcelId || undefined,
-        acreageOrSF: writeOutput.verifiedFacts?.acreageOrSF || dossier.facts.acreageOrSF || undefined,
         zoning: writeOutput.verifiedFacts?.zoning || dossier.facts.zoning || undefined,
       },
       meta: { researchDossier: dossier, researchDraft: { sources: writeOutput.sources || [], validation, reviewFlags } },
