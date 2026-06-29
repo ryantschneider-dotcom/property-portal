@@ -13,12 +13,25 @@ async function requirePierManagerAuth() {
   if (!ok) throw new Error("Unauthorized");
 }
 
+async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3, delayMs = 750): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+  throw new Error(`${label} failed after ${attempts} attempt(s): ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+}
+
 export async function GET(_request: Request, context: { params: Promise<{ jobId: string }> }) {
   try {
     await requirePierManagerAuth();
     const { jobId } = await context.params;
     if (!jobId) return NextResponse.json({ error: "Missing listing research job id" }, { status: 400 });
-    const job = await getListingResearchJob(jobId);
+    const job = await withRetry("listing research job status lookup", () => getListingResearchJob(jobId));
     return NextResponse.json({ ok: true, job, draft: job.status === "completed" ? job.result : null });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

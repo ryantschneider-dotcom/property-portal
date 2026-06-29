@@ -1335,9 +1335,22 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setListingResearchJobId(jobId);
     setListingResearchJobStatus("queued");
     setReviewStatus(`Research job ${jobId} queued on the Mac mini. Broker Hub will keep polling until the real researched draft is ready.`);
+    let transientPollFailures = 0;
     for (let attempt = 0; attempt < 180; attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, attempt < 6 ? 5_000 : 10_000));
-      const data = (await fetchJsonWithTimeout(`/api/listingstream/ai-draft/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" }, 30_000)) as { job?: ListingResearchJobPayload; draft?: unknown };
+      let data: { job?: ListingResearchJobPayload; draft?: unknown };
+      try {
+        data = (await fetchJsonWithTimeout(`/api/listingstream/ai-draft/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" }, 45_000)) as { job?: ListingResearchJobPayload; draft?: unknown };
+        transientPollFailures = 0;
+      } catch (error) {
+        transientPollFailures += 1;
+        if (transientPollFailures < 8) {
+          setListingResearchJobStatus("researching");
+          setReviewStatus(`Research job ${jobId} is still running. A status check timed out, but Broker Hub will keep polling instead of abandoning the Mac mini worker job.`);
+          continue;
+        }
+        throw error;
+      }
       const job = data.job;
       if (!job) throw new Error("Research job status did not return from Broker Hub.");
       if (job.status === "queued") {
