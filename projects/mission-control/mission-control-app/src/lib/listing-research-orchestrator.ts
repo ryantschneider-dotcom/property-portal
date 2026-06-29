@@ -66,8 +66,8 @@ export type ListingResearchReviewDraft = {
 
 const BROKERAGE = "PIER Commercial Real Estate";
 const PROVIDER_TIMEOUT_MS = {
-  claudeResearch: Number(process.env.LISTING_RESEARCH_CLAUDE_TIMEOUT_MS || 180_000),
-  claudeWrite: Number(process.env.LISTING_RESEARCH_CLAUDE_WRITE_TIMEOUT_MS || 180_000),
+  claudeResearch: Number(process.env.LISTING_RESEARCH_CLAUDE_TIMEOUT_MS || 300_000),
+  claudeWrite: Number(process.env.LISTING_RESEARCH_CLAUDE_WRITE_TIMEOUT_MS || 300_000),
   gemini: Number(process.env.LISTING_RESEARCH_GEMINI_TIMEOUT_MS || 90_000),
   manusCreate: Number(process.env.LISTING_RESEARCH_MANUS_CREATE_TIMEOUT_MS || 30_000),
   manusPoll: Number(process.env.LISTING_RESEARCH_MANUS_POLL_TIMEOUT_MS || 12_000),
@@ -78,7 +78,7 @@ const DEFAULT_DATA_ROOT = "/data/listings";
 const MAC_DATA_ROOT = "/Users/macclaw/data/listings";
 const SERVERLESS_DATA_ROOT = "/tmp/listing-research-dossiers";
 const DOSSIER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const MANUS_PARCEL_TIMEOUT_MS = Number(process.env.MANUS_LISTING_PARCEL_TIMEOUT_MS || 240_000);
+const MANUS_PARCEL_TIMEOUT_MS = Number(process.env.MANUS_LISTING_PARCEL_TIMEOUT_MS || 420_000);
 const MANUS_POLL_INTERVAL_MS = Number(process.env.MANUS_LISTING_POLL_INTERVAL_MS || 8_000);
 const MANUS_NOT_FOUND_GRACE_MS = Number(process.env.MANUS_LISTING_NOT_FOUND_GRACE_MS || 30_000);
 
@@ -112,11 +112,34 @@ function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "listing-draft";
 }
 
+function parseFirstBalancedJsonObject(text: string) {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 function jsonFromText(text: string) {
   const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-  const first = trimmed.indexOf("{");
-  const last = trimmed.lastIndexOf("}");
-  if (first >= 0 && last > first) return JSON.parse(trimmed.slice(first, last + 1));
+  const firstBalanced = parseFirstBalancedJsonObject(trimmed);
+  if (firstBalanced) return JSON.parse(firstBalanced);
   return JSON.parse(trimmed);
 }
 
@@ -138,11 +161,18 @@ function providerErrorMessage(provider: string, url: string, attempt: number, er
 async function providerFetch(provider: string, url: string, init: RequestInit, timeoutMs: number, attempts = PROVIDER_RETRY_ATTEMPTS) {
   let lastError: unknown = null;
   const tries = Math.max(1, attempts);
+  const host = (() => {
+    try { return new URL(url).host; } catch { return url; }
+  })();
   for (let attempt = 1; attempt <= tries; attempt += 1) {
+    const started = Date.now();
     try {
-      return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      console.info(`[listing-research-provider] provider=${provider} host=${host} attempt=${attempt}/${tries} status=${response.status} durationMs=${Date.now() - started}`);
+      return response;
     } catch (error) {
       lastError = error;
+      console.warn(`[listing-research-provider] provider=${provider} host=${host} attempt=${attempt}/${tries} error=${error instanceof Error ? error.message : String(error)} durationMs=${Date.now() - started}`);
       if (attempt < tries) await sleep(Math.min(2_000 * attempt, 5_000));
     }
   }
@@ -258,10 +288,7 @@ async function pollManusTaskForDossier(taskId: string, apiKey: string, timeoutMs
     if (parsed && (hasPropertyIdentityFacts(parsed) || asArray<DossierSource>(parsed.sources).length)) return parsed;
     await sleep(Math.min(MANUS_POLL_INTERVAL_MS, Math.max(250, deadline - Date.now())));
   }
-  return {
-    gaps: [`Manus parcel task ${taskId} timed out after ${timeoutMs}ms before returning usable parcel facts.`],
-    sources: [{ claim: `Manus parcel task ${taskId} produced no usable synchronous JSON`, url: endpoint, note: JSON.stringify(lastPayload).slice(0, 500), confidence: "low" }],
-  } satisfies Partial<ListingResearchDossier>;
+  throw new Error(`Manus parcel task ${taskId} timed out after ${timeoutMs}ms before returning usable parcel facts. Last payload: ${JSON.stringify(lastPayload).slice(0, 500)}`);
 }
 
 function normalizeAddress(input: ListingResearchInput) {
@@ -567,11 +594,15 @@ async function geminiJsonFromGroundedText(model: string, apiKey: string, grounde
   return jsonFromText(text);
 }
 
-async function defaultGeminiResearch({ resolved }: { resolved: ListingResearchDossier["resolved"]; intake: ListingResearchInput }) {
+async function defaultGeminiResearch({ resolved, intake }: { resolved: ListingResearchDossier["resolved"]; intake: ListingResearchInput }) {
   const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || "").trim();
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
   const model = process.env.GEMINI_LISTING_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const prompt = `Use Google Search grounding. For the point ${resolved.lat},${resolved.lng} in ${resolved.county}, ${resolved.state}, collect factual notes for JSON extraction:\n1) nearbyAnchors: notable commercial/industrial/retail/civic sites within ~5 miles, each {name,type,approxDistance,direction}.\n2) accessContext: nearest interstates/interchanges/major roads with distances, and published traffic counts (AADT) for adjacent roads if available, each with source.\n3) recentLocalNews: items from the last ~24 months relevant to development, roads, utilities, employers, or rezonings near this point, each {headline,date,url,oneLineWhyItMatters}.\nCite a source URL for every item. Do not write marketing copy. If unsure, say what is missing.`;
+  const submittedAddress = clean(resolved.normalizedAddress || intake.address || intake.fullAddress || intake.streetAddress || intake.addressStreet);
+  const locationLabel = resolved.lat !== null && resolved.lng !== null
+    ? `the point ${resolved.lat},${resolved.lng}${submittedAddress ? ` (${submittedAddress})` : ""}`
+    : submittedAddress || `${resolved.county}, ${resolved.state}`;
+  const prompt = `Use Google Search grounding. For ${locationLabel} in ${resolved.county}, ${resolved.state}, collect factual notes for JSON extraction:\n1) nearbyAnchors: notable commercial/industrial/retail/civic sites within ~5 miles, each {name,type,approxDistance,direction}.\n2) accessContext: nearest interstates/interchanges/major roads with distances, and published traffic counts (AADT) for adjacent roads if available, each with source.\n3) recentLocalNews: items from the last ~24 months relevant to development, roads, utilities, employers, or rezonings near this location, each {headline,date,url,oneLineWhyItMatters}.\nCite a source URL for every item. Do not write marketing copy. If unsure, say what is missing.`;
   const grounded = await callGeminiGenerate(model, apiKey, {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     tools: [{ google_search: {} }],
@@ -601,7 +632,7 @@ async function defaultManusResearch({ resolved }: { resolved: ListingResearchDos
   const endpoint = `${(process.env.MANUS_API_BASE_URL || "https://api.manus.ai").replace(/\/$/, "")}/v2/task.create`;
   const target = resolved.normalizedAddress || `${resolved.lat},${resolved.lng}`;
   const assessorUrl = resolved.parcelId ? buildChathamAssessorParcelUrl(resolved.parcelId) : "";
-  const prompt = `TASK: Pull primary-source parcel identity records for a commercial property. Use your browser and file-reading tools fully — open portals, run searches, download and read PDFs.\n\nTarget: parcel ${resolved.parcelId || "unknown parcel"} at ${target}, ${resolved.county}, ${resolved.state}.\nDeterministic assessor/GIS record URL to open first: ${assessorUrl || "parcel ID unavailable"}.\n\nCollect and return as STRICT JSON ONLY with source URLs, matching this shape: {"facts":{"owner":"","acreageOrSF":"","acreage":"","buildingSF":"","zoning":"","landUse":"","utilities":"","floodZone":"","lastSale":"","assessedValue":"","deedOrPlat":"","roadFrontage":"","accessPoints":""},"nearbyAnchors":[],"marketEvents":[],"trafficCounts":[],"comps":[],"sources":[{"claim":"","url":"","note":"","confidence":"low|medium|high"}],"gaps":[]}.\n\nPrimary task: county assessor / GIS record for this parcel: owner of record, acreage / building SF, zoning + permitted uses if shown, land-use designation, utilities present (water / sewer / power / gas), topography, FEMA flood zone, road frontage, access points, last sale date & price, deed/plat reference, easements or restrictions you can confirm. If a field is not visible in a primary source, put it in gaps instead of guessing.`;
+  const prompt = `TASK: Return parcel identity JSON for a commercial listing. Use the deterministic assessor/GIS URL first, but DO NOT browse indefinitely. Hard stop: if primary-source pages are blocked or not searchable within ~4 minutes, return partial JSON immediately with the blockage recorded in gaps.\n\nTarget: parcel ${resolved.parcelId || "unknown parcel"} at ${target}, ${resolved.county}, ${resolved.state}.\nDeterministic assessor/GIS record URL to open first: ${assessorUrl || "parcel ID unavailable"}.\n\nReturn STRICT JSON ONLY, no markdown, no prose before or after the object. Shape: {"facts":{"owner":"","parcelId":"${resolved.parcelId || ""}","acreageOrSF":"","acreage":"","buildingSF":"","zoning":"","landUse":"","utilities":"","floodZone":"","lastSale":"","assessedValue":"","deedOrPlat":"","roadFrontage":"","accessPoints":""},"nearbyAnchors":[],"marketEvents":[],"trafficCounts":[],"comps":[],"sources":[{"claim":"","url":"","note":"","confidence":"low|medium|high"}],"gaps":[]}.\n\nPrimary task: county assessor / GIS record for this parcel: owner of record, acreage / building SF, zoning + permitted uses if shown, land-use designation, utilities present (water / sewer / power / gas), topography, FEMA flood zone, road frontage, access points, last sale date & price, deed/plat reference, easements or restrictions you can confirm. If a field is not visible in a primary source, leave it empty and put it in gaps instead of guessing. A partial JSON object with sources/gaps is success; never wait for perfect data.`;
   const response = await providerFetch("Manus task.create", endpoint, {
     method: "POST",
     headers: { "content-type": "application/json", "X-Manus-API-Key": apiKey },
