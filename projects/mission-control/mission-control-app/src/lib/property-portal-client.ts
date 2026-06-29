@@ -691,6 +691,11 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     status: getApprovedPayloadStatus(updates, input.mode),
     workflowStatus: input.mode === "draft-preview" ? "draft_preview" : "approved",
     content: finalContent,
+    highlights: Array.isArray(finalContent.leaseBullets) && finalContent.leaseBullets.length
+      ? finalContent.leaseBullets
+      : Array.isArray(finalContent.saleBullets) && finalContent.saleBullets.length
+        ? finalContent.saleBullets
+        : Array.isArray(finalContent.highlights) ? finalContent.highlights : [],
     saleDescription: finalContent.saleDescription,
     leaseDescription: finalContent.leaseDescription || finalContent.saleDescription,
     descriptionHtml: finalContent.descriptionHtml || finalContent.saleDescription,
