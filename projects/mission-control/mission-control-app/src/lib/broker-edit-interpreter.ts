@@ -216,11 +216,13 @@ function extractSuiteRate(instructions: string, suiteNumber: string) {
 }
 
 function extractRentType(instructions: string) {
-  const match = instructions.match(/\b(NNN|NN|modified\s+gross|full\s+service|plus\s+utilities|gross)\b/i);
+  const match = instructions.match(/\b(rent\s*\+\s*utilities|rent\s+plus\s+utilities|plus\s+utilities|NNN|NN|modified\s+gross|full\s+service|gross)\b/i);
   if (!match) return null;
   const value = match[1].replace(/\s+/g, " ").trim();
   const lower = value.toLowerCase();
   if (lower === "nnn" || lower === "nn") return value.toUpperCase();
+  if (/^plus\s+utilities$/i.test(value)) return "Plus Utilities";
+  if (/^(rent\s*\+\s*utilities|rent\s+plus\s+utilities)$/i.test(value)) return "Rent + Utilities";
   return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -740,6 +742,18 @@ function interpretBrokerEditRequestDeterministic(rawProperty: Record<string, unk
     summary.push(`Updated asking rate to $${leaseRate}/SF.`);
   }
 
+  const globalRentType = extractRentType(instructions);
+  if (globalRentType) {
+    const effectiveLeaseRate = leaseRate ?? parseNumericToken(asString(pricing.askingPriceRatePerSf) || asString(pricing.leaseRatePerSf) || asString(pricing.ratePerSf) || asString(pricing.leaseRate));
+    nextPricing.rateType = globalRentType;
+    nextPricing.leaseType = globalRentType;
+    if (effectiveLeaseRate != null) {
+      nextPricing.askingPriceRatePerSf = effectiveLeaseRate;
+      nextPricing.leaseRate = `$${effectiveLeaseRate}/SF ${globalRentType}`;
+    }
+    summary.push(`Updated lease expense structure to ${globalRentType}.`);
+  }
+
   const zoning = extractZoning(instructions);
   if (zoning) {
     nextProperty.zoning = zoning;
@@ -805,6 +819,15 @@ function interpretBrokerEditRequestDeterministic(rawProperty: Record<string, unk
     nextPricing.availableSqFt = totalSuiteSqFt(semanticSuiteMapping.suites);
     nextPricing.suiteNumbers = semanticSuiteMapping.suites.map((suite) => suite.suiteNumber).filter(Boolean).join(", ");
     summary.push(...semanticSuiteMapping.messages);
+  }
+  const globalRentTypeAppliesToAllSuites = Boolean(globalRentType && (!/\bsuite\s+[A-Za-z0-9-]+\b/i.test(instructions) || /\b(?:all|every)\s+(?:active\s+)?suites?\b/i.test(instructions)));
+  if (globalRentTypeAppliesToAllSuites && suites.length && !nextAdmin.suites) {
+    nextAdmin.suites = suites.map((suite) => ({ ...suite, rentType: globalRentType }));
+    nextPricing.availableSqFt = totalSuiteSqFt(nextAdmin.suites as SuiteRecord[]);
+    nextPricing.suiteNumbers = (nextAdmin.suites as SuiteRecord[]).map((suite) => suite.suiteNumber).filter(Boolean).join(", ");
+    summary.push(`Applied ${globalRentType} to all active suite rows.`);
+  } else if (globalRentTypeAppliesToAllSuites && Array.isArray(nextAdmin.suites)) {
+    nextAdmin.suites = (nextAdmin.suites as SuiteRecord[]).map((suite) => ({ ...suite, rentType: globalRentType }));
   }
   if (semanticSuiteMapping.flags.length) flags.push(...semanticSuiteMapping.flags);
 

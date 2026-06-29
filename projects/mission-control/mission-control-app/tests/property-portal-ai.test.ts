@@ -43,6 +43,31 @@ Located in the immediate area of dining and shopping.  New apartments, a regiona
   );
 });
 
+test("broker edit interpreter applies Rent + Utilities across whole lease listing", () => {
+  const result = interpretBrokerEditRequestDeterministic(
+    {
+      visibility: { transactionLabel: "For Lease", leaseActive: true },
+      pricing: { rateType: "Modified Gross", leaseType: "Modified Gross", askingPriceRatePerSf: 28 },
+      admin: {
+        suites: [
+          { suiteNumber: "Suite 1", availableSqFt: "1250", baseRent: "28", rentType: "Modified Gross" },
+          { suiteNumber: "Suite 2", availableSqFt: "1250", baseRent: "28", rentType: "Modified Gross" },
+        ],
+      },
+    },
+    "Change the rent type to Rent + Utilities and keep the $28/SF rate.",
+  );
+
+  const pricing = result.updatePayload.pricing as Record<string, unknown>;
+  const admin = result.updatePayload.admin as Record<string, unknown>;
+  const suites = admin.suites as Record<string, unknown>[];
+  assert.equal(pricing.rateType, "Rent + Utilities");
+  assert.equal(pricing.leaseType, "Rent + Utilities");
+  assert.equal(pricing.askingPriceRatePerSf, 28);
+  assert.equal(pricing.leaseRate, "$28/SF Rent + Utilities");
+  assert.deepEqual(suites.map((suite) => suite.rentType), ["Rent + Utilities", "Rent + Utilities"]);
+});
+
 
 test("frontier writer polished narrative wins over broker vibe copy unless exact wording is requested", async () => {
   const instruction = "Update the property description to say this is newly refeshed office space in a re-devloping area with good access";
@@ -748,6 +773,8 @@ test("plain-English status changes produce ListingStream status fields before AI
   assert.equal(draft.structuredUpdates.underContract, false);
   assert.deepEqual(draft.structuredUpdates.visibility, {
     status: "leased",
+    leaseActive: true,
+    saleActive: false,
     listingStatus: "leased",
     availabilityStatus: "leased",
     transactionStatus: "leased",

@@ -109,8 +109,21 @@ function stripPublicClutterFromValue(value: unknown): unknown {
   return isPublicClutterText(value) ? undefined : value;
 }
 
-function sanitizeLeaseFocusedRevisionResult(result: PropertyPortalAiWriterResult, feedback: string): PropertyPortalAiWriterResult {
-  if (!brokerFeedbackRequestsLeaseCleanup(feedback)) return result;
+function currentListingIsLeaseFocused(currentListing: Record<string, unknown>, instructions = "") {
+  const visibility = normalizeRecord(currentListing.visibility);
+  const text = `${instructions} ${safeJson({
+    transactionTypes: currentListing.transactionTypes,
+    visibility,
+    pricing: currentListing.pricing,
+    content: currentListing.content,
+    spaces: currentListing.spaces,
+  })}`;
+  return visibility.leaseActive === true
+    || /for\s+lease|lease|rent\s*\+\s*utilities|plus\s+utilities|modified\s+gross|nnn|suite/i.test(text);
+}
+
+function sanitizeLeaseFocusedRevisionResult(result: PropertyPortalAiWriterResult, feedback: string, currentListing: Record<string, unknown> = {}): PropertyPortalAiWriterResult {
+  if (!brokerFeedbackRequestsLeaseCleanup(feedback) && !currentListingIsLeaseFocused(currentListing, feedback)) return result;
   const structuredUpdates = stripPublicClutterFromValue(result.structuredUpdates) as Record<string, unknown>;
   const content = normalizeRecord(structuredUpdates.content);
   const description = asString(content.leaseDescription || content.propertyDescription || content.descriptionHtml || result.descriptionHtml);
@@ -209,6 +222,11 @@ Task:
 - For status changes, use the deterministic interpreter fields exactly. The frontend normalizer reads top-level status, statusBadgeLabel, underContract, leased, sold and nested visibility.status/statusBadgeLabel/underContract/leased/sold; set data.leased=true for Leased, data.sold=true for Sold, and data.underContract=true for Under Contract
 - Valid status values are: "leased", "sold", and "under_contract". Matching display labels are: "Leased", "Sold", and "Under Contract"
 - Return only fields that should change in structuredUpdates; unchanged fields are merged by backend from the canonical listing
+- This is a GENERAL ListingStream listing modification, not an offering website or OM generation task. Do not write or return offering-site-only sections such as marketContext, structuredFacts, nearbyAnchors, dealDrivers, developmentConstraints, investment thesis cards, or long municipal/research sections.
+- Apply broker wording changes across the whole listing object: content.propertyDescription, content.leaseDescription, content.descriptionHtml/description, content.locationDescription, content.leaseBullets/highlights, pricing, visibility, and admin.suites/spaces when relevant. Do not only change the first field you see.
+- For lease listings, keep tenant-facing lease copy only. Do not reintroduce parcel IDs, flood/FEMA facts, past sale/acquisition history, assessed values, owner details, raw coordinates, or building-size diligence unless the broker explicitly asks to display those facts publicly.
+- If the broker changes lease type/expense structure, update all relevant places consistently: pricing.rateType/pricing.leaseType/pricing.leaseRate text and admin.suites[].rentType for every active suite row.
+- If the broker asks for Rent + Utilities, use exactly "Rent + Utilities" as the rate/lease type label and do not keep stale Modified Gross labels.
 - For multi-tenant suite instructions, aggressively extract the broker's exact Available Sq. Ft. and Rent Rate values into structuredUpdates.admin.suites[].availableSqFt and .baseRent. The "Call" fallback is strictly prohibited when the broker supplied a number, including labels like "Available Sq. Ft.: 1,900" or "Rent Rate: $1,900/month".
 - When changing one suite, semantically match the target suite row even when casing, shorthand, or broker phrasing differs, then preserve every existing suite not explicitly mentioned by the broker. Return an admin.suites array that includes all unchanged suites plus the corrected changed suite rows. Only omit/delete suite rows when the broker explicitly says a suite is leased/removed/deleted/dropped, or says to remove/clear all suites. Do not append duplicate suites, do not carry stale duplicate suite rows forward, and never default to "Call" when the broker supplied a price.
 - Documents/attachments are mutable arrays and links is a mutable object. On live Pooler Parkway, the public Sale Listing URL is duplicated at documents[] (title "Sale Listing", documentType "External Link") and links.saleListingUrl. When broker feedback says to remove/delete/drop/hide/unpublish/take down a document, attachment, file, URL, or link, semantically match against current documents/attachments objects by id, title, name, label, description, documentType, source, filename, url, href, or downloadUrl, and against current links object fields by key/value (saleListingUrl, websiteUrl, leaseListingUrl, virtualTourUrl, matterportUrl, youTubeUrl). Return the complete resulting documents/attachments arrays with only the requested object removed and the complete resulting links object with the requested field set to null. A removal can only be treated as successful when the output document/attachment array length is strictly less than the input array length or the matched links.* URL no longer equals the input URL; otherwise flag it and do not claim success.
@@ -680,7 +698,11 @@ export async function createModificationReviewDraft(input: {
   }
 
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
-  const writerResult = await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter }));
+  const writerResult = sanitizeLeaseFocusedRevisionResult(
+    await writer(buildModificationDeltaPrompt({ currentListing, instructions: input.instructions, interpreter })),
+    input.instructions,
+    currentListing,
+  );
   const mergedStructuredUpdates = preserveFrontierNarrativeUpdates(
     mergeStructuredUpdatesPreservingSuites(currentListing, writerResult.structuredUpdates, interpreter.updatePayload, input.instructions),
     writerResult.structuredUpdates,
@@ -710,7 +732,7 @@ export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft;
   const interpreter = input.draft.kind === "modification"
     ? await interpretBrokerEditRequest(currentListing, input.feedback)
     : null;
-  const writerResult = sanitizeLeaseFocusedRevisionResult(await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback })), input.feedback);
+  const writerResult = sanitizeLeaseFocusedRevisionResult(await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback })), input.feedback, currentListing);
   const writerStructuredUpdates = normalizeRecord(writerResult.structuredUpdates);
   const mergedStructuredUpdates = input.draft.kind === "modification" && interpreter
     ? preserveFrontierNarrativeUpdates(

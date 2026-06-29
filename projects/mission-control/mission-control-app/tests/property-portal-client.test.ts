@@ -301,12 +301,53 @@ test("new-listing approval payload keeps public ListingStream content to standar
   assert.equal(payload.content.saleDescription, "<p>PROPERTY FIELD: the asset itself.</p>");
   assert.equal(payload.content.descriptionHtml, "<p>PROPERTY FIELD: the asset itself.</p>");
   assert.equal(payload.content.locationDescription, "<p>LOCATION FIELD: access and corridors.</p>");
-  assert.equal(payload.content.neighborhoodDescription, undefined);
-  assert.equal(payload.content.marketContext, undefined);
+  assert.equal(payload.content.neighborhoodDescription, "<p>NEIGHBORHOOD FIELD: surrounding users.</p>");
+  assert.equal(payload.content.marketContext, "");
   assert.notEqual(payload.content.saleDescription, payload.content.locationDescription);
-  assert.equal(payload.content.dealDrivers, undefined);
-  assert.equal(payload.content.nearbyAnchors, undefined);
-  assert.equal(payload.content.structuredFacts, undefined);
+  assert.deepEqual(payload.content.dealDrivers, []);
+  assert.deepEqual(payload.content.nearbyAnchors, []);
+  assert.deepEqual(payload.content.structuredFacts, {});
+});
+
+test("lease modification approval payload clears stale offering-site sections and sale copy", () => {
+  const payload: any = buildPropertyPortalApprovedPayload({
+    mode: "draft-preview",
+    slug: "340-eisenhower",
+    draft: {
+      kind: "modification",
+      title: "340 Eisenhower",
+      descriptionHtml: "",
+      highlights: [],
+      sourceInput: { propertyIdOrSlug: "340-eisenhower" },
+      currentListing: {
+        slug: "340-eisenhower",
+        title: "340 Eisenhower",
+        visibility: { leaseActive: true, saleActive: false, transactionLabel: "For Lease" },
+        content: {
+          saleDescription: "Old sale copy with parcel 2049006009.",
+          leaseDescription: "Clean lease copy.",
+          marketContext: "Long OM market section.",
+          structuredFacts: { parcelId: "2049006009" },
+          nearbyAnchors: [{ name: "Extra anchor" }],
+          dealDrivers: ["Extra deal card"],
+          developmentConstraints: { floodZone: "X" },
+        },
+      },
+      structuredUpdates: {
+        content: {
+          leaseDescription: "Updated clean lease copy.",
+        },
+      },
+    },
+  });
+
+  assert.equal(payload.content.saleDescription, "");
+  assert.equal(payload.content.leaseDescription, "Updated clean lease copy.");
+  assert.equal(payload.content.marketContext, "");
+  assert.deepEqual(payload.content.structuredFacts, {});
+  assert.deepEqual(payload.content.nearbyAnchors, []);
+  assert.deepEqual(payload.content.dealDrivers, []);
+  assert.deepEqual(payload.content.developmentConstraints, {});
 });
 
 test("modification approval payload preserves canonical title, media, and unchanged fields", () => {

@@ -601,12 +601,20 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
     finalContent.saleTitle = finalTitle;
   }
 
+  const OFFERING_ONLY_CONTENT_DEFAULTS: Record<string, unknown> = {
+    marketContext: "",
+    structuredFacts: {},
+    nearbyAnchors: [],
+    dealDrivers: [],
+    developmentConstraints: {},
+  };
   // ListingStream public listing pages are intentionally simpler than separate
   // generated offering websites. Keep research/diligence sections in broker
-  // review meta, not in the live listing form.
-  for (const key of ["neighborhoodDescription", "marketContext", "structuredFacts", "nearbyAnchors", "dealDrivers", "developmentConstraints"] as const) {
-    delete finalContent[key];
-  }
+  // review meta, not in the live listing form. Because ListingStream publishes
+  // through Firestore set(..., { merge: true }), omissions do not clear old
+  // nested content keys; write empty values so stale OM sections are actually
+  // removed from the live public record.
+  Object.assign(finalContent, OFFERING_ONLY_CONTENT_DEFAULTS);
   if (merged.visibility && isRecord(merged.visibility) && (merged.visibility as Record<string, unknown>).leaseActive === true) {
     finalContent.saleDescription = "";
     if (!hasMeaningfulValue(finalContent.leaseDescription) && hasMeaningfulValue(finalContent.propertyDescription)) {
