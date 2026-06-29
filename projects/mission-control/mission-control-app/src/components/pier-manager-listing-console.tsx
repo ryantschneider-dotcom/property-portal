@@ -422,8 +422,17 @@ const PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS = 300_000;
 const LISTING_RESEARCH_RESUME_STORAGE_KEY = "pier-manager-listing-research-resume-v1";
 
 function requireDraftResponse(data: unknown, label: string) {
-  if (isRecord(data) && isRecord(data.draft)) return data.draft;
-  if (isRecord(data) && (typeof data.title === "string" || isRecord(data.structuredUpdates) || typeof data.descriptionHtml === "string")) return data;
+  const candidates = [
+    data,
+    isRecord(data) ? data.draft : null,
+    isRecord(data) ? data.result : null,
+    isRecord(data) && isRecord(data.job) ? data.job.result : null,
+    isRecord(data) && isRecord(data.job) ? data.job.draft : null,
+  ];
+  for (const candidate of candidates) {
+    if (isRecord(candidate) && isRecord(candidate.draft)) return candidate.draft;
+    if (isRecord(candidate) && (typeof candidate.title === "string" || isRecord(candidate.structuredUpdates) || typeof candidate.descriptionHtml === "string")) return candidate;
+  }
   const message = isRecord(data) && typeof data.error === "string" ? data.error : `${label} returned no draft payload. Please retry; the UI stopped instead of staying stuck.`;
   throw new Error(message);
 }
@@ -1402,7 +1411,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         throw new Error(job.error || "Mac mini listing research worker failed.");
       }
       if (job.status === "completed") {
-        const draftPayload = requireDraftResponse(data.draft || job.result, "Listing research job API");
+        const draftPayload = requireDraftResponse(data, "Listing research job API");
         const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: titleFallback || "New listing draft", sourceInput: sourceInput as Record<string, unknown> });
         setReviewDraft(draft);
         revealReviewDraft("actions");
@@ -1438,8 +1447,8 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       }, 30_000)) as { draft?: unknown; jobId?: string; job?: ListingResearchJobPayload; queued?: boolean };
       if (data.jobId || data.job?.id || data.queued) {
         const jobId = data.jobId || data.job?.id || "";
-        if (data.draft && data.job?.status === "completed") {
-          const draftPayload = requireDraftResponse(data.draft, "Recovered listing research job API");
+        if (data.job?.status === "completed") {
+          const draftPayload = requireDraftResponse(data, "Recovered listing research job API");
           const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
           setListingResearchJobId(jobId);
           setListingResearchJobStatus("ready");

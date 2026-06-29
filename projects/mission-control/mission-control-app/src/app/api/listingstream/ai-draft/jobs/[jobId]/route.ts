@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
-import { getListingResearchJob } from "@/lib/listing-research-jobs";
+import { getListingResearchJob, findRecentCompletedListingResearchJob, type ListingResearchJob } from "@/lib/listing-research-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +31,11 @@ export async function GET(_request: Request, context: { params: Promise<{ jobId:
     await requirePierManagerAuth();
     const { jobId } = await context.params;
     if (!jobId) return NextResponse.json({ error: "Missing listing research job id" }, { status: 400 });
-    const job = await withRetry("listing research job status lookup", () => getListingResearchJob(jobId));
+    const job = await withRetry<ListingResearchJob>("listing research job status lookup", () => getListingResearchJob(jobId));
+    if (job.status === "completed" && !job.result) {
+      const recovered = await withRetry("completed listing research draft recovery", () => findRecentCompletedListingResearchJob(job.input), 2, 500).catch(() => null);
+      if (recovered?.result) return NextResponse.json({ ok: true, job: recovered, draft: recovered.result, recoveredFromJobId: recovered.id });
+    }
     return NextResponse.json({ ok: true, job, draft: job.status === "completed" ? job.result : null });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

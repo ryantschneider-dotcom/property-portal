@@ -57,7 +57,15 @@ test("Broker Hub polls listing research jobs and shows honest queued and fallbac
   assert.match(source, /LISTING_RESEARCH_RESUME_STORAGE_KEY/);
   assert.match(source, /saveListingResearchResumeJob/);
   assert.match(source, /Recovered completed Mac mini research draft/);
-  assert.match(source, /isRecord\(data\) && \(typeof data\.title === "string" \|\| isRecord\(data\.structuredUpdates\)/);
+  assert.match(source, /isRecord\(candidate\) && \(typeof candidate\.title === "string" \|\| isRecord\(candidate\.structuredUpdates\)/);
+  assert.match(source, /data\.job\.result/);
+});
+
+test("listing research status route recovers a completed draft if the polled job lacks a result payload", async () => {
+  const source = await readFile("src/app/api/listingstream/ai-draft/jobs/[jobId]/route.ts", "utf8");
+  assert.match(source, /findRecentCompletedListingResearchJob/);
+  assert.match(source, /recoveredFromJobId/);
+  assert.match(source, /job\.status === "completed" && !job\.result/);
 });
 
 test("ai-draft route can recover a recent completed Mac mini draft instead of duplicate work", async () => {
