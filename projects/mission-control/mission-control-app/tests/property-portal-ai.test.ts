@@ -937,6 +937,58 @@ test("modification AI draft fetches current listing from property-portal before 
   assert.deepEqual(draft.structuredUpdates.pricing, { askingPriceRatePerSf: 22, listingPriceVisibility: "per_sf" });
 });
 
+test("broker revise loop strips lease-listing public clutter from AI revisions", async () => {
+  const initial = buildBrokerReviewState({
+    kind: "new-listing",
+    sourceInput: { address: "340 Eisenhower Drive" },
+    writerResult: {
+      title: "Initial Draft",
+      descriptionHtml: "<p>Initial description.</p>",
+      highlights: ["Initial"],
+      structuredUpdates: {},
+      mediaNotes: [],
+    },
+  });
+
+  const revised = await reviseBrokerReviewDraft({
+    draft: initial,
+    feedback: "This is a listing for lease. Remove flood zone, past sales, parcel ID, building size, structured facts, deal drivers, and market context.",
+    writer: async () => ({
+      title: "1,250–2,500 SF Professional Office Suites for Lease",
+      descriptionHtml: "<p>Two suites are available for lease.</p>",
+      highlights: ["Two suites available", "FEMA Flood Zone X", "Last sale was $1,400,000"],
+      structuredUpdates: {
+        content: {
+          leaseDescription: "Two suites are available for lease.",
+          marketContext: "Savannah office market paragraph.",
+        },
+        property: { parcelId: "2049006009", buildingSize: "10,000 SF building", floodZone: "FEMA Flood Zone X" },
+        structuredFacts: { floodZone: "Flood Zone X", parcelId: "2049006009" },
+        nearbyAnchors: [{ name: "County Office" }],
+        dealDrivers: ["Market stat"],
+        marketContext: "Long market context.",
+        visibility: { saleActive: true },
+      },
+      mediaNotes: [],
+    }),
+  });
+
+  const serialized = JSON.stringify({
+    title: revised.title,
+    descriptionHtml: revised.descriptionHtml,
+    highlights: revised.highlights,
+    structuredUpdates: revised.structuredUpdates,
+  });
+  assert.doesNotMatch(serialized, /Flood|FEMA|2049006009|10,000 SF building|1,400,000|Last sale/i);
+  assert.deepEqual(revised.structuredUpdates.transactionTypes, ["lease"]);
+  assert.equal((revised.structuredUpdates.visibility as Record<string, unknown>).leaseActive, true);
+  assert.equal((revised.structuredUpdates.visibility as Record<string, unknown>).saleActive, false);
+  assert.deepEqual(revised.structuredUpdates.structuredFacts, {});
+  assert.deepEqual(revised.structuredUpdates.nearbyAnchors, []);
+  assert.deepEqual(revised.structuredUpdates.dealDrivers, []);
+  assert.deepEqual(revised.highlights, ["Two suites available"]);
+});
+
 test("broker revise loop sends existing draft plus feedback back through AI", async () => {
   const initial = buildBrokerReviewState({
     kind: "new-listing",

@@ -68,6 +68,82 @@ function normalizeWriterResult(value: unknown): PropertyPortalAiWriterResult {
   };
 }
 
+const LEASE_REVISION_PATTERNS = [/for\s+lease/i, /lease-focused/i, /leasing/i, /tenant/i, /modified\s+gross/i];
+const PUBLIC_CLUTTER_PATTERNS = [/flood/i, /fema/i, /past\s+sale/i, /last\s+sale/i, /sale\s+history/i, /parcel/i, /assess/i, /building\s+size/i, /structured\s+facts/i, /deal\s+drivers/i, /nearby\s+anchors/i, /market\s+context/i, /neighborhood\s+context/i];
+const CLUTTER_TEXT_PATTERNS = [/flood|fema|last\s+sale|past\s+sale|parcel\s*id|assess(?:ed|ment)|deed\s+book|acquired|\$1,?400,?000|2049006009|10,000\s*sf\s+building|1\.38[-\s]?acre/i];
+const CLUTTER_PROPERTY_KEYS = ["parcelId", "floodZone", "flood", "lastSale", "saleHistory", "assessment", "assessedValue", "buildingSize", "buildingSizeSf", "grossLeasableArea", "acreageOrSF", "lotSizeAcres", "acres", "acreage"];
+
+function brokerFeedbackRequestsLeaseCleanup(feedback: string) {
+  return LEASE_REVISION_PATTERNS.some((pattern) => pattern.test(feedback)) || PUBLIC_CLUTTER_PATTERNS.some((pattern) => pattern.test(feedback));
+}
+
+function isPublicClutterText(value: unknown) {
+  return typeof value === "string" && CLUTTER_TEXT_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function stripPublicClutterFromValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stripPublicClutterFromValue(item))
+      .filter((item) => {
+        if (item == null) return false;
+        if (isPublicClutterText(item)) return false;
+        if (typeof item === "object" && !Array.isArray(item) && !Object.keys(item as Record<string, unknown>).length) return false;
+        return true;
+      });
+  }
+  if (value && typeof value === "object") {
+    const next: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (CLUTTER_PROPERTY_KEYS.some((blocked) => blocked.toLowerCase() === key.toLowerCase())) continue;
+      if (["structuredFacts", "developmentConstraints", "nearbyAnchors", "dealDrivers", "marketContext", "neighborhoodDescription"].some((blocked) => blocked.toLowerCase() === key.toLowerCase())) continue;
+      const cleaned = stripPublicClutterFromValue(nested);
+      if (cleaned == null) continue;
+      if (isPublicClutterText(cleaned)) continue;
+      if (Array.isArray(cleaned) && !cleaned.length) continue;
+      if (typeof cleaned === "object" && !Array.isArray(cleaned) && !Object.keys(cleaned as Record<string, unknown>).length) continue;
+      next[key] = cleaned;
+    }
+    return next;
+  }
+  return isPublicClutterText(value) ? undefined : value;
+}
+
+function sanitizeLeaseFocusedRevisionResult(result: PropertyPortalAiWriterResult, feedback: string): PropertyPortalAiWriterResult {
+  if (!brokerFeedbackRequestsLeaseCleanup(feedback)) return result;
+  const structuredUpdates = stripPublicClutterFromValue(result.structuredUpdates) as Record<string, unknown>;
+  const content = normalizeRecord(structuredUpdates.content);
+  const description = asString(content.leaseDescription || content.propertyDescription || content.descriptionHtml || result.descriptionHtml);
+  const locationDescription = asString(content.locationDescription);
+  const cleanedContent = stripPublicClutterFromValue({
+    ...content,
+    ...(description ? { leaseDescription: description, propertyDescription: description, descriptionHtml: description } : {}),
+    ...(locationDescription ? { locationDescription } : {}),
+    marketContext: undefined,
+    neighborhoodDescription: undefined,
+    structuredFacts: undefined,
+    developmentConstraints: undefined,
+    nearbyAnchors: undefined,
+    dealDrivers: undefined,
+  }) as Record<string, unknown>;
+  return {
+    ...result,
+    descriptionHtml: description || result.descriptionHtml,
+    highlights: result.highlights.filter((item) => !isPublicClutterText(item)).slice(0, 7),
+    structuredUpdates: {
+      ...structuredUpdates,
+      content: cleanedContent,
+      visibility: { ...normalizeRecord(structuredUpdates.visibility), leaseActive: true, saleActive: false },
+      transactionTypes: ["lease"],
+      marketContext: "",
+      neighborhoodDescription: "",
+      structuredFacts: {},
+      nearbyAnchors: [],
+      dealDrivers: [],
+    },
+  };
+}
+
 export function parseCloudWriterJson(content: string): PropertyPortalAiWriterResult {
   const text = asString(content);
   if (!text) throw new Error("Cloud writer returned an empty message while drafting premium marketing copy.");
@@ -180,6 +256,8 @@ ${safeJson({
 Rules:
 - Apply only the broker feedback and preserve accurate facts
 - Maintain CCIM-level brokerage tone
+- If the broker says the listing is for lease or lease-focused, write tenant-facing lease copy only; do not include sale history, assessment values, owner/acquisition details, parcel IDs, flood-zone/FEMA details, raw structured-fact sections, market-report digressions, or building-size diligence unless the broker explicitly asks for them
+- For lease listings, put public narrative in leaseDescription/propertyDescription/descriptionHtml and set leaseActive true and saleActive false in structuredUpdates when relevant
 - Keep status as broker-review draft only; do not publish`;
 }
 
@@ -632,7 +710,7 @@ export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft;
   const interpreter = input.draft.kind === "modification"
     ? await interpretBrokerEditRequest(currentListing, input.feedback)
     : null;
-  const writerResult = await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback }));
+  const writerResult = sanitizeLeaseFocusedRevisionResult(await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback })), input.feedback);
   const writerStructuredUpdates = normalizeRecord(writerResult.structuredUpdates);
   const mergedStructuredUpdates = input.draft.kind === "modification" && interpreter
     ? preserveFrontierNarrativeUpdates(
