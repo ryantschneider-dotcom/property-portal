@@ -189,6 +189,37 @@ export async function listListingResearchJobs() {
   return Array.isArray(payload.documents) ? payload.documents.map(jobFromFirestoreDocument) : [];
 }
 
+function normalizeResearchAddress(input: ListingResearchInput | null | undefined) {
+  const raw = [
+    input?.address,
+    input?.addressStreet,
+    input?.city,
+    input?.state,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(ga|georgia|usa|united states)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export async function findRecentCompletedListingResearchJob(input: ListingResearchInput, maxAgeMs = 4 * 60 * 60_000, now = new Date()) {
+  const target = normalizeResearchAddress(input);
+  if (!target) return null;
+  const jobs = await listListingResearchJobs();
+  return jobs
+    .filter((job: ListingResearchJob) => {
+      if (job.mode !== "new-listing" || job.status !== "completed" || !job.result) return false;
+      if (normalizeResearchAddress(job.input) !== target) return false;
+      const completedAt = Date.parse(job.completedAt || job.updatedAt || "");
+      return Number.isFinite(completedAt) && now.getTime() - completedAt <= maxAgeMs;
+    })
+    .sort((a: ListingResearchJob, b: ListingResearchJob) => Date.parse(b.completedAt || b.updatedAt) - Date.parse(a.completedAt || a.updatedAt))[0] || null;
+}
+
 export function isListingResearchJobReadyForWorker(job: ListingResearchJob, now = new Date(), staleRunningMs = 20 * 60_000) {
   if (job.status === "queued") return true;
   if (job.status !== "running") return false;

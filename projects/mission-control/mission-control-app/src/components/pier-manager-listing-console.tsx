@@ -419,13 +419,23 @@ async function parseJsonResponse(response: Response) {
 }
 
 const PIER_MANAGER_FRONTIER_DRAFT_TIMEOUT_MS = 300_000;
+const LISTING_RESEARCH_RESUME_STORAGE_KEY = "pier-manager-listing-research-resume-v1";
 
 function requireDraftResponse(data: unknown, label: string) {
-  if (!isRecord(data) || !isRecord(data.draft)) {
-    const message = isRecord(data) && typeof data.error === "string" ? data.error : `${label} returned no draft payload. Please retry; the UI stopped instead of staying stuck.`;
-    throw new Error(message);
-  }
-  return data.draft;
+  if (isRecord(data) && isRecord(data.draft)) return data.draft;
+  if (isRecord(data) && (typeof data.title === "string" || isRecord(data.structuredUpdates) || typeof data.descriptionHtml === "string")) return data;
+  const message = isRecord(data) && typeof data.error === "string" ? data.error : `${label} returned no draft payload. Please retry; the UI stopped instead of staying stuck.`;
+  throw new Error(message);
+}
+
+function saveListingResearchResumeJob(jobId: string, sourceInput: unknown, titleFallback: string) {
+  if (typeof window === "undefined" || !jobId) return;
+  window.localStorage.setItem(LISTING_RESEARCH_RESUME_STORAGE_KEY, JSON.stringify({ jobId, sourceInput, titleFallback, savedAt: Date.now() }));
+}
+
+function clearListingResearchResumeJob() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(LISTING_RESEARCH_RESUME_STORAGE_KEY);
 }
 
 function getAbortableErrorMessage(error: unknown, fallback: string) {
@@ -786,6 +796,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [includeProforma, setIncludeProforma] = useState(false);
   const reviewPanelRef = useRef<HTMLElement | null>(null);
   const finalPublishActionsRef = useRef<HTMLDivElement | null>(null);
+  const listingResearchResumeStartedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1162,6 +1173,26 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     if (reviewDraft) revealReviewDraft("actions");
   }, [reviewDraft]);
 
+  useEffect(() => {
+    if (listingResearchResumeStartedRef.current || reviewDraft) return;
+    const raw = window.localStorage.getItem(LISTING_RESEARCH_RESUME_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const resume = JSON.parse(raw) as { jobId?: string; sourceInput?: unknown; titleFallback?: string; savedAt?: number };
+      if (!resume.jobId || !resume.savedAt || Date.now() - resume.savedAt > 4 * 60 * 60_000) {
+        clearListingResearchResumeJob();
+        return;
+      }
+      listingResearchResumeStartedRef.current = true;
+      setReviewError("");
+      void pollListingResearchJob(resume.jobId, resume.sourceInput || {}, resume.titleFallback || "Recovered listing draft").catch((error) => {
+        setReviewError(error instanceof Error ? error.message : "Could not resume the pending listing research job.");
+      });
+    } catch {
+      clearListingResearchResumeJob();
+    }
+  }, [reviewDraft]);
+
   const isSale = intakeForm.transactionType === "Sale";
   const isLease = intakeForm.transactionType === "Lease";
   const selectedListing = useMemo(() => activeListings.find((item) => item.id === selectedPropertyId || item.slug === selectedPropertyId), [activeListings, selectedPropertyId]);
@@ -1333,6 +1364,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
 
   async function pollListingResearchJob(jobId: string, sourceInput: unknown, titleFallback: string) {
     setListingResearchJobId(jobId);
+    saveListingResearchResumeJob(jobId, sourceInput, titleFallback);
     setListingResearchJobStatus("queued");
     setReviewStatus(`Research job ${jobId} queued on the Mac mini. Broker Hub will keep polling until the real researched draft is ready.`);
     let transientPollFailures = 0;
@@ -1364,6 +1396,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         continue;
       }
       if (job.status === "failed") {
+        clearListingResearchResumeJob();
         setListingResearchJobStatus("failed");
         setListingResearchFallbackBanner("Research not yet run — do not publish. The Mac mini worker failed before returning a verified draft; use retry or emergency intake-only fallback only after reviewing the error.");
         throw new Error(job.error || "Mac mini listing research worker failed.");
@@ -1377,6 +1410,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         const providerErrors = job.providerErrors || ((draft.structuredUpdates?.meta as Record<string, unknown> | undefined)?.researchDossier as { providerErrors?: Record<string, string> } | undefined)?.providerErrors || {};
         const fallbackActive = Object.values(providerErrors).some((value) => /skipped|deterministic|fallback/i.test(String(value)));
         setListingResearchFallbackBanner(fallbackActive ? "Research not yet run — do not publish. This draft came from a deterministic fallback because the worker/provider chain failed." : "");
+        clearListingResearchResumeJob();
         setReviewStatus(`Full research draft ready from Mac mini worker job ${jobId}. Hero photo and media stay staged until approval.`);
         setIntakeStatus(`The PIER Commercial research worker returned a broker-review draft. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
         return;
@@ -1403,7 +1437,20 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
         body: JSON.stringify({ mode: "new-listing", input }),
       }, 30_000)) as { draft?: unknown; jobId?: string; job?: ListingResearchJobPayload; queued?: boolean };
       if (data.jobId || data.job?.id || data.queued) {
-        await pollListingResearchJob(data.jobId || data.job?.id || "", input, intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft");
+        const jobId = data.jobId || data.job?.id || "";
+        if (data.draft && data.job?.status === "completed") {
+          const draftPayload = requireDraftResponse(data.draft, "Recovered listing research job API");
+          const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });
+          setListingResearchJobId(jobId);
+          setListingResearchJobStatus("ready");
+          setReviewDraft(draft);
+          revealReviewDraft("actions");
+          clearListingResearchResumeJob();
+          setReviewStatus(`Recovered completed Mac mini research draft from job ${jobId}. Hero photo and media stay staged until approval.`);
+          setIntakeStatus(`The PIER Commercial research worker returned a broker-review draft. ${[heroPhoto, ...intakeAssets].filter(Boolean).length} media file(s) staged.`);
+        } else {
+          await pollListingResearchJob(jobId, input, intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft");
+        }
       } else {
         const draftPayload = requireDraftResponse(data, "New listing draft API");
         const draft = normalizeIncomingBrokerReviewDraft(draftPayload, { kind: "new-listing", title: intakeForm.listingTitle || intakeForm.addressStreet || "New listing draft", sourceInput: input });

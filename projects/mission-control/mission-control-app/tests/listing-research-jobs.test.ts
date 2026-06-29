@@ -54,6 +54,20 @@ test("Broker Hub polls listing research jobs and shows honest queued and fallbac
   assert.match(source, /\/api\/listingstream\/ai-draft\/jobs\/\$\{encodeURIComponent\(jobId\)\}/);
   assert.match(source, /Research not yet run — do not publish/i);
   assert.match(source, /queued|researching|ready/i);
+  assert.match(source, /LISTING_RESEARCH_RESUME_STORAGE_KEY/);
+  assert.match(source, /saveListingResearchResumeJob/);
+  assert.match(source, /Recovered completed Mac mini research draft/);
+  assert.match(source, /isRecord\(data\) && \(typeof data\.title === "string" \|\| isRecord\(data\.structuredUpdates\)/);
+});
+
+test("ai-draft route can recover a recent completed Mac mini draft instead of duplicate work", async () => {
+  const routeSource = await readFile("src/app/api/listingstream/ai-draft/route.ts", "utf8");
+  const jobSource = await readFile("src/lib/listing-research-jobs.ts", "utf8");
+  assert.match(routeSource, /findRecentCompletedListingResearchJob/);
+  assert.match(routeSource, /resumed:\s*true/);
+  assert.match(routeSource, /Recovered the completed Mac mini research draft/);
+  assert.match(jobSource, /findRecentCompletedListingResearchJob/);
+  assert.match(jobSource, /normalizeResearchAddress/);
 });
 
 test("Mac mini worker script disables serverless fast draft and runs the real orchestrator", async () => {

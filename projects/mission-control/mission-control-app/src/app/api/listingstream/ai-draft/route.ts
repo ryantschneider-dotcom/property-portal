@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AUTH_COOKIE, isValidAuthToken } from "@/lib/auth";
-import { createListingResearchJob } from "@/lib/listing-research-jobs";
+import { createListingResearchJob, findRecentCompletedListingResearchJob } from "@/lib/listing-research-jobs";
 import { runListingResearchAndDraft } from "@/lib/listing-research-orchestrator";
 import { createModificationReviewDraft, reviseBrokerReviewDraft, type BrokerReviewDraft } from "@/lib/property-portal-ai";
 import { createPropertyPortalProxyError, withPropertyPortalTimeout } from "@/lib/property-portal-client";
@@ -91,6 +91,18 @@ export async function POST(request: Request) {
     await requirePierManagerAuth();
     const body = (await request.json()) as AiDraftRequest;
     if (body.mode === "new-listing") {
+      const recentCompleted = await findRecentCompletedListingResearchJob(body.input);
+      if (recentCompleted) {
+        return NextResponse.json({
+          ok: true,
+          queued: true,
+          resumed: true,
+          jobId: recentCompleted.id,
+          job: recentCompleted,
+          draft: recentCompleted.result,
+          message: "Recovered the completed Mac mini research draft for this address. Broker Hub will open the review draft instead of starting duplicate LLM work.",
+        }, { status: 200 });
+      }
       const job = await createListingResearchJob({
         mode: "new-listing",
         input: body.input,
