@@ -617,6 +617,7 @@ export function buildPropertyPortalApprovedPayload(input: { draft: PropertyPorta
   Object.assign(finalContent, OFFERING_ONLY_CONTENT_DEFAULTS);
   if (merged.visibility && isRecord(merged.visibility) && (merged.visibility as Record<string, unknown>).leaseActive === true) {
     finalContent.saleDescription = "";
+    finalContent.neighborhoodDescription = "";
     if (!hasMeaningfulValue(finalContent.leaseDescription) && hasMeaningfulValue(finalContent.propertyDescription)) {
       finalContent.leaseDescription = finalContent.propertyDescription;
     }

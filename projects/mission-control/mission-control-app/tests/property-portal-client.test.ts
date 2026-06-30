@@ -326,6 +326,7 @@ test("lease modification approval payload clears stale offering-site sections an
         content: {
           saleDescription: "Old sale copy with parcel 2049006009.",
           leaseDescription: "Clean lease copy.",
+          neighborhoodDescription: "Neighborhood Context: stale public neighborhood block.",
           marketContext: "Long OM market section.",
           structuredFacts: { parcelId: "2049006009" },
           nearbyAnchors: [{ name: "Extra anchor" }],
@@ -343,6 +344,7 @@ test("lease modification approval payload clears stale offering-site sections an
 
   assert.equal(payload.content.saleDescription, "");
   assert.equal(payload.content.leaseDescription, "Updated clean lease copy.");
+  assert.equal(payload.content.neighborhoodDescription, "");
   assert.equal(payload.content.marketContext, "");
   assert.deepEqual(payload.content.structuredFacts, {});
   assert.deepEqual(payload.content.nearbyAnchors, []);

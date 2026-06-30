@@ -122,9 +122,37 @@ function currentListingIsLeaseFocused(currentListing: Record<string, unknown>, i
     || /for\s+lease|lease|rent\s*\+\s*utilities|plus\s+utilities|modified\s+gross|nnn|suite/i.test(text);
 }
 
+function brokerExplicitlyRequestsBackgroundContext(feedback: string) {
+  return /\b(?:neighborhood|area|regional|market|parcel|municipal|nearby\s+anchors?|context)\b/i.test(feedback)
+    || /\b(?:location|surrounding)\s+description\b/i.test(feedback);
+}
+
+function removeUnrequestedLeaseBackgroundSections(updates: Record<string, unknown>, feedback: string, currentListing: Record<string, unknown> = {}) {
+  if (!currentListingIsLeaseFocused(currentListing, feedback) || brokerExplicitlyRequestsBackgroundContext(feedback)) return updates;
+  const content = normalizeRecord(updates.content);
+  return {
+    ...updates,
+    neighborhoodDescription: "",
+    marketContext: "",
+    structuredFacts: {},
+    nearbyAnchors: [],
+    dealDrivers: [],
+    developmentConstraints: {},
+    content: {
+      ...content,
+      neighborhoodDescription: "",
+      marketContext: "",
+      structuredFacts: {},
+      nearbyAnchors: [],
+      dealDrivers: [],
+      developmentConstraints: {},
+    },
+  };
+}
+
 function sanitizeLeaseFocusedRevisionResult(result: PropertyPortalAiWriterResult, feedback: string, currentListing: Record<string, unknown> = {}): PropertyPortalAiWriterResult {
   if (!brokerFeedbackRequestsLeaseCleanup(feedback) && !currentListingIsLeaseFocused(currentListing, feedback)) return result;
-  const structuredUpdates = stripPublicClutterFromValue(result.structuredUpdates) as Record<string, unknown>;
+  const structuredUpdates = removeUnrequestedLeaseBackgroundSections(stripPublicClutterFromValue(result.structuredUpdates) as Record<string, unknown>, feedback, currentListing);
   const content = normalizeRecord(structuredUpdates.content);
   const description = asString(content.leaseDescription || content.propertyDescription || content.descriptionHtml || result.descriptionHtml);
   const locationDescription = asString(content.locationDescription);
@@ -703,11 +731,11 @@ export async function createModificationReviewDraft(input: {
     input.instructions,
     currentListing,
   );
-  const mergedStructuredUpdates = preserveFrontierNarrativeUpdates(
+  const mergedStructuredUpdates = removeUnrequestedLeaseBackgroundSections(preserveFrontierNarrativeUpdates(
     mergeStructuredUpdatesPreservingSuites(currentListing, writerResult.structuredUpdates, interpreter.updatePayload, input.instructions),
     writerResult.structuredUpdates,
     input.instructions,
-  );
+  ), input.instructions, currentListing);
   const revisionQa = verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.instructions);
   const structuredUpdates = attachRevisionQa(mergedStructuredUpdates, revisionQa);
   const deltaPreview = buildDeltaPreview(currentListing, structuredUpdates);
@@ -739,14 +767,14 @@ export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft;
   const writerResult = sanitizeLeaseFocusedRevisionResult(await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback })), input.feedback, revisionBaseListing);
   const writerStructuredUpdates = normalizeRecord(writerResult.structuredUpdates);
   const nextDeltaUpdates = input.draft.kind === "modification" && interpreter
-    ? preserveFrontierNarrativeUpdates(
+    ? removeUnrequestedLeaseBackgroundSections(preserveFrontierNarrativeUpdates(
       mergeStructuredUpdatesPreservingSuites(revisionBaseListing, writerStructuredUpdates, interpreter.updatePayload, input.feedback),
       writerStructuredUpdates,
       input.feedback,
-    )
+    ), input.feedback, revisionBaseListing)
     : writerStructuredUpdates;
   const mergedStructuredUpdates = input.draft.kind === "modification"
-    ? deepMergeRecords(priorStructuredUpdates, nextDeltaUpdates)
+    ? removeUnrequestedLeaseBackgroundSections(deepMergeRecords(priorStructuredUpdates, nextDeltaUpdates), input.feedback, revisionBaseListing)
     : nextDeltaUpdates;
   const structuredUpdates = input.draft.kind === "modification" && interpreter
     ? attachRevisionQa(mergedStructuredUpdates, verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.feedback))

@@ -1064,6 +1064,78 @@ test("broker revise loop strips lease-listing public clutter from AI revisions",
   assert.deepEqual(revised.highlights, ["Two suites available"]);
 });
 
+test("broker revise loop blocks stale Neighborhood Context on specific lease text edits", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  globalThis.fetch = (async () => Response.json({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          summary: ["Added immediate occupancy note."],
+          flags: [],
+          confidence: "high",
+          updatePayload: {
+            content: { leaseDescription: "Immediate occupancy is available for qualified tenants." },
+          },
+        }),
+      },
+    }],
+  })) as typeof fetch;
+
+  try {
+    const initial = buildBrokerReviewState({
+      kind: "modification",
+      sourceInput: { propertyIdOrSlug: "lease-clean-room", instructions: "Create a clean lease draft." },
+      currentListing: {
+        slug: "lease-clean-room",
+        visibility: { transactionLabel: "For Lease", leaseActive: true, saleActive: false },
+        content: { leaseDescription: "Existing clean lease copy." },
+      },
+      writerResult: {
+        title: "Lease Clean Room",
+        descriptionHtml: "<p>Existing clean lease copy.</p>",
+        highlights: [],
+        structuredUpdates: {
+          visibility: { leaseActive: true, saleActive: false },
+          content: {
+            leaseDescription: "Existing clean lease copy.",
+            neighborhoodDescription: "Neighborhood Context: stale historical enrichment should not survive.",
+          },
+        },
+        mediaNotes: [],
+      },
+    });
+
+    const revised = await reviseBrokerReviewDraft({
+      draft: initial,
+      feedback: "Add immediate occupancy is available for qualified tenants to the lease description.",
+      writer: async () => ({
+        title: "Lease Clean Room",
+        descriptionHtml: "<p>Immediate occupancy is available for qualified tenants.</p>",
+        highlights: [],
+        structuredUpdates: {
+          content: {
+            leaseDescription: "Immediate occupancy is available for qualified tenants.",
+            neighborhoodDescription: "Neighborhood Context: stale historical enrichment returned by the writer.",
+          },
+          neighborhoodDescription: "Neighborhood Context: stale historical enrichment returned by the writer.",
+        },
+        mediaNotes: [],
+      }),
+    });
+
+    assert.equal((revised.structuredUpdates.content as Record<string, unknown>).leaseDescription, "Immediate occupancy is available for qualified tenants.");
+    assert.equal((revised.structuredUpdates.content as Record<string, unknown>).neighborhoodDescription, "");
+    assert.equal(revised.structuredUpdates.neighborhoodDescription, "");
+    assert.doesNotMatch(JSON.stringify(revised.structuredUpdates), /Neighborhood Context|historical enrichment/i);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousOpenAiKey == null) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAiKey;
+  }
+});
+
 test("broker revise loop preserves already-approved modification mutations when broker changes draft copy", async () => {
   const previousFetch = globalThis.fetch;
   const previousOpenAiKey = process.env.OPENAI_API_KEY;
