@@ -977,7 +977,7 @@ function pickInterpreterProvider(options: BrokerEditInterpreterOptions) {
 async function callAnthropicInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
   const apiKey = getAnthropicKey();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required for the Claude broker-edit-interpreter.");
-  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || process.env.PIER_MANAGER_INTERPRETER_MODEL) || "claude-3-5-sonnet-latest";
+  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || process.env.ANTHROPIC_LISTING_MODEL || process.env.PIER_MANAGER_INTERPRETER_MODEL) || "claude-sonnet-4-5-20250929";
   const normalizedModel = model.startsWith("anthropic/") ? model.slice("anthropic/".length) : model;
   const fetchImpl = options.fetchImpl ?? fetch;
   const system = "You are Claude, the senior semantic parser for PIER Commercial Real Estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact broker intent, exact object identity, suite row preservation, documents/attachments array mutation, links object field deletion, and self-verification before output. Every requested value in a batch command must be present in updatePayload, not merely summarized; when description text is requested, include the actual string in content.saleDescription/content.leaseDescription and root saleDescription/leaseDescription. For requested document/link/attachment removals, never report success unless the mutated output documents/attachments array is strictly shorter or the matched links.* URL field is null/absent.";
