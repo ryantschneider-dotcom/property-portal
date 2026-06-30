@@ -28,13 +28,14 @@ function isHostedOfferingUrl(url: string) {
   if (!url) return false;
   try {
     const parsed = new URL(url);
-    return !parsed.hostname.toLowerCase().endsWith("manus.space");
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname.endsWith(".piercommercial.com") || hostname === "ryantschneider-dotcom.github.io" || hostname.endsWith(".github.io");
   } catch {
     return false;
   }
 }
 
-function normalizeVercelJob(listingId: string, payload: Record<string, unknown>) {
+function normalizeGithubPagesOfferingSiteJob(listingId: string, payload: Record<string, unknown>) {
   const sourceJob = readNestedRecord(payload, "job");
   const status = clean(payload.status) || clean(sourceJob?.status) || "building";
   const jobId = clean(payload.jobId) || clean(payload.task_id) || clean(payload.taskId) || clean(sourceJob?.id) || listingId;
@@ -51,18 +52,18 @@ function normalizeVercelJob(listingId: string, payload: Record<string, unknown>)
     completedAt: url ? clean(sourceJob?.completedAt) || now : clean(sourceJob?.completedAt) || null,
     deployment: {
       ...(readNestedRecord(sourceJob ?? {}, "deployment") ?? {}),
-      provider: "vercel",
+      provider: "github-pages",
       publicUrl: url || null,
       customDomain: url || null,
       routed: Boolean(url),
     },
-    logs: Array.isArray(sourceJob?.logs) ? sourceJob.logs : [{ level: "info", stage: "vercel", message: jobId ? `PIER/Vercel build ${jobId} accepted by PIER Website Production Factory.` : PRODUCTION_FACTORY_MESSAGE, createdAt: now }],
+    logs: Array.isArray(sourceJob?.logs) ? sourceJob.logs : [{ level: "info", stage: "github-pages", message: jobId ? `PIER GitHub Pages build ${jobId} accepted by PIER Website Production Factory.` : PRODUCTION_FACTORY_MESSAGE, createdAt: now }],
     error: clean(payload.error) || clean(sourceJob?.error) || undefined,
     message: url ? "Your site is live" : clean(payload.message) || clean(sourceJob?.message) || PRODUCTION_FACTORY_MESSAGE,
   };
 }
 
-async function forwardVercelLaunch(listingId: string) {
+async function forwardGithubPagesLaunch(listingId: string) {
   return safePropertyPortalFetch(fetch, buildPropertyPortalUrl(`/api/offering-sites/${encodeURIComponent(listingId)}`), {
     method: "POST",
     cache: "no-store",
@@ -71,17 +72,17 @@ async function forwardVercelLaunch(listingId: string) {
       "content-type": "application/json",
       ...getPropertyPortalInternalHeaders(),
     },
-  }, "PIER/Vercel offering site launch");
+  }, "PIER GitHub Pages offering site launch");
 }
 
-async function forwardVercelStatus(listingId: string) {
+async function forwardGithubPagesStatus(listingId: string) {
   return safePropertyPortalFetch(fetch, buildPropertyPortalUrl(`/api/offering-sites/${encodeURIComponent(listingId)}/status`), {
     cache: "no-store",
     headers: {
       accept: "application/json",
       ...getPropertyPortalInternalHeaders(),
     },
-  }, "PIER/Vercel offering site status");
+  }, "PIER GitHub Pages offering site status");
 }
 
 export async function GET(request: Request) {
@@ -90,9 +91,9 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const jobId = url.searchParams.get("jobId")?.trim();
     if (!jobId) return NextResponse.json({ error: "jobId is required" }, { status: 400 });
-    const response = await forwardVercelStatus(jobId);
+    const response = await forwardGithubPagesStatus(jobId);
     const data = await response.json().catch(() => ({})) as Record<string, unknown>;
-    return NextResponse.json({ ...data, job: normalizeVercelJob(jobId, data) }, { status: response.status });
+    return NextResponse.json({ ...data, job: normalizeGithubPagesOfferingSiteJob(jobId, data) }, { status: response.status });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const normalized = createPropertyPortalProxyError(error, "offering site status");
@@ -106,9 +107,9 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
     const listingId = clean(body.listingId);
     if (!listingId) return NextResponse.json({ error: "listingId is required" }, { status: 400 });
-    const response = await forwardVercelLaunch(listingId);
+    const response = await forwardGithubPagesLaunch(listingId);
     const data = await response.json().catch(() => ({})) as Record<string, unknown>;
-    return NextResponse.json({ ...data, job: normalizeVercelJob(listingId, data) }, { status: response.status });
+    return NextResponse.json({ ...data, job: normalizeGithubPagesOfferingSiteJob(listingId, data) }, { status: response.status });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const normalized = createPropertyPortalProxyError(error, "offering site launch/retry");

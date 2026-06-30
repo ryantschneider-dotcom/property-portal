@@ -204,6 +204,11 @@ test("PIER Manager hides operational tools until a global property context is se
   assert.match(source, /Copy URL/);
   assert.match(source, /github-pages-offering-site/);
   assert.doesNotMatch(source, /PIER\/Vercel/);
+  const offeringSitesRoute = readFileSync(new URL("../src/app/api/listingstream/offering-sites/route.ts", import.meta.url), "utf8");
+  assert.match(offeringSitesRoute, /provider: "github-pages"/);
+  assert.match(offeringSitesRoute, /PIER GitHub Pages offering site launch/);
+  assert.doesNotMatch(offeringSitesRoute, /provider: "vercel"/);
+  assert.doesNotMatch(offeringSitesRoute, /PIER\/Vercel/);
   assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"syndication-command-center\"/);
   assert.match(source, /\{hasActivePropertyContext \? \([\s\S]*data-testid=\"om-revision-request\"/);
 });
