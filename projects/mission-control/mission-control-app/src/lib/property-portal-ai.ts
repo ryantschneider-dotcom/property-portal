@@ -669,7 +669,7 @@ export async function createModificationReviewDraft(input: {
   interpreterOptions?: BrokerEditInterpreterOptions;
 }) {
   const currentListing = await fetchPropertyPortalListing(input);
-  const canUseFrontierInterpreter = Boolean(process.env.PIER_MANAGER_INTERPRETER_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY || process.env.PIER_MANAGER_INTERPRETER_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+  const canUseFrontierInterpreter = Boolean(process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || process.env.PIER_MANAGER_INTERPRETER_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY || process.env.PIER_MANAGER_INTERPRETER_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
   const interpreter = input.interpreter
     ? await input.interpreter(currentListing, input.instructions)
     : input.writer && !canUseFrontierInterpreter
@@ -729,18 +729,25 @@ export async function createModificationReviewDraft(input: {
 export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft; feedback: string; writer?: PropertyPortalCloudWriter }) {
   const writer = input.writer ?? defaultPropertyPortalCloudWriter;
   const currentListing = normalizeRecord(input.draft.currentListing);
+  const priorStructuredUpdates = normalizeRecord(input.draft.structuredUpdates);
+  const revisionBaseListing = input.draft.kind === "modification"
+    ? deepMergeRecords(currentListing, priorStructuredUpdates)
+    : currentListing;
   const interpreter = input.draft.kind === "modification"
-    ? await interpretBrokerEditRequest(currentListing, input.feedback)
+    ? await interpretBrokerEditRequest(revisionBaseListing, input.feedback)
     : null;
-  const writerResult = sanitizeLeaseFocusedRevisionResult(await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback })), input.feedback, currentListing);
+  const writerResult = sanitizeLeaseFocusedRevisionResult(await writer(buildRevisionPrompt({ draft: input.draft, feedback: input.feedback })), input.feedback, revisionBaseListing);
   const writerStructuredUpdates = normalizeRecord(writerResult.structuredUpdates);
-  const mergedStructuredUpdates = input.draft.kind === "modification" && interpreter
+  const nextDeltaUpdates = input.draft.kind === "modification" && interpreter
     ? preserveFrontierNarrativeUpdates(
-      mergeStructuredUpdatesPreservingSuites(currentListing, writerStructuredUpdates, interpreter.updatePayload, input.feedback),
+      mergeStructuredUpdatesPreservingSuites(revisionBaseListing, writerStructuredUpdates, interpreter.updatePayload, input.feedback),
       writerStructuredUpdates,
       input.feedback,
     )
     : writerStructuredUpdates;
+  const mergedStructuredUpdates = input.draft.kind === "modification"
+    ? deepMergeRecords(priorStructuredUpdates, nextDeltaUpdates)
+    : nextDeltaUpdates;
   const structuredUpdates = input.draft.kind === "modification" && interpreter
     ? attachRevisionQa(mergedStructuredUpdates, verifyRevisionAgainstInstruction(currentListing, mergedStructuredUpdates, input.feedback))
     : mergedStructuredUpdates;
@@ -750,6 +757,7 @@ export async function reviseBrokerReviewDraft(input: { draft: BrokerReviewDraft;
     currentListing,
     writerResult: { ...writerResult, structuredUpdates },
     interpreter: interpreter || undefined,
+    deltaPreview: input.draft.kind === "modification" ? buildDeltaPreview(currentListing, structuredUpdates) : undefined,
     revisionCount: input.draft.review.revisionCount + 1,
     feedbackHistory: [...input.draft.review.feedbackHistory, input.feedback],
   });

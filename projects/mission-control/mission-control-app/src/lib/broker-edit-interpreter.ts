@@ -27,7 +27,7 @@ type BrokerEditInterpreterFetch = typeof fetch;
 
 export type BrokerEditInterpreterOptions = {
   fetchImpl?: BrokerEditInterpreterFetch;
-  provider?: "openai" | "gemini";
+  provider?: "anthropic" | "openai" | "gemini";
   model?: string;
   timeoutMs?: number;
 };
@@ -958,15 +958,48 @@ function getOpenAiKey() {
   return asString(process.env.PIER_MANAGER_INTERPRETER_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY);
 }
 
+function getAnthropicKey() {
+  return asString(process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+}
+
 function getGeminiKey() {
   return asString(process.env.PIER_MANAGER_INTERPRETER_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
 }
 
 function pickInterpreterProvider(options: BrokerEditInterpreterOptions) {
   if (options.provider) return options.provider;
+  if (getAnthropicKey()) return "anthropic";
   if (getOpenAiKey()) return "openai";
   if (getGeminiKey()) return "gemini";
   return "openai";
+}
+
+async function callAnthropicInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
+  const apiKey = getAnthropicKey();
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required for the Claude broker-edit-interpreter.");
+  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || process.env.PIER_MANAGER_INTERPRETER_MODEL) || "claude-3-5-sonnet-latest";
+  const normalizedModel = model.startsWith("anthropic/") ? model.slice("anthropic/".length) : model;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const system = "You are Claude, the senior semantic parser for PIER Commercial Real Estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact broker intent, exact object identity, suite row preservation, documents/attachments array mutation, links object field deletion, and self-verification before output. Every requested value in a batch command must be present in updatePayload, not merely summarized; when description text is requested, include the actual string in content.saleDescription/content.leaseDescription and root saleDescription/leaseDescription. For requested document/link/attachment removals, never report success unless the mutated output documents/attachments array is strictly shorter or the matched links.* URL field is null/absent.";
+  const response = await fetchImpl("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: normalizedModel,
+      temperature: 0,
+      max_tokens: 4096,
+      system,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Claude broker-edit-interpreter failed (${response.status}): ${text.slice(0, 600)}`);
+  const payload = JSON.parse(text) as Record<string, unknown>;
+  const candidate = ((payload.content as Array<{ type?: string; text?: string }> | undefined) ?? [])
+    .map((part) => asString(part.text))
+    .filter(Boolean)
+    .join("\n");
+  return parseBrokerEditInterpreterJson(candidate);
 }
 
 async function callOpenAiInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
@@ -1160,7 +1193,7 @@ export async function interpretBrokerEditRequest(rawProperty: Record<string, unk
   const timeoutMs = options.timeoutMs ?? Number(process.env.PIER_MANAGER_INTERPRETER_TIMEOUT_MS ?? 45_000);
   const deterministic = interpretBrokerEditRequestDeterministic(rawProperty, instructions);
   const frontier = await withInterpreterTimeout(
-    provider === "gemini" ? callGeminiInterpreter(prompt, options) : callOpenAiInterpreter(prompt, options),
+    provider === "anthropic" ? callAnthropicInterpreter(prompt, options) : provider === "gemini" ? callGeminiInterpreter(prompt, options) : callOpenAiInterpreter(prompt, options),
     timeoutMs,
   );
   const result = combineInterpreterResults(frontier, deterministic);
