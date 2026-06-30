@@ -298,7 +298,7 @@ export async function defaultPropertyPortalCloudWriter(prompt: string): Promise<
       messages: [
         {
           role: "system",
-          content: "You produce strict JSON for premium commercial real estate listing drafts and broker-requested listing deltas. Treat broker narrative as factual source material, strip conversational wrappers, and polish open-text fields into public-facing professional, down-to-earth, warm broker copy. Preserve verbatim wording only when the broker explicitly says to put/write/use the text exactly.",
+          content: "You produce strict JSON for premium commercial real estate listing drafts and broker-requested ListingStream deltas in the voice of Ryan T. Schneider, CCIM. Treat broker narrative as factual source material, strip conversational wrappers and all AI/bot phrasing, and rewrite open-text fields as senior-broker public marketing copy: specific, local, understated, benefit-driven, and free of synthetic real-estate fluff. Never write that an AI, bot, engine, page, payload, schema, or presentation made the change. Preserve verbatim wording only when the broker explicitly says to put/write/use the text exactly.",
         },
         { role: "user", content: prompt },
       ],

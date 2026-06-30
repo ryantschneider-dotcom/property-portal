@@ -456,6 +456,15 @@ test("new listing enrichment prompt requires CCIM-level premium brokerage copy",
   assert.match(prompt, /Office|Retail|Industrial|Warehouse|Storage/i);
 });
 
+test("cloud writer system prompt requires senior CCIM tone and strips AI bot language", async () => {
+  const source = await readFile("src/lib/property-portal-ai.ts", "utf8");
+
+  assert.match(source, /Ryan T\. Schneider, CCIM/);
+  assert.match(source, /strip conversational wrappers and all AI\/bot phrasing/);
+  assert.match(source, /Never write that an AI, bot, engine, page, payload, schema, or presentation made the change/);
+  assert.match(source, /senior-broker public marketing copy/);
+});
+
 test("new listing AI draft becomes broker review state and never publishes automatically", async () => {
   const writer: PropertyPortalCloudWriter = async () => ({
     title: "Premium Flex Industrial Opportunity | Savannah, GA",
