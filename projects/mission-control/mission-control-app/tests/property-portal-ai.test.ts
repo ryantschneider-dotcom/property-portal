@@ -69,6 +69,45 @@ test("broker edit interpreter applies Rent + Utilities across whole lease listin
 });
 
 
+test("frontier broker-edit-interpreter can route semantic parsing through Anthropic Claude", async () => {
+  const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const fakeFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+    calls.push({ url: String(url), body });
+    return Response.json({
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          summary: ["Updated the broker-facing rent type."],
+          flags: [],
+          confidence: "high",
+          updatePayload: {
+            pricing: { rateType: "Rent + Utilities", leaseType: "Rent + Utilities" },
+          },
+        }),
+      }],
+    });
+  };
+
+  try {
+    const result = await interpretBrokerEditRequest(
+      { visibility: { transactionLabel: "For Lease" }, pricing: { rateType: "Modified Gross", leaseType: "Modified Gross" } },
+      "Change rent type to Rent + Utilities.",
+      { provider: "anthropic", model: "claude-3-5-sonnet-latest", fetchImpl: fakeFetch as typeof fetch, timeoutMs: 2_000 },
+    );
+
+    assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
+    assert.equal(calls[0].body.model, "claude-3-5-sonnet-latest");
+    assert.match(String(calls[0].body.system), /ListingStream JSON revisions/);
+    assert.equal((result.updatePayload.pricing as Record<string, unknown>).rateType, "Rent + Utilities");
+  } finally {
+    if (previousAnthropicKey == null) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
+  }
+});
+
 test("frontier writer polished narrative wins over broker vibe copy unless exact wording is requested", async () => {
   const instruction = "Update the property description to say this is newly refeshed office space in a re-devloping area with good access";
   const fakeFetch = async () => Response.json({
@@ -1014,6 +1053,78 @@ test("broker revise loop strips lease-listing public clutter from AI revisions",
   assert.deepEqual(revised.structuredUpdates.nearbyAnchors, []);
   assert.deepEqual(revised.structuredUpdates.dealDrivers, []);
   assert.deepEqual(revised.highlights, ["Two suites available"]);
+});
+
+test("broker revise loop preserves already-approved modification mutations when broker changes draft copy", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  globalThis.fetch = (async () => Response.json({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          summary: ["Updated the lease description."],
+          flags: [],
+          confidence: "high",
+          updatePayload: {
+            content: {
+              leaseDescription: "Updated broker-approved lease copy.",
+              saleDescription: "Updated broker-approved lease copy.",
+            },
+            leaseDescription: "Updated broker-approved lease copy.",
+            saleDescription: "Updated broker-approved lease copy.",
+          },
+        }),
+      },
+    }],
+  })) as typeof fetch;
+
+  try {
+    const initial = buildBrokerReviewState({
+      kind: "modification",
+      sourceInput: { propertyIdOrSlug: "340-eisenhower", instructions: "Change rent to Rent + Utilities." },
+      currentListing: {
+        slug: "340-eisenhower",
+        visibility: { transactionLabel: "For Lease", leaseActive: true },
+        pricing: { rateType: "Modified Gross", leaseType: "Modified Gross", askingPriceRatePerSf: 28 },
+        content: { leaseDescription: "Old copy." },
+        admin: { suites: [{ suiteNumber: "A", availableSqFt: "1250", baseRent: "28", rentType: "Modified Gross" }] },
+      },
+      writerResult: {
+        title: "340 Eisenhower Draft",
+        descriptionHtml: "<p>Old copy.</p>",
+        highlights: [],
+        structuredUpdates: {
+          pricing: { rateType: "Rent + Utilities", leaseType: "Rent + Utilities", askingPriceRatePerSf: 28, leaseRate: "$28/SF Rent + Utilities" },
+          admin: { suites: [{ suiteNumber: "A", availableSqFt: "1250", baseRent: "28", rentType: "Rent + Utilities" }] },
+          content: { leaseDescription: "Old copy." },
+        },
+        mediaNotes: [],
+      },
+    });
+
+    const revised = await reviseBrokerReviewDraft({
+      draft: initial,
+      feedback: "Change the lease description to say updated broker-approved lease copy.",
+      writer: async () => ({
+        title: "340 Eisenhower Draft",
+        descriptionHtml: "<p>Updated broker-approved lease copy.</p>",
+        highlights: [],
+        structuredUpdates: { content: { leaseDescription: "Updated broker-approved lease copy." } },
+        mediaNotes: [],
+      }),
+    });
+
+    assert.equal((revised.structuredUpdates.pricing as Record<string, unknown>).rateType, "Rent + Utilities");
+    assert.equal((revised.structuredUpdates.pricing as Record<string, unknown>).leaseRate, "$28/SF Rent + Utilities");
+    const suites = ((revised.structuredUpdates.admin as Record<string, unknown>).suites as Record<string, unknown>[]);
+    assert.equal(suites[0].rentType, "Rent + Utilities");
+    assert.equal((revised.structuredUpdates.content as Record<string, unknown>).leaseDescription, "Updated broker-approved lease copy.");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousOpenAiKey == null) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAiKey;
+  }
 });
 
 test("broker revise loop sends existing draft plus feedback back through AI", async () => {
