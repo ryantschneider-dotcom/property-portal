@@ -308,33 +308,61 @@ Rules:
 }
 
 export async function defaultPropertyPortalCloudWriter(prompt: string): Promise<PropertyPortalAiWriterResult> {
-  const apiKey = asString(process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY);
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required for PIER Manager cloud writer.");
-  const model = asString(process.env.OPENAI_MODEL) || "gpt-4o";
+  const anthropicKey = asString(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+  const openAiKey = asString(process.env.PIER_MANAGER_OPENAI_FALLBACK_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY);
+  const system = "You produce strict JSON for premium commercial real estate listing drafts and broker-requested ListingStream deltas in the voice of Ryan T. Schneider, CCIM. Treat broker narrative as factual source material, strip conversational wrappers and all AI/bot phrasing, and rewrite open-text fields as senior-broker public marketing copy: specific, local, understated, benefit-driven, and free of synthetic real-estate fluff. Never write that an AI, bot, engine, page, payload, schema, or presentation made the change. Preserve verbatim wording only when the broker explicitly says to put/write/use the text exactly.";
+  const timeoutMs = Number(process.env.PIER_MANAGER_CLOUD_WRITER_TIMEOUT_MS ?? 45_000);
+
+  if (anthropicKey) {
+    const model = asString(process.env.PIER_MANAGER_CLOUD_WRITER_CLAUDE_MODEL || process.env.ANTHROPIC_MODEL) || "claude-sonnet-5";
+    try {
+      const response = await withPropertyPortalTimeout(fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.25,
+          max_tokens: 5000,
+          system,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      }), timeoutMs, "Claude Sonnet writer timed out while drafting premium marketing copy.");
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) throw new Error(`Claude Sonnet writer failed (${response.status}): ${JSON.stringify(payload).slice(0, 600)}`);
+      const content = asString(Array.isArray(payload.content) ? payload.content.map((part: any) => part?.type === "text" ? part.text : "").join("\n") : "");
+      return parseCloudWriterJson(content);
+    } catch {
+      // Sonnet outage or strict-JSON parse failure: continue to OpenAI fallback if configured.
+    }
+  }
+
+  if (!openAiKey) throw new Error("ANTHROPIC_API_KEY or OPENAI_API_KEY is required for PIER Manager cloud writer.");
+  const model = asString(process.env.PIER_MANAGER_CLOUD_WRITER_OPENAI_FALLBACK_MODEL || process.env.OPENAI_MODEL) || "gpt-4.1";
   const normalizedModel = model.startsWith("openai/") ? model.slice("openai/".length) : model;
 
   const response = await withPropertyPortalTimeout(fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${openAiKey}`,
     },
     body: JSON.stringify({
       model: normalizedModel,
       temperature: 0.25,
       response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content: "You produce strict JSON for premium commercial real estate listing drafts and broker-requested ListingStream deltas in the voice of Ryan T. Schneider, CCIM. Treat broker narrative as factual source material, strip conversational wrappers and all AI/bot phrasing, and rewrite open-text fields as senior-broker public marketing copy: specific, local, understated, benefit-driven, and free of synthetic real-estate fluff. Never write that an AI, bot, engine, page, payload, schema, or presentation made the change. Preserve verbatim wording only when the broker explicitly says to put/write/use the text exactly.",
-        },
+        { role: "system", content: system },
         { role: "user", content: prompt },
       ],
     }),
-  }), Number(process.env.PIER_MANAGER_CLOUD_WRITER_TIMEOUT_MS ?? 45_000), "Cloud writer timed out while drafting premium marketing copy.");
+  }), timeoutMs, "OpenAI fallback writer timed out while drafting premium marketing copy.");
 
   const text = await response.text();
-  if (!response.ok) throw new Error(`Cloud writer failed (${response.status}): ${text.slice(0, 600)}`);
+  if (!response.ok) throw new Error(`OpenAI fallback writer failed (${response.status}): ${text.slice(0, 600)}`);
   const payload = JSON.parse(text) as Record<string, unknown>;
   const content = asString((payload.choices as Array<{ message?: { content?: string } }> | undefined)?.[0]?.message?.content);
   return parseCloudWriterJson(content);

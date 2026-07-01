@@ -977,7 +977,7 @@ function pickInterpreterProvider(options: BrokerEditInterpreterOptions) {
 async function callAnthropicInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
   const apiKey = getAnthropicKey();
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is required for the Claude broker-edit-interpreter.");
-  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || process.env.ANTHROPIC_LISTING_MODEL || process.env.PIER_MANAGER_INTERPRETER_MODEL) || "claude-sonnet-4-5-20250929";
+  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL || process.env.ANTHROPIC_LISTING_MODEL || process.env.PIER_MANAGER_INTERPRETER_MODEL) || "claude-sonnet-5";
   const normalizedModel = model.startsWith("anthropic/") ? model.slice("anthropic/".length) : model;
   const fetchImpl = options.fetchImpl ?? fetch;
   const system = "You are Claude, the senior semantic parser for PIER Commercial Real Estate ListingStream JSON revisions. Return strict JSON only. Prioritize exact broker intent, exact object identity, suite row preservation, documents/attachments array mutation, links object field deletion, and self-verification before output. Every requested value in a batch command must be present in updatePayload, not merely summarized; when description text is requested, include the actual string in content.saleDescription/content.leaseDescription and root saleDescription/leaseDescription. For requested document/link/attachment removals, never report success unless the mutated output documents/attachments array is strictly shorter or the matched links.* URL field is null/absent.";
@@ -1005,7 +1005,7 @@ async function callAnthropicInterpreter(prompt: string, options: BrokerEditInter
 async function callOpenAiInterpreter(prompt: string, options: BrokerEditInterpreterOptions) {
   const apiKey = getOpenAiKey();
   if (!apiKey) throw new Error("OPENAI_API_KEY is required for the frontier broker-edit-interpreter.");
-  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_MODEL || process.env.OPENAI_MODEL) || "gpt-4.1";
+  const model = asString(options.model || process.env.PIER_MANAGER_INTERPRETER_OPENAI_FALLBACK_MODEL || process.env.OPENAI_MODEL) || "gpt-4.1";
   const normalizedModel = model.startsWith("openai/") ? model.slice("openai/".length) : model;
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
@@ -1189,14 +1189,30 @@ function verifyFrontierInterpreterResult(rawProperty: Record<string, unknown>, i
 
 export async function interpretBrokerEditRequest(rawProperty: Record<string, unknown>, instructions: string, options: BrokerEditInterpreterOptions = {}): Promise<BrokerEditInterpreterResult> {
   const prompt = buildFrontierBrokerEditPrompt(rawProperty, instructions);
-  const provider = pickInterpreterProvider(options);
   const timeoutMs = options.timeoutMs ?? Number(process.env.PIER_MANAGER_INTERPRETER_TIMEOUT_MS ?? 45_000);
   const deterministic = interpretBrokerEditRequestDeterministic(rawProperty, instructions);
-  const frontier = await withInterpreterTimeout(
-    provider === "anthropic" ? callAnthropicInterpreter(prompt, options) : provider === "gemini" ? callGeminiInterpreter(prompt, options) : callOpenAiInterpreter(prompt, options),
-    timeoutMs,
-  );
-  const result = combineInterpreterResults(frontier, deterministic);
+  const preferredProvider = pickInterpreterProvider(options);
+  const providerSequence: BrokerEditInterpreterOptions["provider"][] = options.provider
+    ? [options.provider]
+    : [preferredProvider, "openai", "gemini"].filter((provider, index, list): provider is NonNullable<BrokerEditInterpreterOptions["provider"]> => Boolean(provider) && list.indexOf(provider) === index);
+  const errors: string[] = [];
+
+  for (const provider of providerSequence) {
+    try {
+      const frontier = await withInterpreterTimeout(
+        provider === "anthropic" ? callAnthropicInterpreter(prompt, { ...options, provider }) : provider === "gemini" ? callGeminiInterpreter(prompt, { ...options, provider }) : callOpenAiInterpreter(prompt, { ...options, provider }),
+        timeoutMs,
+      );
+      const result = combineInterpreterResults(frontier, deterministic);
+      verifyFrontierInterpreterResult(rawProperty, instructions, result);
+      return result;
+    } catch (error) {
+      errors.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (errors.length) throw new Error(errors.join(" | "));
+  const result = combineInterpreterResults(deterministic, deterministic);
   verifyFrontierInterpreterResult(rawProperty, instructions, result);
   return result;
 }

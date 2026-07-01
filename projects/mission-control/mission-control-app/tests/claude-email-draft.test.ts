@@ -124,6 +124,7 @@ test("Claude provider runner posts to Anthropic messages API and parses JSON tex
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
   assert.equal(calls[0].headers["x-api-key"], "test-key");
+  assert.equal(calls[0].body.model, "claude-sonnet-5");
   assert.match(calls[0].body.messages[0].content, /Test Listing/);
   assert.equal(draft.subjectLines[0], "Test Listing | PIER Commercial");
 });

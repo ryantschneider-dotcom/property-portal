@@ -10,6 +10,7 @@ import {
   buildNewListingEnrichmentPrompt,
   createModificationReviewDraft,
   createNewListingReviewDraft,
+  defaultPropertyPortalCloudWriter,
   parseCloudWriterJson,
   reviseBrokerReviewDraft,
   type PropertyPortalCloudWriter,
@@ -17,6 +18,42 @@ import {
 
 const deterministicInterpreter = async (currentListing: Record<string, unknown>, instructions: string) => interpretBrokerEditRequestDeterministic(currentListing, instructions);
 process.env.OPENAI_API_KEY ||= "test-openai-key";
+
+
+test("PIER Manager cloud writer defaults to Claude Sonnet and falls back to OpenAI on strict JSON failure", async () => {
+  const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+  const previousOpenAiKey = process.env.OPENAI_API_KEY;
+  const previousOpenAiModel = process.env.OPENAI_MODEL;
+  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+  process.env.OPENAI_API_KEY = "test-openai-key";
+  delete process.env.OPENAI_MODEL;
+  const originalFetch = global.fetch;
+  global.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    calls.push({ url: String(url), body });
+    if (String(url).includes("anthropic.com")) {
+      return Response.json({ content: [{ type: "text", text: "not json" }] });
+    }
+    return Response.json({
+      choices: [{ message: { content: JSON.stringify({ title: "Fallback Draft", descriptionHtml: "Fallback copy", highlights: ["Fallback highlight"], structuredUpdates: {}, mediaNotes: [] }) } }],
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await defaultPropertyPortalCloudWriter("Write strict JSON.");
+    assert.equal(calls[0].url, "https://api.anthropic.com/v1/messages");
+    assert.equal(calls[0].body.model, "claude-sonnet-5");
+    assert.equal(calls[1].url, "https://api.openai.com/v1/chat/completions");
+    assert.equal(calls[1].body.model, "gpt-4.1");
+    assert.equal(result.title, "Fallback Draft");
+  } finally {
+    global.fetch = originalFetch;
+    if (previousAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
+    if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousOpenAiKey;
+    if (previousOpenAiModel === undefined) delete process.env.OPENAI_MODEL; else process.env.OPENAI_MODEL = previousOpenAiModel;
+  }
+});
 test("frontier broker-edit-interpreter parses multiline property and location description blocks", async () => {
   const instructions = `Replace the property description and neighborhood description as follow;
 Property Description

@@ -401,7 +401,7 @@ async function runOpenAiEmailDraft(input: { packet: ClaudeEmailSourcePacket; api
 }
 
 async function runAnthropicEmailDraft(input: { packet: ClaudeEmailSourcePacket; apiKey: string; model?: string; fetchImpl: typeof fetch }) {
-  const model = asText(input.model || process.env.PIER_EMAIL_CLAUDE_MODEL || process.env.ANTHROPIC_MODEL) || "claude-3-5-sonnet-latest";
+  const model = asText(input.model || process.env.PIER_EMAIL_CLAUDE_MODEL || process.env.ANTHROPIC_MODEL) || "claude-sonnet-5";
   const prompt = buildClaudeEmailDraftPrompt(input.packet);
   const response = await input.fetchImpl("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -435,8 +435,14 @@ export async function runClaudeEmailDraft(input: {
 }) {
   const fetchImpl = input.fetchImpl || fetch;
   const anthropicKey = asText(input.apiKey || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
-  if (anthropicKey) return runAnthropicEmailDraft({ packet: input.packet, apiKey: anthropicKey, model: input.model, fetchImpl });
   const openAiKey = asText(process.env.PIER_EMAIL_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_PRODUCTION || process.env.OPENAI_KEY);
-  if (openAiKey) return runOpenAiEmailDraft({ packet: input.packet, apiKey: openAiKey, model: input.model, fetchImpl });
+  if (anthropicKey) {
+    try {
+      return await runAnthropicEmailDraft({ packet: input.packet, apiKey: anthropicKey, model: input.model, fetchImpl });
+    } catch (error) {
+      if (!openAiKey) throw error;
+    }
+  }
+  if (openAiKey) return runOpenAiEmailDraft({ packet: input.packet, apiKey: openAiKey, model: undefined, fetchImpl });
   throw new Error("ANTHROPIC_API_KEY or OPENAI_API_KEY is required for AI email draft generation.");
 }
