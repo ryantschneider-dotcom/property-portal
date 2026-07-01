@@ -18,6 +18,16 @@ test("Mission Control active plain-text revise loop renders Force Manus Re-Enric
   assert.match(source, /\/api\/listingstream\/force-manus-reenrichment/);
 });
 
+test("Mission Control initial live database editor exposes one-click Manus enrichment without notes validation", () => {
+  const source = readFileSync("src/components/pier-manager-listing-console.tsx", "utf8");
+  assert.match(source, /Generate Live Database Revision Draft/);
+  assert.match(source, /Enrich via Manus \(Property Description, Location Description, Highlights\)/);
+  assert.match(source, /onClick=\{generateManusEnrichmentDraft\}/);
+  assert.match(source, /No notes required\. Creates the review draft and immediately starts Manus/);
+  assert.match(source, /autoStartManus: true/);
+  assert.match(source, /startForceManusReEnrichmentForListing\(getForceReEnrichmentListingId\(draft\)\)/);
+});
+
 test("Mission Control exposes proxy routes for async ListingStream Manus re-enrichment", () => {
   const postRoute = readFileSync(new URL("../src/app/api/listingstream/force-manus-reenrichment/route.ts", import.meta.url), "utf8");
   const statusRoute = readFileSync(new URL("../src/app/api/listingstream/force-manus-reenrichment/status/route.ts", import.meta.url), "utf8");

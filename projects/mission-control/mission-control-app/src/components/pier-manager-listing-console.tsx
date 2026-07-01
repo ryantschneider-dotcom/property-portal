@@ -1485,7 +1485,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
   }
 
-  async function generateModificationDraft(instructions: string, options: { source: "listing-revision" | "om-revision" } = { source: "listing-revision" }) {
+  async function generateModificationDraft(instructions: string, options: { source: "listing-revision" | "om-revision"; autoStartManus?: boolean } = { source: "listing-revision" }) {
     const cleanInstructions = instructions.trim();
     if (!selectedPropertyId || !cleanInstructions) return;
     setModificationSubmitting(true);
@@ -1512,9 +1512,15 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       setReviewDraft(draft);
       revealReviewDraft("actions");
       setReviewStatus(`Review Draft ready for ${isOmRevision ? "OM revision" : "modification"}. ${modificationAssets.length} media/document file(s) staged for the portal update.`);
+      if (options.autoStartManus) {
+        setReviewStatus("Review Draft ready. Manus re-enrichment is starting in the background for Property Description, Location Description, and Highlights only.");
+        void startForceManusReEnrichmentForListing(getForceReEnrichmentListingId(draft));
+      }
       setModificationStatus(isOmRevision
         ? "OM revision draft ready. Approve the ListingStream draft update, then regenerate the OM from the revised listing data."
-        : "Revised listing draft ready for broker review; nothing has been published yet.");
+        : options.autoStartManus
+          ? "Draft created. Manus is now enriching only the three approved public fields in the background."
+          : "Revised listing draft ready for broker review; nothing has been published yet.");
     } catch (error) {
       const message = getAbortableErrorMessage(error, isOmRevision ? "Could not generate OM revision draft." : "Could not generate listing modification draft.");
       setModificationError(message);
@@ -1522,6 +1528,15 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     } finally {
       setModificationSubmitting(false);
     }
+  }
+
+  async function generateManusEnrichmentDraft() {
+    if (!selectedPropertyId || modificationSubmitting) return;
+    setModificationInstructions("");
+    await generateModificationDraft(
+      "Create a broker review draft for a Manus-only enrichment pass. Do not change pricing, availability, suite data, broker data, coordinates, zoning, parcel IDs, Neighborhood Context, or any field outside Property Description, Location Description, and Highlights.",
+      { source: "listing-revision", autoStartManus: true },
+    );
   }
 
   async function submitModification(event: FormEvent<HTMLFormElement>) {
@@ -1809,8 +1824,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     }
   }
 
-  async function forceManusReEnrichment() {
-    const listingId = getForceReEnrichmentListingId();
+  async function startForceManusReEnrichmentForListing(listingId: string) {
     if (!listingId) {
       setForceReEnrichmentStatus("failed");
       setForceReEnrichmentError("Select or generate an existing ListingStream draft before starting Manus re-enrichment.");
@@ -1832,6 +1846,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
       setForceReEnrichmentStatus("failed");
       setForceReEnrichmentError(error instanceof Error ? error.message : "Manus force re-enrichment could not be started.");
     }
+  }
+
+  async function forceManusReEnrichment() {
+    await startForceManusReEnrichmentForListing(getForceReEnrichmentListingId());
   }
 
   useEffect(() => {
@@ -2595,6 +2613,19 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
                 <button disabled={modificationSubmitting || !selectedPropertyId} aria-busy={modificationSubmitting} className="mt-4 w-full rounded-xl bg-zinc-950 px-5 py-3 text-sm font-extrabold text-white transition hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-70 sm:w-auto">
                   {modificationSubmitting ? "Generating Database Draft... Please Wait" : "Generate Live Database Revision Draft"}
                 </button>
+                <div className="mt-4 rounded-2xl border-2 border-[#CB521E]/35 bg-[#CB521E]/5 p-3 sm:p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#CB521E]">One-click Manus Enrichment</p>
+                  <p className="mt-1 text-sm leading-6 text-zinc-700">No notes required. Creates the review draft and immediately starts Manus in the background for only the three approved public fields.</p>
+                  <button
+                    type="button"
+                    onClick={generateManusEnrichmentDraft}
+                    disabled={modificationSubmitting || !selectedPropertyId}
+                    aria-busy={modificationSubmitting}
+                    className="mt-3 min-h-12 w-full rounded-xl bg-[#CB521E] px-5 py-3 text-left text-sm font-extrabold leading-5 text-white shadow-sm shadow-[#CB521E]/20 transition hover:bg-[#a94318] disabled:cursor-wait disabled:opacity-70 sm:text-center"
+                  >
+                    {modificationSubmitting ? "Creating Draft + Starting Manus…" : "Enrich via Manus (Property Description, Location Description, Highlights)"}
+                  </button>
+                </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">{activeListingsStatus}</p>
                   <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">{modificationStatus}</p>
