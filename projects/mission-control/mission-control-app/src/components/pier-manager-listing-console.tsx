@@ -795,6 +795,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const [draftPreviewUrl, setDraftPreviewUrl] = useState("");
   const [publishSuccessMessage, setPublishSuccessMessage] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
+  const [forceReEnrichmentStatus, setForceReEnrichmentStatus] = useState<"idle" | "dispatching" | "running" | "merged" | "failed">("idle");
+  const [forceReEnrichmentJobId, setForceReEnrichmentJobId] = useState("");
+  const [forceReEnrichmentMessage, setForceReEnrichmentMessage] = useState("");
+  const [forceReEnrichmentError, setForceReEnrichmentError] = useState("");
   const [listingResearchJobId, setListingResearchJobId] = useState("");
   const [listingResearchJobStatus, setListingResearchJobStatus] = useState<"idle" | "queued" | "researching" | "ready" | "failed">("idle");
   const [listingResearchFallbackBanner, setListingResearchFallbackBanner] = useState("");
@@ -1135,6 +1139,10 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     setModificationStatus(initialModificationStatus);
     setReviewDraft(null);
     setRevisionFeedback("");
+    setForceReEnrichmentStatus("idle");
+    setForceReEnrichmentJobId("");
+    setForceReEnrichmentMessage("");
+    setForceReEnrichmentError("");
     setDraftPreviewUrl("");
     setReviewStatus("No draft ready yet.");
     setOmGenerating(false);
@@ -1755,6 +1763,82 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
     event.preventDefault();
     await generateClaudeMailchimpEmailDraft();
   }
+
+  function getForceReEnrichmentListingId(draft: BrokerReviewDraft | null = reviewDraft) {
+    const sourceInput = isRecord(draft?.sourceInput) ? draft.sourceInput : {};
+    const currentListing = isRecord(draft?.currentListing) ? draft.currentListing : {};
+    const structuredUpdates = isRecord(draft?.structuredUpdates) ? draft.structuredUpdates : {};
+    const meta = isRecord(structuredUpdates.meta) ? structuredUpdates.meta : {};
+    return String(
+      selectedPropertyId ||
+      sourceInput.propertyIdOrSlug ||
+      sourceInput.listingId ||
+      currentListing.id ||
+      currentListing.slug ||
+      meta.listingId ||
+      meta.slug ||
+      "",
+    ).trim();
+  }
+
+  async function pollForceReEnrichmentStatus(options: { silent?: boolean } = {}) {
+    const listingId = getForceReEnrichmentListingId();
+    if (!listingId) {
+      setForceReEnrichmentError("Select or generate an existing ListingStream draft before starting Manus re-enrichment.");
+      setForceReEnrichmentStatus("failed");
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ listingId });
+      if (forceReEnrichmentJobId) params.set("jobId", forceReEnrichmentJobId);
+      const payload = await fetch(`/api/listingstream/force-manus-reenrichment/status?${params.toString()}`, { cache: "no-store" }).then(parseJsonResponse) as Record<string, unknown>;
+      const status = String(payload.status || "running");
+      if (status === "merged") {
+        setForceReEnrichmentStatus("merged");
+        setForceReEnrichmentMessage(String(payload.message || "Manus re-enrichment complete. Property Description, Location Description, and Highlights were updated."));
+        setForceReEnrichmentError("");
+      } else if (status === "failed" || status === "error") {
+        setForceReEnrichmentStatus("failed");
+        setForceReEnrichmentError(String(payload.message || payload.error || "Manus re-enrichment failed. No draft fields were changed."));
+      } else {
+        setForceReEnrichmentStatus("running");
+        setForceReEnrichmentMessage(String(payload.message || "Manus is researching in the background and will update only the three approved fields."));
+      }
+    } catch (error) {
+      if (!options.silent) setForceReEnrichmentError(error instanceof Error ? error.message : "Could not check Manus re-enrichment status.");
+    }
+  }
+
+  async function forceManusReEnrichment() {
+    const listingId = getForceReEnrichmentListingId();
+    if (!listingId) {
+      setForceReEnrichmentStatus("failed");
+      setForceReEnrichmentError("Select or generate an existing ListingStream draft before starting Manus re-enrichment.");
+      return;
+    }
+    setForceReEnrichmentStatus("dispatching");
+    setForceReEnrichmentMessage("Starting Manus force re-enrichment…");
+    setForceReEnrichmentError("");
+    try {
+      const payload = await fetch("/api/listingstream/force-manus-reenrichment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, requestedBy: `${activeBrokerId}@piercommercial.com` }),
+      }).then(parseJsonResponse) as Record<string, unknown>;
+      setForceReEnrichmentJobId(String(payload.jobId || ""));
+      setForceReEnrichmentStatus("running");
+      setForceReEnrichmentMessage(String(payload.message || "Manus is researching in the background and will update only Property Description, Location Description, and Highlights."));
+    } catch (error) {
+      setForceReEnrichmentStatus("failed");
+      setForceReEnrichmentError(error instanceof Error ? error.message : "Manus force re-enrichment could not be started.");
+    }
+  }
+
+  useEffect(() => {
+    if (!["dispatching", "running"].includes(forceReEnrichmentStatus)) return;
+    const timer = window.setInterval(() => void pollForceReEnrichmentStatus({ silent: true }), 25000);
+    return () => window.clearInterval(timer);
+  }, [forceReEnrichmentStatus, forceReEnrichmentJobId, selectedPropertyId, reviewDraft]);
 
   async function reviseDraft() {
     if (!reviewDraft || !revisionFeedback.trim()) return;
@@ -2745,6 +2829,26 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Plain-text revise loop</p>
             <h4 className="mt-2 text-lg font-semibold text-zinc-950">Send corrections back to The PIER Commercial Big Brain before publishing</h4>
             <p className="mt-2 text-sm leading-6 text-zinc-700">Type broker feedback here to revise the draft copy or structured payload. This keeps review from becoming a forced publish screen.</p>
+            <div data-testid="force-manus-reenrichment-panel" aria-live="polite" className="mt-4 rounded-2xl border border-[#CB521E]/25 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#CB521E]">Async Manus Research</p>
+                  <h5 className="mt-1 text-base font-semibold text-zinc-950">Force Manus Re-Enrichment</h5>
+                  <p className="mt-1 text-sm leading-6 text-zinc-700">Runs in the background and can update only Property Description, Location Description, and Highlights. Neighborhood Context and every other field are blocked.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={forceManusReEnrichment}
+                  disabled={forceReEnrichmentStatus === "dispatching" || forceReEnrichmentStatus === "running" || !getForceReEnrichmentListingId()}
+                  className="min-h-12 w-full rounded-xl bg-[#CB521E] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#a94318] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                >
+                  {forceReEnrichmentStatus === "dispatching" ? "Starting Manus…" : forceReEnrichmentStatus === "running" ? "Manus Running…" : "Force Manus Re-Enrichment"}
+                </button>
+              </div>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Strict JSON cage: propertyDescription, locationDescription, highlights only.</p>
+              {forceReEnrichmentMessage ? <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{forceReEnrichmentMessage}</p> : null}
+              {forceReEnrichmentError ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{forceReEnrichmentError}</p> : null}
+            </div>
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
               <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for The PIER Commercial Big Brain to process before approval" />
               <button type="button" onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
