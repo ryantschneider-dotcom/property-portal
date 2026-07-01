@@ -2019,6 +2019,7 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
   const offeringSiteLogs = (offeringSiteJob?.logs ?? []).filter((log) => log?.message);
   const offeringSiteErrorLog = [...offeringSiteLogs].reverse().find((log) => String(log.level || "").toLowerCase() === "error");
   const offeringSiteRootCause = offeringSiteJob?.error || offeringSiteErrorLog?.message || offeringSiteError;
+  const offeringSitePreflightError = /pre-flight|PIER_MASTER_SECRETS|MANUS_API_KEY|GITHUB_TOKEN|GH_TOKEN|GODADDY_API_KEY|GODADDY_API_SECRET|production secret/i.test(offeringSiteRootCause || offeringSiteError);
   const offeringSiteMissingFields = [
     ...(offeringSiteJob?.baseline?.validation?.missingRequiredFields ?? []),
     ...(offeringSiteJob?.baseline?.validation?.missingFields ?? []),
@@ -2231,6 +2232,14 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             </div>
             {offeringSiteRevisionError ? <div role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">{offeringSiteRevisionError}</div> : null}
           </form>
+        ) : null}
+
+        {offeringSitePreflightError ? (
+          <div role="alert" data-testid="offering-site-preflight-alert" className="mt-4 rounded-2xl border-2 border-red-500 bg-red-50 p-4 text-sm font-extrabold leading-6 text-red-950 shadow-lg shadow-red-900/10 sm:p-5">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-red-700">Production key pre-flight failed</p>
+            <p className="mt-2">The website build was stopped before Manus started. Sync the Desktop master vault to Vercel, then retry the build.</p>
+            {offeringSiteRootCause ? <p className="mt-2 break-words font-semibold text-red-900">{offeringSiteRootCause}</p> : null}
+          </div>
         ) : null}
 
         <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-700">{offeringSiteStatus}</div>
