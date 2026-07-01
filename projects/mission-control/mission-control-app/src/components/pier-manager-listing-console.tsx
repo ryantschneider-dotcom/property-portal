@@ -2829,6 +2829,11 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
             <p className="text-[10px] uppercase tracking-[0.28em] text-[#CB521E]">Plain-text revise loop</p>
             <h4 className="mt-2 text-lg font-semibold text-zinc-950">Send corrections back to The PIER Commercial Big Brain before publishing</h4>
             <p className="mt-2 text-sm leading-6 text-zinc-700">Type broker feedback here to revise the draft copy or structured payload. This keeps review from becoming a forced publish screen.</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+              <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for The PIER Commercial Big Brain to process before approval" />
+              <button type="button" onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
+            </div>
+            {reviewError ? <p data-testid="listing-revision-error" role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{reviewError}</p> : null}
             <div data-testid="force-manus-reenrichment-panel" aria-live="polite" className="mt-4 rounded-2xl border border-[#CB521E]/25 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -2849,11 +2854,6 @@ export function PierManagerListingConsole({ userRole, activeBrokerId = "ryan" }:
               {forceReEnrichmentMessage ? <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{forceReEnrichmentMessage}</p> : null}
               {forceReEnrichmentError ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{forceReEnrichmentError}</p> : null}
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-              <textarea value={revisionFeedback} onChange={(event) => setRevisionFeedback(event.target.value)} className={textareaClass} placeholder="Revise: type broker feedback for The PIER Commercial Big Brain to process before approval" />
-              <button type="button" onClick={reviseDraft} disabled={reviewBusy || !revisionFeedback.trim()} className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:border-[#CB521E]/40 hover:bg-[#CB521E]/5 disabled:opacity-50">Revise Draft</button>
-            </div>
-            {reviewError ? <p data-testid="listing-revision-error" role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{reviewError}</p> : null}
           </div>
 
           <div data-testid="assessor-data-fields" className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5">

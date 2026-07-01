@@ -7,7 +7,12 @@ test("Mission Control active plain-text revise loop renders Force Manus Re-Enric
   assert.match(source, /data-testid="broker-revise-loop"/);
   assert.match(source, /Plain-text revise loop/i);
   assert.match(source, /data-testid="force-manus-reenrichment-panel"/);
-  assert.match(source, /Force Manus Re-Enrichment/);
+  const reviseIndex = source.indexOf("Revise Draft");
+  const forceIndex = source.indexOf("Force Manus Re-Enrichment");
+  assert.ok(reviseIndex > -1, "standard Revise Draft button must remain in the active revise loop");
+  assert.ok(forceIndex > -1, "Force Manus Re-Enrichment button must render in the active revise loop");
+  assert.ok(reviseIndex < forceIndex, "standard Revise Draft control should render before the Manus force panel so the original loop is never displaced");
+  assert.match(source, /placeholder="Revise: type broker feedback/);
   assert.match(source, /Neighborhood Context and every other field are blocked/);
   assert.match(source, /w-full rounded-xl bg-\[#CB521E\]/);
   assert.match(source, /\/api\/listingstream\/force-manus-reenrichment/);
