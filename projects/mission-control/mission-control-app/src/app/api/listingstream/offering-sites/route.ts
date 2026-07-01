@@ -58,7 +58,7 @@ function normalizeGithubPagesOfferingSiteJob(listingId: string, payload: Record<
       routed: Boolean(url),
     },
     logs: Array.isArray(sourceJob?.logs) ? sourceJob.logs : [{ level: "info", stage: "github-pages", message: jobId ? `PIER GitHub Pages build ${jobId} accepted by PIER Website Production Factory.` : PRODUCTION_FACTORY_MESSAGE, createdAt: now }],
-    error: clean(payload.error) || clean(sourceJob?.error) || undefined,
+    error: clean(payload.error) || (["failed", "error"].includes(status) ? clean(payload.message) : "") || clean(sourceJob?.error) || clean(sourceJob?.errorMessage) || undefined,
     message: url ? "Your site is live" : clean(payload.message) || clean(sourceJob?.message) || PRODUCTION_FACTORY_MESSAGE,
   };
 }
